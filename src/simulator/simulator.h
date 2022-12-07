@@ -22,6 +22,9 @@ struct simulator {
 
     uint16_t *consts;     /* Pointer to the constant rom. */
     uint32_t *microcode;  /* Microcode rom. */
+
+    uint16_t *mem;        /* Main memory. */
+    uint16_t *xm_banks;   /* Banks for the different tasks. */
 };
 
 /* Functions. */

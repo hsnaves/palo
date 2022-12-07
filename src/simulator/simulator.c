@@ -9,17 +9,24 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define NUM_R_REGISTERS 32
-#define NUM_S_REGISTERS (8 * 32)
+#define NUM_R_REGISTERS             32
+#define NUM_S_REGISTERS       (8 * 32)
 
 /* Extra constants for the shifter. */
-#define SHIFT_OP_NONE             0
-#define SHIFT_OP_LEFT             1
-#define SHIFT_OP_RIGHT            2
-#define SHIFT_OP_ROTATE           3
-#define SHIFT_MOD_NONE            0
-#define SHIFT_MOD_MAGIC           1
-#define SHIFT_MOD_DNS             2
+#define SHIFT_OP_NONE                0
+#define SHIFT_OP_LEFT                1
+#define SHIFT_OP_RIGHT               2
+#define SHIFT_OP_ROTATE              3
+#define SHIFT_MOD_NONE               0
+#define SHIFT_MOD_MAGIC              1
+#define SHIFT_MOD_DNS                2
+
+/* For the memory. */
+#define NUM_MICROCODE_BANKS          4
+#define NUM_BANKS                    4
+#define NUM_BANK_SLOTS  TASK_NUM_TASKS
+#define MEMORY_TOP              0xFDFF
+#define XM_BANK_START           0xFFE0
 
 /* Functions. */
 
@@ -29,6 +36,8 @@ void simulator_initvar(struct simulator *sim)
     sim->s = NULL;
     sim->consts = NULL;
     sim->microcode = NULL;
+    sim->mem = NULL;
+    sim->xm_banks = NULL;
 }
 
 void simulator_destroy(struct simulator *sim)
@@ -44,6 +53,12 @@ void simulator_destroy(struct simulator *sim)
 
     if (sim->microcode) free((void *) sim->microcode);
     sim->microcode = NULL;
+
+    if (sim->mem) free((void *) sim->mem);
+    sim->mem = NULL;
+
+    if (sim->xm_banks) free((void *) sim->xm_banks);
+    sim->xm_banks = NULL;
 }
 
 int simulator_create(struct simulator *sim)
@@ -55,9 +70,15 @@ int simulator_create(struct simulator *sim)
     sim->consts = (uint16_t *)
         malloc(CONSTANT_SIZE * sizeof(uint16_t));
     sim->microcode = (uint32_t *)
-        malloc(4 * MICROCODE_SIZE * sizeof(uint32_t));
+        malloc(NUM_MICROCODE_BANKS * MICROCODE_SIZE * sizeof(uint32_t));
+    sim->mem = (uint16_t *)
+        malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
+    sim->xm_banks = (uint16_t *)
+        malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
 
-    if (unlikely(!sim->r || !sim->s || !sim->consts || !sim->microcode)) {
+    if (unlikely(!sim->r || !sim->s
+                 || !sim->consts || !sim->microcode
+                 || !sim->mem || !sim->xm_banks)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
         return FALSE;
@@ -191,6 +212,55 @@ void simulator_reset(struct simulator *sim)
     sim->aluC0 = FALSE;
     sim->rmr = 0xFFFF;
 }
+
+void simulator_clear_memory(struct simulator *sim)
+{
+    memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
+    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
+}
+
+uint16_t simulator_read(const struct simulator *sim, uint16_t address,
+                        uint8_t task, int extended_memory)
+{
+    if (address >= XM_BANK_START
+        && address <= (XM_BANK_START + NUM_BANK_SLOTS)) {
+        /* NB: While not specified in documentation, some code (IFS in
+         * particular) relies on the fact that the upper 12 bits of the
+         * bank registers are all 1s.
+         */
+        return ((uint16_t) 0xFFF0) | sim->xm_banks[address - XM_BANK_START];
+    } else {
+        const uint16_t *base_mem;
+        int bank_number;
+        bank_number = extended_memory
+            ? (sim->xm_banks[task] & 0x3)
+            : ((sim->xm_banks[task] >> 2) & 0x3);
+        base_mem = &sim->mem[bank_number * MEMORY_SIZE];
+        return base_mem[address];
+    }
+}
+
+void simulator_write(struct simulator *sim, uint16_t address,
+                     uint16_t data, uint8_t task, int extended_memory)
+{
+    if (address >= XM_BANK_START
+        && address <= (XM_BANK_START + NUM_BANK_SLOTS)) {
+        /* NB: While not specified in documentation, some code (IFS in
+         * particular) relies on the fact that the upper 12 bits of the
+         * bank registers are all 1s.
+         */
+        sim->xm_banks[address - XM_BANK_START] = data;
+    } else {
+        uint16_t *base_mem;
+        int bank_number;
+        bank_number = extended_memory
+            ? (sim->xm_banks[task] & 0x3)
+            : ((sim->xm_banks[task] >> 2) & 0x3);
+        base_mem = &sim->mem[bank_number * MEMORY_SIZE];
+        base_mem[address] = data;
+    }
+}
+
 
 uint16_t compute_alu(int aluf, uint16_t bus, uint16_t t,
                      int skip, int *carry)

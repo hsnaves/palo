@@ -5,6 +5,7 @@
 /* Constants. */
 #define CONSTANT_SIZE            256
 #define MICROCODE_SIZE          1024
+#define MEMORY_SIZE            65536
 
 /* Task types. */
 #define TASK_EMULATOR              0
