@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -26,6 +27,8 @@ void simulator_initvar(struct simulator *sim)
 {
     sim->r = NULL;
     sim->s = NULL;
+    sim->consts = NULL;
+    sim->microcode = NULL;
 }
 
 void simulator_destroy(struct simulator *sim)
@@ -35,6 +38,12 @@ void simulator_destroy(struct simulator *sim)
 
     if (sim->s) free((void *) sim->s);
     sim->s = NULL;
+
+    if (sim->consts) free((void *) sim->consts);
+    sim->microcode = NULL;
+
+    if (sim->microcode) free((void *) sim->microcode);
+    sim->microcode = NULL;
 }
 
 int simulator_create(struct simulator *sim)
@@ -43,14 +52,131 @@ int simulator_create(struct simulator *sim)
 
     sim->r = malloc(NUM_R_REGISTERS * sizeof(uint16_t));
     sim->s = malloc(NUM_S_REGISTERS * sizeof(uint16_t));
+    sim->consts = (uint16_t *)
+        malloc(CONSTANT_SIZE * sizeof(uint16_t));
+    sim->microcode = (uint32_t *)
+        malloc(4 * MICROCODE_SIZE * sizeof(uint32_t));
 
-    if (unlikely(!sim->r || !sim->s)) {
+    if (unlikely(!sim->r || !sim->s || !sim->consts || !sim->microcode)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
         return FALSE;
     }
 
     return TRUE;
+}
+
+int simulator_load_constant_rom(struct simulator *sim,
+                                const char *filename)
+{
+    FILE *fp;
+    uint16_t i;
+    uint16_t val;
+    int c;
+
+    if (!filename) return TRUE;
+    fp = fopen(filename, "rb");
+    if (unlikely(!fp)) {
+        report_error("simulator: load_constant_rom: "
+                     "cannot open `%s`", filename);
+        return FALSE;
+    }
+
+    for (i = 0; i < CONSTANT_SIZE; i++) {
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val = (uint16_t) (c & 0xFF);
+
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val |= ((uint16_t) (c & 0xFF)) << 8;
+
+        sim->consts[i] = val;
+    }
+
+    c = fgetc(fp);
+    if (unlikely(c != EOF)) {
+        report_error("simulator: load_constant_rom: "
+                     "invalid file size `%s`",
+                     filename);
+        fclose(fp);
+        return FALSE;
+    }
+
+    fclose(fp);
+    return TRUE;
+
+error_eof:
+    report_error("simulator: load_constant_rom: "
+                 "premature end of file `%s`",
+                 filename);
+    fclose(fp);
+    return FALSE;
+}
+
+int simulator_load_microcode_rom(struct simulator *sim,
+                                 const char *filename,
+                                 unsigned int bank)
+{
+    FILE *fp;
+    uint16_t i, offset;
+    uint32_t val;
+    int c;
+
+    if (unlikely(bank >= 2)) {
+        report_error("simulator: load_microcode_rom: "
+                     "invalid bank `%u`", bank);
+        return FALSE;
+    }
+
+    offset = (bank) ? MICROCODE_SIZE : 0;
+
+    if (!filename) return TRUE;
+    fp = fopen(filename, "rb");
+    if (unlikely(!fp)) {
+        report_error("simulator: load_microcode_rom: "
+                     "cannot open `%s`", filename);
+        return FALSE;
+    }
+
+    for (i = 0; i < MICROCODE_SIZE; i++) {
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val = (uint32_t) (c & 0xFF);
+
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val |= ((uint32_t) (c & 0xFF)) << 8;
+
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val |= ((uint32_t) (c & 0xFF)) << 16;
+
+        c = fgetc(fp);
+        if (unlikely(c == EOF)) goto error_eof;
+        val |= ((uint32_t) (c & 0xFF)) << 24;
+
+        sim->microcode[offset + i] = val;
+    }
+
+    c = fgetc(fp);
+    if (unlikely(c != EOF)) {
+        report_error("simulator: load_microcode_rom: "
+                     "invalid file size `%s`",
+                     filename);
+        fclose(fp);
+        return FALSE;
+    }
+
+    fclose(fp);
+    return TRUE;
+
+error_eof:
+    report_error("simulator: load_microcode_rom: "
+                 "premature end of file `%s`",
+                 filename);
+    fclose(fp);
+    return FALSE;
 }
 
 void simulator_reset(struct simulator *sim)

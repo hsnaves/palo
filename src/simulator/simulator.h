@@ -20,8 +20,8 @@ struct simulator {
                            * (for tasks to start in either ROM0 or RAM0).
                            */
 
-    uint16_t *crom;       /* Pointer to the constant rom. */
-    uint32_t *mrom;       /* Microcode rom. */
+    uint16_t *consts;     /* Pointer to the constant rom. */
+    uint32_t *microcode;  /* Microcode rom. */
 };
 
 /* Functions. */
@@ -46,5 +46,24 @@ int simulator_create(struct simulator *sim);
 
 /* Resets the simulator state. */
 void simulator_reset(struct simulator *sim);
+
+/* Loads the constant rom from a file.
+ * The filename with the constants is defined by parameter `filename`.
+ * It assumes the file is in little-endian format.
+ * Returns TRUE on success.
+ */
+int simulator_load_constant_rom(struct simulator *sim,
+                                const char *filename);
+
+/* Loads the microcode rom from a file.
+ * The filename with the microcode is defined by parameter `filename`.
+ * The bank number is specified by the parameter `bank`.
+ * It assumes the file is in little-endian format.
+ * Returns TRUE on success.
+ */
+int simulator_load_microcode_rom(struct simulator *sim,
+                                 const char *filename,
+                                 unsigned int bank);
+
 
 #endif /* __SIMULATOR_SIMULATOR_H */

@@ -59,6 +59,17 @@ int main(int argc, char **argv)
         goto error;
     }
 
+    if (unlikely(!simulator_load_constant_rom(&sim, constant_filename))) {
+        report_error("main: could not load constant rom");
+        goto error;
+    }
+
+    if (unlikely(
+            !simulator_load_microcode_rom(&sim, microcode_filename, 0))) {
+        report_error("main: could not load microcode rom");
+        goto error;
+    }
+
     simulator_destroy(&sim);
     return 0;
 
