@@ -21,7 +21,7 @@ LDFLAGS :=
 INCLUDES := -I.
 LIBS :=
 
-TARGET := pmu pdis
+TARGET := pmu pdis psim
 
 # Modify the FLAGS based on the options
 
@@ -49,6 +49,9 @@ pmu: $(PMU_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 pdis: $(PDIS_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+psim: $(PSIM_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 %.o: %.c

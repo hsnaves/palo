@@ -1,9 +1,13 @@
 PMU_OBJS := common/allocator.o common/table.o common/utils.o \
-  assembler/assembler.o parser/lexer.o parser/parser.o pmu.o
+ assembler/assembler.o parser/lexer.o parser/parser.o pmu.o
 
 PDIS_OBJS := common/utils.o disassembler/disassembler.o pdis.o
 
-OBJS := $(PMU_OBJS) disassembler/disassembler.o pdis.o
+PSIM_OBJS := common/utils.o simulator/simulator.o psim.o
+
+OBJS := common/allocator.o common/table.o common/utils.o \
+ assembler/assembler.o parser/lexer.o parser/parser.o pmu.o \
+ disassembler/disassembler.o pdis.o simulator/simulator.o psim.o
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
