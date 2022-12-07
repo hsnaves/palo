@@ -775,14 +775,14 @@ int process_assignment_clause(struct instruction *insn,
     } else if (decl->d_type == DECL_CONSTANT) {
         def = LSA_BUS;
         insn->has_constant = TRUE;
-        if (!set_rsel(insn, ADDRESS_RSEL(decl->si->address)))
+        if (!set_rsel(insn, CONST_ADDR_RSEL(decl->si->address)))
             return FALSE;
-        if (!set_bs(insn, ADDRESS_BS(decl->si->address)))
+        if (!set_bs(insn, CONST_ADDR_BS(decl->si->address)))
             return FALSE;
     } else if (decl->d_type == DECL_M_CONSTANT) {
         def = LSA_BUS;
         insn->has_m_constant = TRUE;
-        if (!set_rsel(insn, ADDRESS_RSEL(decl->si->address)))
+        if (!set_rsel(insn, CONST_ADDR_RSEL(decl->si->address)))
             return FALSE;
     } else if (decl->d_type == DECL_R_MEMORY) {
         def = LSA_BUS;

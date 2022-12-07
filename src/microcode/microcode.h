@@ -6,6 +6,19 @@
 #define CONSTANT_SIZE            256
 #define MICROCODE_SIZE          1024
 
+/* Task types. */
+#define TASK_EMULATOR              0
+#define TASK_DISK_SECTOR          04
+#define TASK_ETHERNET             07
+#define TASK_MEMORY_REFRESH      010
+#define TASK_DISPLAY_WORD        011
+#define TASK_CURSOR              012
+#define TASK_DISPLAY_HORIZONTAL  013
+#define TASK_DISPLAY_VERTICAL    014
+#define TASK_PARITY              015
+#define TASK_DISK_WORD           016
+#define TASK_NUM_TASKS           020
+
 /* ALU functions (values of ALUF field in microinstruction). */
 #define ALU_BUS                    0
 #define ALU_T                     01
@@ -136,8 +149,9 @@
 #define MICROCODE_NEXT(microcode) ((microcode) & 0x3FF)
 
 /* For constant address. */
-#define ADDRESS_RSEL(addr) ((addr) >> 3)
-#define ADDRESS_BS(addr) ((addr) & 0x7)
+#define CONST_ADDR_RSEL(addr) ((addr) >> 3)
+#define CONST_ADDR_BS(addr) ((addr) & 0x7)
+#define CONST_ADDR(rsel, bs) ((((rsel) & 0x1F) << 3) | ((bs) & 0x7))
 
 
 #endif /* __MICROCODE_MICROCODE_H */

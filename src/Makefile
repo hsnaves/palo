@@ -21,7 +21,7 @@ LDFLAGS :=
 INCLUDES := -I.
 LIBS :=
 
-TARGET := pmu
+TARGET := pmu pdis
 
 # Modify the FLAGS based on the options
 
@@ -46,6 +46,9 @@ include module.mk
 # Pattern rules
 
 pmu: $(PMU_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+pdis: $(PDIS_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 %.o: %.c
