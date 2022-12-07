@@ -15,8 +15,8 @@ endif
 CC := gcc
 RM := rm -f
 
-CFLAGS := -Wall -ansi -pedantic $(EXTRA_CFLAGS)
-LDFLAGS :=
+CFLAGS := -Wall -ansi -pedantic $(shell sdl2-config --cflags) $(EXTRA_CFLAGS)
+LDFLAGS := $(shell sdl2-config --libs)
 
 INCLUDES := -I.
 LIBS :=

@@ -8,7 +8,7 @@ An in-progress microcode assembler and disassembler for the Xerox Alto workstati
 
 ### Prerequisites
 
-Palo requires GCC and MAKE to be installed on the system.
+Palo requires GCC, MAKE and SDL2 to be installed on the system.
 
 ### Building
 
