@@ -377,8 +377,856 @@ void disassembler_find_task_addresses(struct disassembler *dis)
             }
         }
     }
+}
 
-    for (i = 0; i < MICROCODE_SIZE; i++) {
-        printf("0x%04X: 0x%X\n", i, dis->task_mask[i]);
+/* Helpful macro to update the buffer positions. */
+#define UPDATE_BUFFER(buffer, buffer_size, ret) \
+    if (((size_t) (ret)) < buffer_size) {       \
+        buffer += ret;                          \
+        buffer_size -= (size_t) (ret);          \
+    } else {                                    \
+        buffer += (buffer_size - 1);            \
+        buffer_size = 1;                        \
+    }
+
+/* Disassembles the non-data function part of the instruction.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_nondata_function(struct disassembler *dis,
+                                 uint32_t microcode, uint8_t task,
+                                 char *buffer, size_t buffer_size)
+{
+    char f1_op[20];
+    char f2_op[20];
+    uint16_t f1, f2;
+    int n_buffer;
+
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    f1_op[0] = '\0';
+    switch(f1) {
+    case F1_NONE:
+    case F1_LOAD_MAR:
+    case F1_LLSH1:
+    case F1_LRSH1:
+    case F1_LLCY8:
+    case F1_CONSTANT:
+        break;
+    case F1_TASK:
+        snprintf(f1_op, sizeof(f1_op), "TASK");
+        break;
+    case F1_BLOCK:
+        snprintf(f1_op, sizeof(f1_op), "BLOCK");
+        break;
+    default:
+        switch(task) {
+        case TASK_EMULATOR:
+            switch(f1) {
+            case F1_EMU_SWMODE:
+                snprintf(f1_op, sizeof(f1_op), "SWMODE");
+                break;
+            case F1_EMU_WRTRAM:
+                snprintf(f1_op, sizeof(f1_op), "WRTRAM");
+                break;
+            case F1_EMU_RDRAM:
+                snprintf(f1_op, sizeof(f1_op), "RDRAM");
+                break;
+            case F1_EMU_STARTF:
+                snprintf(f1_op, sizeof(f1_op), "STARTF");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_DISK_SECTOR:
+        case TASK_DISK_WORD:
+            switch(f1) {
+            case F1_DSK_STROBE:
+                snprintf(f1_op, sizeof(f1_op), "STROBE");
+                break;
+            case F1_DSK_INCRECNO:
+                snprintf(f1_op, sizeof(f1_op), "INCRECNO");
+                break;
+            case F1_DSK_CLRSTAT:
+                snprintf(f1_op, sizeof(f1_op), "CLRSTAT");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_ETHERNET:
+            switch(f1) {
+            case F1_ETH_EILFCT:
+                snprintf(f1_op, sizeof(f1_op), "EILFCT");
+                break;
+            case F1_ETH_EPFCT:
+                snprintf(f1_op, sizeof(f1_op), "EPFCT");
+                break;
+            case F1_ETH_EWFCT:
+                snprintf(f1_op, sizeof(f1_op), "EWFCT");
+                break;
+            default:
+                break;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+
+    f2_op[0] = '\0';
+    switch(f2) {
+    case F2_NONE:
+    case F2_STORE_MD:
+    case F2_CONSTANT:
+        break;
+    case F2_BUSEQ0:
+        snprintf(f2_op, sizeof(f2_op), "BUS=0");
+        break;
+    case F2_SHLT0:
+        snprintf(f2_op, sizeof(f2_op), "SH<0");
+        break;
+    case F2_SHEQ0:
+        snprintf(f2_op, sizeof(f2_op), "SH=0");
+        break;
+    case F2_BUS:
+        snprintf(f2_op, sizeof(f2_op), "BUS");
+        break;
+    case F2_ALUCY:
+        snprintf(f2_op, sizeof(f2_op), "ALUCY");
+        break;
+    default:
+        switch(task) {
+        case TASK_EMULATOR:
+            switch(f2) {
+            case F2_EMU_BUSODD:
+                snprintf(f2_op, sizeof(f2_op), "BUSODD");
+                break;
+            case F2_EMU_MAGIC:
+                snprintf(f2_op, sizeof(f2_op), "MAGIC");
+                break;
+            case F2_EMU_IDISP:
+                snprintf(f2_op, sizeof(f2_op), "IDISP");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_DISK_SECTOR:
+        case TASK_DISK_WORD:
+            switch(f2) {
+            case F2_DSK_INIT:
+                snprintf(f2_op, sizeof(f2_op), "INIT");
+                break;
+            case F2_DSK_RWC:
+                snprintf(f2_op, sizeof(f2_op), "RWC");
+                break;
+            case F2_DSK_RECNO:
+                snprintf(f2_op, sizeof(f2_op), "RECNO");
+                break;
+            case F2_DSK_XFRDAT:
+                snprintf(f2_op, sizeof(f2_op), "XFRDAT");
+                break;
+            case F2_DSK_SWRNRDY:
+                snprintf(f2_op, sizeof(f2_op), "SWRNRDY");
+                break;
+            case F2_DSK_NFER:
+                snprintf(f2_op, sizeof(f2_op), "NFER");
+                break;
+            case F2_DSK_STROBON:
+                snprintf(f2_op, sizeof(f2_op), "STROBON");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_ETHERNET:
+            switch(f2) {
+            case F2_ETH_EOSFCT:
+                snprintf(f2_op, sizeof(f2_op), "EOSFCT");
+                break;
+            case F2_ETH_ERBFCT:
+                snprintf(f2_op, sizeof(f2_op), "ERBFCT");
+                break;
+            case F2_ETH_EEFCT:
+                snprintf(f2_op, sizeof(f2_op), "EEFCT");
+                break;
+            case F2_ETH_EBFCT:
+                snprintf(f2_op, sizeof(f2_op), "EBFCT");
+                break;
+            case F2_ETH_ECBFCT:
+                snprintf(f2_op, sizeof(f2_op), "ECBFCT");
+                break;
+            case F2_ETH_EISFCT:
+                snprintf(f2_op, sizeof(f2_op), "EISFCT");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_DISPLAY_WORD:
+            break;
+        case TASK_CURSOR:
+            break;
+        case TASK_DISPLAY_HORIZONTAL:
+            switch(f2) {
+            case F2_DH_EVENFIELD:
+                snprintf(f2_op, sizeof(f2_op), "EVENFIELD");
+                break;
+            case F2_DH_SETMODE:
+                snprintf(f2_op, sizeof(f2_op), "SETMODE");
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_DISPLAY_VERTICAL:
+            switch(f2) {
+            case F2_DV_EVENFIELD:
+                snprintf(f2_op, sizeof(f2_op), "EVENFIELD");
+                break;
+            default:
+                break;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+
+    n_buffer = snprintf(buffer, buffer_size, "%s%s%s",
+                        f1_op,
+                        (f1_op[0] && f2_op[0]) ? ", " : "",
+                        f2_op);
+    return n_buffer;
+}
+
+/* Disassembles the bus source.
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_bus_source(struct disassembler *dis,
+                           uint32_t microcode, uint8_t task,
+                           char *buffer, size_t buffer_size)
+{
+    uint16_t rsel;
+    uint16_t bs;
+    uint16_t f1, f2;
+    int use_constant;
+    int ret;
+
+    rsel = MICROCODE_RSEL(microcode);
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    use_constant = (f1 == F1_CONSTANT || f2 == F2_CONSTANT
+                    || BS_USE_CROM(bs));
+    if (use_constant) {
+        return snprintf(buffer, buffer_size,
+                        "%o", dis->consts[CONST_ADDR(rsel, bs)]);
+    }
+
+    switch (bs) {
+    case BS_READ_R:
+        if (task == TASK_EMULATOR && rsel == 0) {
+            if (f2 == F2_EMU_ACDEST) {
+                ret = snprintf(buffer, buffer_size, "ACDEST");
+                break;
+            } else if (f2 == F2_EMU_ACSOURCE) {
+                ret = snprintf(buffer, buffer_size, "SOURCE");
+                break;
+            }
+        }
+        ret = snprintf(buffer, buffer_size, "R%o", rsel);
+        break;
+    case BS_LOAD_R:
+        ret = snprintf(buffer, buffer_size, "0");
+        break;
+    case BS_NONE:
+        if (task == TASK_EMULATOR && f1 == F1_EMU_RSNF) {
+            ret = snprintf(buffer, buffer_size, "RSNF");
+            break;
+        } else if (task == TASK_ETHERNET && f1 == F1_ETH_EILFCT) {
+            ret = snprintf(buffer, buffer_size, "EILFCT");
+            break;
+        } else if (task == TASK_ETHERNET && f1 == F1_ETH_EPFCT) {
+            ret = snprintf(buffer, buffer_size, "EPFCT");
+            break;
+        }
+        ret = snprintf(buffer, buffer_size, "-1");
+        break;
+    case BS_READ_MD:
+        ret = snprintf(buffer, buffer_size, "MD");
+        break;
+    case BS_READ_MOUSE:
+        ret = snprintf(buffer, buffer_size, "MOUSE");
+        break;
+    case BS_READ_DISP:
+        ret = snprintf(buffer, buffer_size, "DISP");
+        break;
+    default:
+        if (task == TASK_ETHERNET && bs == BS_ETH_EIDFCT) {
+            ret = snprintf(buffer, buffer_size, "EIDFCT");
+            break;
+        }
+        if ((task == TASK_DISK_SECTOR) || (task == TASK_DISK_WORD)) {
+            if (bs == BS_DSK_READ_KSTAT) {
+                ret = snprintf(buffer, buffer_size, "KSTAT");
+                break;
+            } else if (bs == BS_DSK_READ_KDATA) {
+                ret = snprintf(buffer, buffer_size, "KDATA");
+                break;
+            }
+        }
+        ret = 0;
+        break;
+    }
+
+    return ret;
+}
+
+/* Disassembles the bus destinations.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_bus_destinations(struct disassembler *dis,
+                                 uint32_t microcode, uint8_t task,
+                                 char *buffer, size_t buffer_size)
+{
+    uint16_t f2;
+    uint16_t aluf;
+    int load_t;
+    int load_t_from_alu;
+    int ret, n_buffer;
+
+    aluf = MICROCODE_ALUF(microcode);
+    f2 = MICROCODE_F2(microcode);
+    load_t = MICROCODE_T(microcode);
+
+    load_t_from_alu = LOAD_T_FROM_ALU(aluf);
+
+    if (aluf == ALU_BUS) return 0;
+
+    n_buffer = 0;
+    if (f2 == F2_STORE_MD) {
+        ret = snprintf(buffer, buffer_size, "MD<- ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    if (load_t && (!load_t_from_alu)) {
+        ret = snprintf(buffer, buffer_size, "T<- ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    return n_buffer;
+}
+
+/* Disassembles assigments from the bus.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_assignment_bus(struct disassembler *dis,
+                               uint32_t microcode, uint8_t task,
+                               char *buffer, size_t buffer_size)
+{
+    int ret, n_buffer;
+
+    n_buffer = 0;
+    ret = disassemble_bus_destinations(dis, microcode, task,
+                                       buffer, buffer_size);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    if (n_buffer == 0) return 0;
+
+    ret = disassemble_bus_source(dis, microcode, task,
+                                 buffer, buffer_size);
+    n_buffer += ret;
+    return n_buffer;
+}
+
+/* Disassembles the alu source.
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_alu_source(struct disassembler *dis,
+                           uint32_t microcode, uint8_t task,
+                           char *buffer, size_t buffer_size)
+{
+    uint16_t aluf;
+    int n_buffer, ret;
+
+    aluf = MICROCODE_ALUF(microcode);
+
+    n_buffer = 0;
+    if (aluf != ALU_T) {
+        ret = disassemble_bus_source(dis, microcode, task,
+                                     buffer, buffer_size);
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    switch (aluf) {
+    case ALU_BUS:
+        break;
+    case ALU_T:
+        ret = snprintf(buffer, buffer_size, "T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_OR_T:
+        ret = snprintf(buffer, buffer_size, " OR T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_AND_T:
+        ret = snprintf(buffer, buffer_size, " AND T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_XOR_T:
+        ret = snprintf(buffer, buffer_size, " XOR T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_PLUS_1:
+        ret = snprintf(buffer, buffer_size, " + 1");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_MINUS_1:
+        ret = snprintf(buffer, buffer_size, " - 1");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_PLUS_T:
+        ret = snprintf(buffer, buffer_size, " + T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_MINUS_T:
+        ret = snprintf(buffer, buffer_size, " - T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_MINUS_T_MINUS_1:
+        ret = snprintf(buffer, buffer_size, " - T - 1");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_PLUS_T_PLUS_1:
+        ret = snprintf(buffer, buffer_size, " + T + 1");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_PLUS_SKIP:
+        ret = snprintf(buffer, buffer_size, " + SKIP");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_AND_T_WB:
+        ret = snprintf(buffer, buffer_size, " . T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    case ALU_BUS_AND_NOT_T:
+        ret = snprintf(buffer, buffer_size, " AND NOT T");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    }
+
+    return n_buffer;
+}
+
+/* Disassembles the alu destinations.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_alu_destinations(struct disassembler *dis,
+                                 uint32_t microcode, uint8_t task,
+                                 char *buffer, size_t buffer_size)
+{
+    uint16_t f1, f2;
+    uint16_t aluf;
+    int load_t, load_l;
+    int load_t_from_alu;
+    int ret, n_buffer;
+
+    aluf = MICROCODE_ALUF(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+    load_t = MICROCODE_T(microcode);
+    load_l = MICROCODE_L(microcode);
+
+    load_t_from_alu = LOAD_T_FROM_ALU(aluf);
+
+    n_buffer = 0;
+
+    if (load_t && (load_t_from_alu || (aluf == ALU_BUS))) {
+        ret = snprintf(buffer, buffer_size, "T<- ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    if (load_l) {
+        ret = snprintf(buffer, buffer_size, "L<- ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    switch (f1) {
+    case F1_LOAD_MAR:
+        ret = snprintf(buffer, buffer_size, "MAR<- ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+        break;
+    default:
+        switch (task) {
+        case TASK_EMULATOR:
+            switch (f1) {
+            case F1_EMU_LOAD_RMR:
+                ret = snprintf(buffer, buffer_size, "RMR<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            case F1_EMU_LOAD_ESRB:
+                ret = snprintf(buffer, buffer_size, "ESRB<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            default:
+                break;
+            }
+            break;
+        case TASK_DISK_SECTOR:
+        case TASK_DISK_WORD:
+            switch (f1) {
+            case F1_DSK_LOAD_KSTAT:
+                ret = snprintf(buffer, buffer_size, "KSTAT<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            case F1_DSK_LOAD_KCOMM:
+                ret = snprintf(buffer, buffer_size, "KCOMM<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            case F1_DSK_LOAD_KADR:
+                ret = snprintf(buffer, buffer_size, "KADR<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            case F1_DSK_LOAD_KDATA:
+                ret = snprintf(buffer, buffer_size, "KDATA<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            default:
+                break;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    switch (f2) {
+    case F2_STORE_MD:
+        if (aluf == ALU_BUS) {
+            ret = snprintf(buffer, buffer_size, "MD<- ");
+            n_buffer += ret;
+            UPDATE_BUFFER(buffer, buffer_size, ret)
+        }
+        break;
+    default:
+        switch (task) {
+        case TASK_EMULATOR:
+            switch (f2) {
+            case F2_EMU_LOAD_DNS:
+                ret = snprintf(buffer, buffer_size, "DNS<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            case F2_EMU_LOAD_IR:
+                ret = snprintf(buffer, buffer_size, "IR<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            }
+            break;
+        case TASK_DISPLAY_WORD:
+            switch (f2) {
+            case F2_DW_LOAD_DDR:
+                ret = snprintf(buffer, buffer_size, "DDR<- ");
+                n_buffer += ret;
+                UPDATE_BUFFER(buffer, buffer_size, ret)
+                break;
+            }
+            break;
+        }
+    }
+
+    return n_buffer;
+}
+
+/* Disassembles assigments from the alu.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_assignment_alu(struct disassembler *dis,
+                               uint32_t microcode, uint8_t task,
+                               char *buffer, size_t buffer_size)
+{
+    int ret, n_buffer;
+
+    n_buffer = 0;
+    ret = disassemble_alu_destinations(dis, microcode, task,
+                                       buffer, buffer_size);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    if (n_buffer == 0) return 0;
+
+    ret = disassemble_alu_source(dis, microcode, task,
+                                 buffer, buffer_size);
+    n_buffer += ret;
+    return n_buffer;
+}
+
+/* Disassembles the L register source.
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_lreg_source(struct disassembler *dis,
+                            uint32_t microcode, uint8_t task,
+                            char *buffer, size_t buffer_size)
+{
+    uint16_t f1;
+    f1 = MICROCODE_F1(microcode);
+
+    switch (f1) {
+    case F1_LLSH1:
+        return snprintf(buffer, buffer_size, "L LSH 1");
+    case F1_LRSH1:
+        return snprintf(buffer, buffer_size, "L RSH 1");
+    case F1_LLCY8:
+        return snprintf(buffer, buffer_size, "L LCY 8");
+    default:
+        return snprintf(buffer, buffer_size, "L");
     }
 }
+
+/* Disassembles the L register destinations.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_lreg_destinations(struct disassembler *dis,
+                                  uint32_t microcode, uint8_t task,
+                                  char *buffer, size_t buffer_size)
+{
+    uint16_t rsel;
+    uint16_t bs;
+    uint16_t f1, f2;
+    int use_constant;
+
+    rsel = MICROCODE_RSEL(microcode);
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    use_constant = (f1 == F1_CONSTANT || f2 == F2_CONSTANT
+                    || BS_USE_CROM(bs));
+
+    if (bs == BS_LOAD_R && (!use_constant)) {
+        return snprintf(buffer, buffer_size,
+                        "R%o<- ", rsel);
+    }
+
+    return 0;
+}
+
+/* Disassembles assigments from the L register.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_assignment_lreg(struct disassembler *dis,
+                                uint32_t microcode, uint8_t task,
+                                char *buffer, size_t buffer_size)
+{
+    int ret, n_buffer;
+
+    n_buffer = 0;
+    ret = disassemble_lreg_destinations(dis, microcode, task,
+                                        buffer, buffer_size);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    if (n_buffer == 0) return 0;
+
+    ret = disassemble_lreg_source(dis, microcode, task,
+                                  buffer, buffer_size);
+    n_buffer += ret;
+    return n_buffer;
+}
+
+/* Disassembles the GOTO part of the instruction.
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_goto(struct disassembler *dis,
+                     uint32_t microcode, uint8_t task,
+                     char *buffer, size_t buffer_size)
+{
+    uint16_t next;
+    next = MICROCODE_NEXT(microcode);
+
+    return snprintf(buffer, buffer_size,
+                    ":0%04o", next);
+}
+
+/* Disassembles some extra comments (helpful for debugging).
+ * This is an auxiliary function used by disassembler_disassemble().
+ * Returns the number of character written in the buffer.
+ */
+static
+int disassemble_comments(struct disassembler *dis,
+                         uint32_t microcode, uint8_t task,
+                         char *buffer, size_t buffer_size)
+{
+    uint16_t rsel;
+    uint16_t bs;
+    uint16_t f1, f2;
+    uint16_t c, caddr;
+
+    rsel = MICROCODE_RSEL(microcode);
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    if (f1 != F1_CONSTANT && f2 != F2_CONSTANT && (!BS_USE_CROM(bs)))
+        return 0;
+
+    caddr = CONST_ADDR(rsel, bs);
+    c = dis->consts[caddr];
+
+    return snprintf(buffer, buffer_size,
+                    "; C(%03o) = %o",
+                    caddr, c);
+}
+
+int disassembler_disassemble(struct disassembler *dis,
+                             uint16_t address, uint8_t task,
+                             char *buffer, size_t buffer_size)
+{
+    uint32_t microcode;
+    uint16_t rsel;
+    uint16_t aluf;
+    uint16_t bs;
+    uint16_t f1, f2;
+    int load_t, load_l;
+    uint16_t next;
+    int n_buffer, ret;
+    int has_something;
+
+    if (unlikely(address >= MICROCODE_SIZE)) return -1;
+    microcode = dis->microcode[address];
+
+    rsel = MICROCODE_RSEL(microcode);
+    aluf = MICROCODE_ALUF(microcode);
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+    load_t = MICROCODE_T(microcode);
+    load_l = MICROCODE_L(microcode);
+    next = MICROCODE_NEXT(microcode);
+
+    ret = snprintf(buffer, buffer_size,
+                   "%05o   %02o    %011o  %02o   %02o   %o  "
+                   "%02o %02o %o %o %04o   ",
+                   address, task, microcode, rsel, aluf, bs,
+                   f1, f2, load_t, load_l, next);
+    n_buffer = ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+
+    ret = disassemble_nondata_function(dis, microcode, task,
+                                       buffer, buffer_size);
+    has_something = (ret > 0);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    /* Print a comma. */
+    if (has_something) {
+        ret = snprintf(buffer, buffer_size, ", ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    ret = disassemble_assignment_bus(dis, microcode, task,
+                                     buffer, buffer_size);
+    has_something = (ret > 0);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    /* Print a comma. */
+    if (has_something) {
+        ret = snprintf(buffer, buffer_size, ", ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    ret = disassemble_assignment_alu(dis, microcode, task,
+                                     buffer, buffer_size);
+    has_something = (ret > 0);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    /* Print a comma. */
+    if (has_something) {
+        ret = snprintf(buffer, buffer_size, ", ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    ret = disassemble_assignment_lreg(dis, microcode, task,
+                                      buffer, buffer_size);
+    has_something = (ret > 0);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    /* Print a comma. */
+    if (has_something) {
+        ret = snprintf(buffer, buffer_size, ", ");
+        n_buffer += ret;
+        UPDATE_BUFFER(buffer, buffer_size, ret)
+    }
+
+    ret = disassemble_goto(dis, microcode, task,
+                           buffer, buffer_size);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    ret = disassemble_comments(dis, microcode, task,
+                               buffer, buffer_size);
+    n_buffer += ret;
+    UPDATE_BUFFER(buffer, buffer_size, ret)
+
+    return n_buffer;
+}
+

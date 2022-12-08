@@ -1164,9 +1164,9 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
     fprintf(fp, "12    CLAUSE      F2          NONDATA F2\n");
     fprintf(fp, "13    LHS         F2          DATA F2 LHS\n");
     fprintf(fp, "14    LHS         F2          DATA F2 LHS "
-                "[BS<- 0, RSEL<- 0]\n");
-    fprintf(fp, "15    RHS         F2          DATA F2 (RHS) "
                 "[BS<- 1, RSEL<- 0]\n");
+    fprintf(fp, "15    RHS         F2          DATA F2 (RHS) "
+                "[BS<- 0, RSEL<- 0]\n");
     fprintf(fp, "16    CLAUSE                  END\n");
     fprintf(fp, "17    RHS                     READ L\n");
     fprintf(fp, "20    LHS         LOADL       LOAD L\n");
