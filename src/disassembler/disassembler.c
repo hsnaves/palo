@@ -617,7 +617,6 @@ int disassemble_bus_source(struct disassembler *dis,
     uint16_t rsel;
     uint16_t bs;
     uint16_t f1, f2;
-    int use_constant;
     int ret;
 
     rsel = MICROCODE_RSEL(microcode);
@@ -625,9 +624,7 @@ int disassemble_bus_source(struct disassembler *dis,
     f1 = MICROCODE_F1(microcode);
     f2 = MICROCODE_F2(microcode);
 
-    use_constant = (f1 == F1_CONSTANT || f2 == F2_CONSTANT
-                    || BS_USE_CROM(bs));
-    if (use_constant) {
+    if (f1 == F1_CONSTANT || f2 == F2_CONSTANT) {
         return snprintf(buffer, buffer_size,
                         "%o", dis->consts[CONST_ADDR(rsel, bs)]);
     }
@@ -683,6 +680,11 @@ int disassemble_bus_source(struct disassembler *dis,
                 ret = snprintf(buffer, buffer_size, "KDATA");
                 break;
             }
+        }
+        if (bs == BS_TASK_SPECIFIC2) {
+            ret = snprintf(buffer, buffer_size,
+                           "%o", dis->consts[CONST_ADDR(rsel, bs)]);
+            break;
         }
         ret = 0;
         break;

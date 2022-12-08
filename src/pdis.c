@@ -78,7 +78,7 @@ int main(int argc, char **argv)
 
     printf("ADDRESS TASK  MICROCODE    RSEL ALUF BS "
            "F1 F2 T L NEXT   STATEMENT\n");
-    for (address = 0; address < 256; address++) {
+    for (address = 0; address < 1024; address++) {
         uint16_t task_mask;
 
         task_mask = dis.task_mask[address];
