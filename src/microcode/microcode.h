@@ -2,6 +2,9 @@
 #ifndef __MICROCODE_MICROCODE_H
 #define __MICROCODE_MICROCODE_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 /* Constants. */
 #define CONSTANT_SIZE            256
 #define MICROCODE_SIZE          1024
@@ -153,6 +156,54 @@
 #define CONST_ADDR_RSEL(addr) ((addr) >> 3)
 #define CONST_ADDR_BS(addr) ((addr) & 0x7)
 #define CONST_ADDR(rsel, bs) ((((rsel) & 0x1F) << 3) | ((bs) & 0x7))
+
+/* Data structures and types. */
+
+/* A buffer used by the decoder. */
+struct decode_buffer {
+    char *buf;                    /* The character buffer. */
+    size_t buf_size;              /* The buffer size in bytes. */
+    size_t pos;                   /* The current buffer position. */
+    size_t len;                   /* Total length of the string. */
+};
+
+/* The general decoder callback function type.
+ * It is used to decode the constants, the R registers names,
+ * and the GOTO destination labels.
+ */
+struct decoder;
+typedef void (*decoder_cb)(const struct decoder *dec, uint16_t val,
+                           struct decode_buffer *output);
+
+/* The microcode decoder. */
+struct decoder {
+    uint16_t address;             /* The address of the microcode. */
+    uint32_t microcode;           /* The microcode itself. */
+    uint8_t task;                 /* The current task. */
+    void *arg;                    /* Extra parameter used by the
+                                   * callbacks.
+                                   */
+
+    decoder_cb const_cb;          /* To decode constants. */
+    decoder_cb reg_cb;            /* To decode R register names. */
+    decoder_cb goto_cb;           /* To decode GOTO statements. */
+};
+
+/* Functions. */
+
+/* Resets the decode buffer. */
+void decode_buffer_reset(struct decode_buffer *buf);
+
+/* Prints a string (as in printf() function) to the buffer. */
+void decode_buffer_print(struct decode_buffer *buf,
+                         const char *fmt, ...)
+    __attribute__((format (printf, 2, 3)));
+
+/* Decodes the microinstruction from the decoder `dec` into the
+ * output buffer `output`.
+ */
+void decoder_decode(const struct decoder *dec,
+                    struct decode_buffer *output);
 
 
 #endif /* __MICROCODE_MICROCODE_H */
