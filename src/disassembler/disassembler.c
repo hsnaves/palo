@@ -506,9 +506,6 @@ int disasm_nondata_function(struct disassembler *dis,
             case F2_EMU_BUSODD:
                 snprintf(f2_op, sizeof(f2_op), "BUSODD");
                 break;
-            case F2_EMU_MAGIC:
-                snprintf(f2_op, sizeof(f2_op), "MAGIC");
-                break;
             case F2_EMU_IDISP:
                 snprintf(f2_op, sizeof(f2_op), "IDISP");
                 break;
@@ -773,9 +770,11 @@ int disasm_bus_lhs(struct disassembler *dis,
 
     switch (f2) {
     case F2_STORE_MD:
-        ret = snprintf(buffer, buffer_size, "MD<- ");
-        n_buffer += ret;
-        UPDATE_BUFFER(buffer, buffer_size, ret)
+        if (f1 != F1_LOAD_MAR) {
+            ret = snprintf(buffer, buffer_size, "MD<- ");
+            n_buffer += ret;
+            UPDATE_BUFFER(buffer, buffer_size, ret)
+        }
         break;
     default:
         switch (task) {
@@ -969,7 +968,7 @@ int disasm_alu_lhs(struct disassembler *dis,
                    uint32_t microcode, uint8_t task,
                    char *buffer, size_t buffer_size)
 {
-    uint16_t f1;
+    uint16_t f1, f2;
     uint16_t aluf;
     int load_t, load_l;
     int load_t_from_alu;
@@ -977,6 +976,7 @@ int disasm_alu_lhs(struct disassembler *dis,
 
     aluf = MICROCODE_ALUF(microcode);
     f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
     load_t = MICROCODE_T(microcode);
     load_l = MICROCODE_L(microcode);
 
@@ -1002,9 +1002,15 @@ int disasm_alu_lhs(struct disassembler *dis,
 
     switch (f1) {
     case F1_LOAD_MAR:
-        ret = snprintf(buffer, buffer_size, "MAR<- ");
-        n_buffer += ret;
-        UPDATE_BUFFER(buffer, buffer_size, ret)
+        if (f2 == F2_STORE_MD) {
+            ret = snprintf(buffer, buffer_size, "XMAR<- ");
+            n_buffer += ret;
+            UPDATE_BUFFER(buffer, buffer_size, ret)
+        } else {
+            ret = snprintf(buffer, buffer_size, "MAR<- ");
+            n_buffer += ret;
+            UPDATE_BUFFER(buffer, buffer_size, ret)
+        }
         break;
     default:
         break;
@@ -1046,14 +1052,24 @@ int disasm_lreg_rhs(struct disassembler *dis,
                     uint32_t microcode, uint8_t task,
                     char *buffer, size_t buffer_size)
 {
-    uint16_t f1;
+    uint16_t f1, f2;
+
     f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
 
     switch (f1) {
     case F1_LLSH1:
-        return snprintf(buffer, buffer_size, "L LSH 1");
+        if (f2 == F2_EMU_MAGIC) {
+            return snprintf(buffer, buffer_size, "L MLSH 1");
+        } else {
+            return snprintf(buffer, buffer_size, "L LSH 1");
+        }
     case F1_LRSH1:
-        return snprintf(buffer, buffer_size, "L RSH 1");
+        if (f2 == F2_EMU_MAGIC) {
+            return snprintf(buffer, buffer_size, "L MRSH 1");
+        } else {
+            return snprintf(buffer, buffer_size, "L RSH 1");
+        }
     case F1_LLCY8:
         return snprintf(buffer, buffer_size, "L LCY 8");
     default:
