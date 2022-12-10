@@ -74,14 +74,17 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    disassembler_find_task_addresses(&dis);
+    if (unlikely(!disassembler_find_task_addresses(&dis))) {
+        report_error("main: could not find task addresses");
+        goto error;
+    }
 
     printf("ADDRESS TASK  MICROCODE    RSEL ALUF BS "
            "F1 F2 T L NEXT   STATEMENT\n");
     for (address = 0; address < 1024; address++) {
         uint16_t task_mask;
 
-        task_mask = dis.task_mask[address];
+        task_mask = dis.insns[address].task_mask;
         for (task = 0; task < 16; task++) {
             if (task_mask == ((1 << task))) break;
             if (task_mask == (1 | ((1 << task)))) break;

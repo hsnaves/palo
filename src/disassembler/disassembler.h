@@ -5,29 +5,48 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "microcode/microcode.h"
+#include "common/allocator.h"
 
 /* Data structures and types. */
 
+/* Structure to represent a list of addresses. */
+struct address_node {
+    uint16_t address;             /* The address of the calling microcode. */
+    uint16_t next_mask;           /* Which bits were modified to reach
+                                   * the current microcode.
+                                   */
+    uint32_t following_next_mask; /* Which bits can be modified in the
+                                   * current microcode.
+                                   */
+    struct address_node *next;    /* The next node in the list. */
+};
+
+/* Structure to represent what is known about an instruction. */
+struct instruction {
+    uint16_t task_mask;           /* Set of tasks that are known
+                                   * to run this instruction.
+                                   */
+    uint32_t details;             /* The details about the instruction. */
+    struct address_node *callers; /* List of addresses that
+                                   * can jump to this instruction.
+                                   */
+};
+
 /* Structure to represent the disassembler. */
 struct disassembler {
+    struct allocator oalloc;      /* The object allocator. */
+
     uint16_t *consts;             /* The value of the constants. */
     uint32_t *microcode;          /* The microcode. */
 
-    uint16_t *task_mask;          /* The possible tasks that
-                                   * can execute this microcode.
-                                   */
-    uint16_t *next_mask;          /* Possible bits that can change
-                                   * in the next field of the
-                                   * microcode instruction.
-                                   */
-    uint16_t *hint_mask;          /* To help it when F2=BUS. */
+    struct instruction *insns;    /* The instruction details. */
 
-    uint16_t stack_top;           /* The top of the stack. */
     uint16_t *stack;              /* Used as an address stack for
                                    * propagation.
                                    */
-    uint8_t *mark;                /* To mark addresses in the stack. */
+    uint16_t stack_top;           /* The top of the stack. */
+
+    struct address_node *free_nodes; /* List of free address nodes. */
 };
 
 /* Functions. */
@@ -66,8 +85,10 @@ int disassembler_load_constant_rom(struct disassembler *dis,
 int disassembler_load_microcode_rom(struct disassembler *dis,
                                     const char *filename);
 
-/* Tries to figure out the addresses of each task. */
-void disassembler_find_task_addresses(struct disassembler *dis);
+/* Tries to figure out the addresses of each task.
+ * Returns TRUE on sucess.
+ */
+int disassembler_find_task_addresses(struct disassembler *dis);
 
 /* Disassembles one microinstruction.
  * The address to disassemble is given by `address`, and the current

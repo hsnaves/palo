@@ -22,6 +22,7 @@
 #define TASK_PARITY              015
 #define TASK_DISK_WORD           016
 #define TASK_NUM_TASKS           020
+#define TASK_VALID_MASK       0x7F91
 
 /* ALU functions (values of ALUF field in microinstruction). */
 #define ALU_BUS                    0
@@ -141,6 +142,9 @@
 /* Extra constants. */
 #define R_ZERO                     0
 #define R_MASK                   037
+#define NEXT_MASK_DSK_INIT   0x10000
+#define NEXT_MASK_BUS        0x20000
+#define NEXT_MASK_CONSTANT   0x40000
 
 /* Decoding the microcode. */
 #define MICROCODE_RSEL(microcode) (((microcode) >> 27) & R_MASK)
@@ -190,6 +194,21 @@ struct decoder {
 };
 
 /* Functions. */
+
+/* Function to guess the task from the microcode.
+ * Returns a mask of possible tasks that can run the microcode.
+ */
+uint16_t microcode_guess_tasks(uint32_t microcode);
+
+/* Which bits of the following microcode's NEXT field can be
+ * modified by the current microcode. The current task is
+ * indicate by the `task` parameter.
+ * Returns the bit mask of modified by the microcode.
+ * The result is 32 bits so it can accomodate some other meta
+ * bits such as NEXT_MASK_DSK_INIT, NEXT_MASK_BUS, and
+ * NEXT_MASK_CONSTANT.
+ */
+uint32_t microcode_next_mask(uint32_t microcode, uint8_t  task);
 
 /* Resets the decode buffer. */
 void decode_buffer_reset(struct decode_buffer *buf);

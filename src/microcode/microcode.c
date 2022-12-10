@@ -8,6 +8,241 @@
 
 /* Functions. */
 
+uint16_t microcode_guess_tasks(uint32_t microcode)
+{
+    uint16_t rsel;
+    uint16_t bs;
+    uint16_t f1, f2;
+    uint16_t task_mask;
+    uint16_t aux_mask;
+
+    task_mask = TASK_VALID_MASK;
+
+    rsel = MICROCODE_RSEL(microcode);
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    switch (f1) {
+    case 010: /* F1_EMU_SWMODE */
+        task_mask &= (1 << TASK_EMULATOR);
+        break;
+    case 011: /* F1_EMU_WRTRAM, F1_DSK_STROBE */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD));
+        break;
+    case 012: /* F1_EMU_RDRAM,  F1_DSK_LOAD_KSTAT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD));
+        break;
+    case 013: /* F1_EMU_LOAD_RMR, F1_DSK_INCRECNO, F1_ETH_EILFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 014: /* F1_DSK_CLRSTAT, F1_ETH_EPFCT */
+        task_mask &= ((1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 015: /* F1_EMU_LOAD_ESRB, F1_DSK_LOAD_KCOMM, F1_ETH_EWFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 016: /* F1_EMU_RSNF, F1_DSK_LOAD_KADR */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD));
+        break;
+    case 017: /* F1_EMU_STARTF, F1_DSK_LOAD_KDATA */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD));
+    }
+
+    switch (f2) {
+    case 010: /* F2_EMU_BUSODD, F2_DSK_INIT, F2_ETH_EODFCT,
+               * F2_DW_LOAD_DDR, F2_CUR_LOAD_XPREG, F2_DH_EVENFIELD
+               * F2_DV_EVENFIELD
+               */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET)
+                      | (1 << TASK_DISPLAY_WORD)
+                      | (1 << TASK_CURSOR)
+                      | (1 << TASK_DISPLAY_HORIZONTAL)
+                      | (1 << TASK_DISPLAY_VERTICAL));
+        break;
+    case 011: /* F2_EMU_MAGIC, F2_DSK_RWC, F2_ETH_EOSFCT,
+               * F2_CUR_LOAD_CSR, F2_DH_SETMODE
+               */
+        aux_mask = ((1 << TASK_DISK_SECTOR)
+                    | (1 << TASK_DISK_WORD)
+                    | (1 << TASK_ETHERNET)
+                    | (1 << TASK_CURSOR)
+                    | (1 << TASK_DISPLAY_HORIZONTAL));
+        if (f1 == F1_LLSH1 || f1 == F1_LRSH1) {
+            aux_mask |= 1 << TASK_EMULATOR;
+        }
+        task_mask &= aux_mask;
+        break;
+    case 012: /* F2_EMU_LOAD_DNS, F2_DSK_RECNO, F2_ETH_ERBFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 013: /* F2_EMU_ACDEST, F2_DSK_XFRDAT, F2_ETH_EEFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        aux_mask = ((1 << TASK_DISK_SECTOR)
+                    | (1 << TASK_DISK_WORD)
+                    | (1 << TASK_ETHERNET));
+        if (bs == BS_READ_R && rsel == 0) {
+            aux_mask |= 1 << TASK_EMULATOR;
+        }
+        task_mask &= aux_mask;
+        break;
+    case 014: /* F2_EMU_LOAD_IR, F2_DSK_SWRNRDY, F2_ETH_EBFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 015: /* F2_EMU_IDISP, F2_DSK_NFER, F2_ETH_ECBFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        break;
+    case 016: /* F2_EMU_ACSOURCE, F2_DSK_STROBON, F2_ETH_EISFCT */
+        task_mask &= ((1 << TASK_EMULATOR)
+                      | (1 << TASK_DISK_SECTOR)
+                      | (1 << TASK_DISK_WORD)
+                      | (1 << TASK_ETHERNET));
+        aux_mask = ((1 << TASK_DISK_SECTOR)
+                    | (1 << TASK_DISK_WORD)
+                    | (1 << TASK_ETHERNET));
+        if (bs == BS_READ_R && rsel == 0) {
+            aux_mask |= 1 << TASK_EMULATOR;
+        }
+        task_mask &= aux_mask;
+        break;
+    case 017:
+        task_mask &= 0;
+        break;
+    }
+
+    if (f1 != F1_CONSTANT && f2 != F2_CONSTANT) {
+        switch (bs) {
+        case BS_TASK_SPECIFIC1:
+            /* BS_EMU_READ_S_LOCATION, BS_DSK_READ_KSTAT */
+            task_mask &= ((1 << TASK_EMULATOR)
+                          | (1 << TASK_DISK_SECTOR)
+                          | (1 << TASK_DISK_WORD));
+            break;
+        case BS_TASK_SPECIFIC2:
+            /* BS_EMU_LOAD_S_LOCATION, BS_DSK_READ_KDATA, BS_ETH_EIDFCT */
+            task_mask &= ((1 << TASK_EMULATOR)
+                          | (1 << TASK_DISK_SECTOR)
+                          | (1 << TASK_DISK_WORD)
+                          | (1 << TASK_ETHERNET));
+            break;
+        }
+    }
+
+    return task_mask;
+}
+
+uint32_t microcode_next_mask(uint32_t microcode, uint8_t  task)
+{
+    uint16_t bs;
+    uint16_t f1, f2;
+    uint32_t output;
+
+    bs = MICROCODE_BS(microcode);
+    f1 = MICROCODE_F1(microcode);
+    f2 = MICROCODE_F2(microcode);
+
+    output = 0;
+    switch (f2) {
+    case F2_BUSEQ0: output |= 0x1; break;
+    case F2_SHLT0:  output |= 0x1; break;
+    case F2_SHEQ0:  output |= 0x1; break;
+    case F2_BUS:
+        /* Need to compute a more acurate mask. */
+        if (BS_USE_CROM(bs) || f1 == F1_CONSTANT) {
+            output |= 0xFFFF | NEXT_MASK_BUS | NEXT_MASK_CONSTANT;
+        } else if (bs == BS_LOAD_R) {
+            output |= NEXT_MASK_BUS;
+        } else {
+            output |= 0xFFFF | NEXT_MASK_BUS;
+        }
+        break;
+    case F2_ALUCY:  output |= 0x1; break;
+    }
+
+    switch (task) {
+    case TASK_EMULATOR:
+        switch (f2) {
+        case F2_EMU_BUSODD:   output |= 0x1; break;
+        case F2_EMU_LOAD_IR:
+            if (BS_USE_CROM(bs) || f1 == F1_CONSTANT) {
+                output |= NEXT_MASK_CONSTANT;
+            } else if (bs != BS_LOAD_R) {
+                output |= 0xF;
+            }
+            break;
+        case F2_EMU_IDISP:    output |= 0xF; break;
+        case F2_EMU_ACSOURCE: output |= 0xF; break;
+        }
+        break;
+    case TASK_ETHERNET:
+        switch (f2) {
+        case F2_ETH_ERBFCT:   output |= 0xC; break;
+        case F2_ETH_EBFCT:    output |= 0xC; break;
+        case F2_ETH_ECBFCT:   output |= 0x4; break;
+        }
+        break;
+    case TASK_DISPLAY_HORIZONTAL:
+        switch (f2) {
+        case F2_DH_EVENFIELD: output |= 0x1; break;
+        case F2_DH_SETMODE:   output |= 0x1; break;
+        }
+        break;
+    case TASK_DISPLAY_VERTICAL:
+        switch (f2) {
+        case F2_DV_EVENFIELD: output |= 0x1; break;
+        }
+        break;
+    case TASK_DISK_WORD:
+    case TASK_DISK_SECTOR:
+        switch (f2) {
+        case F2_DSK_INIT:
+            output |= (0x1F | NEXT_MASK_DSK_INIT);
+            break;
+        case F2_DSK_RWC:      output |= 0x3; break;
+        case F2_DSK_RECNO:    output |= 0x3; break;
+        case F2_DSK_XFRDAT:   output |= 0x1; break;
+        case F2_DSK_SWRNRDY:  output |= 0x1; break;
+        case F2_DSK_NFER:     output |= 0x1; break;
+        case F2_DSK_STROBON:  output |= 0x1; break;
+        }
+        break;
+    }
+
+    return output;
+}
+
+
 void decode_buffer_reset(struct decode_buffer *buf)
 {
     buf->pos = 0;
@@ -98,8 +333,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F1_EMU_STARTF:
                 decode_buffer_print(&f1_op, "STARTF");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_DISK_SECTOR:
@@ -114,8 +347,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F1_DSK_CLRSTAT:
                 decode_buffer_print(&f1_op, "CLRSTAT");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_ETHERNET:
@@ -129,11 +360,7 @@ void decode_nondata_function(const struct decoder *dec,
             case F1_ETH_EWFCT:
                 decode_buffer_print(&f1_op, "EWFCT");
                 break;
-            default:
-                break;
             }
-            break;
-        default:
             break;
         }
         break;
@@ -170,8 +397,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F2_EMU_IDISP:
                 decode_buffer_print(&f2_op, "IDISP");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_DISK_SECTOR:
@@ -198,8 +423,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F2_DSK_STROBON:
                 decode_buffer_print(&f2_op, "STROBON");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_ETHERNET:
@@ -222,8 +445,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F2_ETH_EISFCT:
                 decode_buffer_print(&f2_op, "EISFCT");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_DISPLAY_WORD:
@@ -238,8 +459,6 @@ void decode_nondata_function(const struct decoder *dec,
             case F2_DH_SETMODE:
                 decode_buffer_print(&f2_op, "SETMODE");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_DISPLAY_VERTICAL:
@@ -247,11 +466,7 @@ void decode_nondata_function(const struct decoder *dec,
             case F2_DV_EVENFIELD:
                 decode_buffer_print(&f2_op, "EVENFIELD");
                 break;
-            default:
-                break;
             }
-            break;
-        default:
             break;
         }
         break;
@@ -299,7 +514,7 @@ void decode_bus_rhs(const struct decoder *dec,
                 decode_buffer_print(output, "ACDEST");
                 break;
             } else if (f2 == F2_EMU_ACSOURCE) {
-                decode_buffer_print(output, "SOURCE");
+                decode_buffer_print(output, "ACSOURCE");
                 break;
             }
         }
@@ -386,8 +601,6 @@ void decode_bus_lhs(const struct decoder *dec, int force,
         case F1_EMU_LOAD_ESRB:
             decode_buffer_print(output, "ESRB<- ");
             break;
-        default:
-            break;
         }
         break;
     case TASK_DISK_SECTOR:
@@ -405,11 +618,7 @@ void decode_bus_lhs(const struct decoder *dec, int force,
         case F1_DSK_LOAD_KDATA:
             decode_buffer_print(output, "KDATA<- ");
             break;
-        default:
-            break;
         }
-        break;
-    default:
         break;
     }
 
@@ -429,8 +638,6 @@ void decode_bus_lhs(const struct decoder *dec, int force,
             case F2_EMU_LOAD_IR:
                 decode_buffer_print(output, "IR<- ");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_ETHERNET:
@@ -438,16 +645,12 @@ void decode_bus_lhs(const struct decoder *dec, int force,
             case F2_ETH_EODFCT:
                 decode_buffer_print(output, "EODFCT<- ");
                 break;
-            default:
-                break;
             }
             break;
         case TASK_DISPLAY_WORD:
             switch (f2) {
             case F2_DW_LOAD_DDR:
                 decode_buffer_print(output, "DDR<- ");
-                break;
-            default:
                 break;
             }
             break;
@@ -459,11 +662,7 @@ void decode_bus_lhs(const struct decoder *dec, int force,
             case F2_CUR_LOAD_CSR:
                 decode_buffer_print(output, "CSR<- ");
                 break;
-            default:
-                break;
             }
-            break;
-        default:
             break;
         }
     }
