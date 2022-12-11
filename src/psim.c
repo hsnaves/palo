@@ -20,7 +20,7 @@ int main(int argc, char **argv)
     const char *constant_filename;
     const char *microcode_filename;
     struct simulator sim;
-    int i, is_last;
+    int i, j, is_last;
 
     constant_filename = NULL;
     microcode_filename = NULL;
@@ -68,6 +68,12 @@ int main(int argc, char **argv)
             !simulator_load_microcode_rom(&sim, microcode_filename, 0))) {
         report_error("main: could not load microcode rom");
         goto error;
+    }
+
+    simulator_reset(&sim);
+
+    for (j = 0; j < 100; j++) {
+        simulator_step(&sim);
     }
 
     simulator_destroy(&sim);

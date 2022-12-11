@@ -526,10 +526,14 @@ void decode_bus_rhs(const struct decoder *dec,
     case BS_NONE:
         if (task == TASK_EMULATOR && f1 == F1_EMU_RSNF) {
             decode_buffer_print(output, "RSNF");
-        } else if (task == TASK_ETHERNET && f1 == F1_ETH_EILFCT) {
-            decode_buffer_print(output, "EILFCT");
-        } else if (task == TASK_ETHERNET && f1 == F1_ETH_EPFCT) {
-            decode_buffer_print(output, "EPFCT");
+        } else if (task == TASK_ETHERNET) {
+            if (f1 == F1_ETH_EILFCT) {
+                decode_buffer_print(output, "EILFCT");
+            } else if (f1 == F1_ETH_EPFCT) {
+                decode_buffer_print(output, "EPFCT");
+            } else {
+                decode_buffer_print(output, "-1");
+            }
         } else {
             decode_buffer_print(output, "-1");
         }
@@ -546,7 +550,8 @@ void decode_bus_rhs(const struct decoder *dec,
     default:
         if (task == TASK_ETHERNET && bs == BS_ETH_EIDFCT) {
             decode_buffer_print(output, "EIDFCT");
-        } else if ((task == TASK_DISK_SECTOR) || (task == TASK_DISK_WORD)) {
+        } else if ((task == TASK_DISK_SECTOR)
+                   || (task == TASK_DISK_WORD)) {
             if (bs == BS_DSK_READ_KSTAT) {
                 decode_buffer_print(output, "KSTAT");
             } else if (bs == BS_DSK_READ_KDATA) {

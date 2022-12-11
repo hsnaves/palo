@@ -12,14 +12,9 @@
 #define NUM_R_REGISTERS             32
 #define NUM_S_REGISTERS       (8 * 32)
 
-/* Extra constants for the shifter. */
-#define SHIFT_OP_NONE                0
-#define SHIFT_OP_LEFT                1
-#define SHIFT_OP_RIGHT               2
-#define SHIFT_OP_ROTATE              3
-#define SHIFT_MOD_NONE               0
-#define SHIFT_MOD_MAGIC              1
-#define SHIFT_MOD_DNS                2
+/* For the MPC. */
+#define MPC_BANK_MASK            0xC00
+#define MPC_ADDR_MASK            0x3FF
 
 /* For the memory. */
 #define NUM_MICROCODE_BANKS          4
@@ -36,6 +31,7 @@ void simulator_initvar(struct simulator *sim)
     sim->s = NULL;
     sim->consts = NULL;
     sim->microcode = NULL;
+    sim->mpc = NULL;
     sim->mem = NULL;
     sim->xm_banks = NULL;
 }
@@ -54,6 +50,9 @@ void simulator_destroy(struct simulator *sim)
     if (sim->microcode) free((void *) sim->microcode);
     sim->microcode = NULL;
 
+    if (sim->mpc) free((void *) sim->mpc);
+    sim->mpc = NULL;
+
     if (sim->mem) free((void *) sim->mem);
     sim->mem = NULL;
 
@@ -71,13 +70,15 @@ int simulator_create(struct simulator *sim)
         malloc(CONSTANT_SIZE * sizeof(uint16_t));
     sim->microcode = (uint32_t *)
         malloc(NUM_MICROCODE_BANKS * MICROCODE_SIZE * sizeof(uint32_t));
+    sim->mpc = (uint16_t *)
+        malloc(TASK_NUM_TASKS * sizeof(uint16_t));
     sim->mem = (uint16_t *)
         malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     sim->xm_banks = (uint16_t *)
         malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
 
     if (unlikely(!sim->r || !sim->s
-                 || !sim->consts || !sim->microcode
+                 || !sim->consts || !sim->microcode || !sim->mpc
                  || !sim->mem || !sim->xm_banks)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
@@ -202,19 +203,30 @@ error_eof:
 
 void simulator_reset(struct simulator *sim)
 {
+    uint8_t task;
+
     memset(sim->r, 0, NUM_R_REGISTERS * sizeof(uint16_t));
     memset(sim->s, 0, NUM_S_REGISTERS * sizeof(uint16_t));
 
     sim->t = 0;
     sim->l = 0;
     sim->m = 0;
+    sim->mar = 0;
     sim->ir = 0;
+    sim->mir = 0;
+    sim->ctask = 0;
+    sim->ntask = 0;
+    sim->pending = (1 << TASK_EMULATOR);
     sim->aluC0 = FALSE;
+    sim->skip = FALSE;
+    sim->carry = FALSE;
+    sim->dns = FALSE;
     sim->rmr = 0xFFFF;
-}
 
-void simulator_clear_memory(struct simulator *sim)
-{
+    for (task = 0; task < TASK_NUM_TASKS; task++) {
+        sim->mpc[task] = (uint16_t) task;
+    }
+
     memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
 }
@@ -261,17 +273,128 @@ void simulator_write(struct simulator *sim, uint16_t address,
     }
 }
 
+/* Obtains the RSEL value (which can be modified by ACSOURCE and ACDEST).
+ * Returns the RSEL value.
+ */
+static
+uint16_t get_rsel(struct simulator *sim)
+{
+    uint32_t mir;
+    uint16_t ctask;
+    uint16_t rsel;
+    uint16_t f2;
+    uint16_t ir;
 
-uint16_t compute_alu(int aluf, uint16_t bus, uint16_t t,
-                     int skip, int *carry)
+    mir = sim->mir;
+    ctask = sim->ctask;
+
+    rsel = MICROCODE_RSEL(mir);
+    f2 = MICROCODE_F2(mir);
+
+    if (ctask == TASK_EMULATOR) {
+        ir = sim->ir;
+        if (f2 == F2_EMU_ACSOURCE) {
+            rsel &= ~0x3;
+            rsel |= (~(ir >> 13)) & 0x3;
+        } else if (f2 == F2_EMU_ACDEST) {
+            rsel &= ~0x3;
+            rsel |= (~(ir >> 11)) & 0x3;
+        }
+    }
+
+    return rsel;
+}
+
+/* Auxiliary function to obtain the value of the bus.
+ * The parameter `rsel` specifies the modified RSEL value.
+ * Returns the value of the bus.
+ */
+static
+uint16_t read_bus(struct simulator *sim, uint16_t rsel)
+{
+    uint32_t mir;
+    uint16_t ctask;
+    uint16_t bs;
+    uint16_t f1, f2;
+    uint16_t output;
+
+    mir = sim->mir;
+    ctask = sim->ctask;
+
+    bs = MICROCODE_BS(mir);
+    f1 = MICROCODE_F1(mir);
+    f2 = MICROCODE_F2(mir);
+
+    /* Compute the bus. */
+    if (f1 == F1_CONSTANT || f2 == F2_CONSTANT)
+        return sim->consts[CONST_ADDR(rsel, bs)];
+
+    if (BS_USE_CROM(bs)) {
+        output = sim->consts[CONST_ADDR(rsel, bs)];
+    } else {
+        output = 0xFFFF;
+    }
+
+    switch (bs) {
+    case BS_READ_R:
+        output &= sim->r[rsel];
+        break;
+    case BS_LOAD_R:
+        /* The load is performed at the end, for now set the
+         * bus to zero.
+         */
+        output &= 0;
+        break;
+    case BS_NONE:
+        /* Implement this. */
+        if (ctask == TASK_EMULATOR && f1 == F1_EMU_RSNF) {
+        } else if (ctask == TASK_ETHERNET) {
+            if (f1 == F1_ETH_EILFCT) {
+            } else if (f1 == F1_ETH_EPFCT) {
+            }
+        }
+        break;
+    case BS_READ_MD:
+        /* Implement this. */
+        break;
+    case BS_READ_MOUSE:
+        /* Implement this. */
+        break;
+    case BS_READ_DISP:
+        /* Implement this. */
+        break;
+
+    default:
+        /* Implement this. */
+        if (ctask == TASK_ETHERNET && bs == BS_ETH_EIDFCT) {
+            output &= 0xFFFF;
+        } else if ((ctask == TASK_DISK_SECTOR)
+                   || (ctask == TASK_DISK_WORD)) {
+            if (bs == BS_DSK_READ_KSTAT) {
+                output &= 0xFFFF;
+            } else if (bs == BS_DSK_READ_KDATA) {
+                output &= 0xFFFF;
+            }
+        }
+    }
+
+    return output;
+}
+
+/* Auxiliary function to perform the ALU computation. */
+static
+uint16_t compute_alu(struct simulator *sim, uint16_t bus, int *carry)
 {
     uint32_t res;
     uint32_t a, b;
+    uint16_t aluf;
+
+    aluf = MICROCODE_ALUF(sim->mir);
 
     a = (uint32_t) bus;
-    b = (uint32_t) t;
+    b = (uint32_t) sim->t;
 
-    switch(aluf) {
+    switch (aluf) {
     case ALU_BUS:
         res = a;
         break;
@@ -307,13 +430,13 @@ uint16_t compute_alu(int aluf, uint16_t bus, uint16_t t,
         res = a + b + 1;
         break;
     case ALU_BUS_PLUS_SKIP:
-        res = a + ((uint32_t) skip);
+        res = a + ((uint32_t) (sim->skip ? 1 : 0));
         break;
     case ALU_BUS_AND_NOT_T:
         res = a & (~b) & 0xFFFF;
         break;
     default:
-        res = 0xFFFF;
+        res = 0xDEAD;
         break;
     }
 
@@ -321,40 +444,249 @@ uint16_t compute_alu(int aluf, uint16_t bus, uint16_t t,
     return (uint16_t) res;
 }
 
-uint16_t do_shift(uint16_t input, uint16_t t, int op,
-                  int mod, int *nova_carry)
+/* Auxiliary function to perform the shift computation. */
+static
+uint16_t do_shift(struct simulator *sim, int *nova_carry)
 {
+    uint32_t mir;
+    uint16_t f1, f2;
     uint16_t res;
+    int has_magic;
 
-    switch(op) {
-    case SHIFT_OP_NONE:
-        res = input;
-        break;
-    case SHIFT_OP_LEFT:
-        res = input << 1;
-        if (mod == SHIFT_MOD_MAGIC) {
-            res |= (t & 0x8000) ? 1 : 0;
-        } else if (mod == SHIFT_MOD_DNS) {
+    mir = sim->mir;
+    f1 = MICROCODE_F1(mir);
+    f2 = MICROCODE_F2(mir);
+
+    has_magic = (f2 == F2_EMU_MAGIC);
+
+    switch (f1) {
+    case F1_LLSH1:
+        res = sim->l << 1;
+        if (has_magic) {
+            res |= (sim->t & 0x8000) ? 1 : 0;
+        } else if (sim->dns) {
             /* Nova style shift */
             res |= (*nova_carry) ? 1 : 0;
-            *nova_carry = (input & 0x8000) ? 1 : 0;
+            *nova_carry = (sim->l & 0x8000) ? 1 : 0;
         }
         break;
-    case SHIFT_OP_RIGHT:
-        res = input >> 1;
-        if (mod == SHIFT_MOD_MAGIC) {
-            res |= (t & 1) ? 0x8000 : 0;
-        } else if (mod == SHIFT_MOD_DNS) {
+    case F1_LRSH1:
+        res = sim->l >> 1;
+        if (has_magic) {
+            res |= (sim->t & 1) ? 0x8000 : 0;
+        } else if (sim->dns) {
             /* Nova style shift */
             res |= (nova_carry) ? 0x8000 : 0;
-            *nova_carry = input & 1;
+            *nova_carry = sim->l & 1;
         }
         break;
-    case SHIFT_OP_ROTATE:
-        res = (input << 8);
-        res |= (input >> 8);
+    case F1_LLCY8:
+        res = (sim->l << 8);
+        res |= (sim->l >> 8);
+        break;
+    default:
+        res = sim->l;
         break;
     }
 
-    return 0;
+    return res;
+}
+
+/* Performs the F1 function. */
+static
+void do_f1(struct simulator *sim, uint16_t bus,
+           uint16_t alu, uint16_t shifter_output)
+{
+    uint32_t mir;
+    uint16_t f1;
+    uint8_t ctask, ts;
+
+    mir = sim->mir;
+    ctask = sim->ctask;
+
+    f1 = MICROCODE_F1(mir);
+
+    switch (f1) {
+    case F1_NONE:
+    case F1_CONSTANT:
+    case F1_LLSH1:
+    case F1_LRSH1:
+    case F1_LLCY8:
+        break;
+    case F1_LOAD_MAR:
+        sim->mar = alu;
+        break;
+    case F1_TASK:
+        /* Switch tasks. */
+        for (ts = TASK_NUM_TASKS; ts--;) {
+            if (sim->pending & (1 << ts)) {
+                sim->ntask = ts;
+                break;
+            }
+        }
+        break;
+    case F1_BLOCK:
+        /* Prevent the current task from running. */
+        sim->pending &= ~(1 << ctask);
+
+        /* There are other side effects to consider for specific tasks. */
+        break;
+    default:
+        break;
+    }
+}
+
+/* Performs the F2 function.
+ * Retuns the bits that should be modified for the NEXT part of the
+ * following instruction.
+ */
+static
+uint16_t do_f2(struct simulator *sim, uint16_t bus,
+               uint16_t alu, uint16_t shifter_output)
+{
+    uint32_t mir;
+    uint16_t f2;
+    uint16_t next_extra;
+    uint8_t ctask;
+
+    mir = sim->mir;
+    ctask = sim->ctask;
+
+    f2 = MICROCODE_F2(mir);
+
+    next_extra = 0;
+
+    /* Computes the F2 function. */
+    switch (f2) {
+    case F2_NONE:
+    case F2_CONSTANT:
+        break;
+    case F2_BUSEQ0:
+        next_extra = (bus == 0) ? 0 : 1;
+        break;
+    case F2_SHLT0:
+        next_extra = (shifter_output & 0x8000) ? 0 : 1;
+        break;
+    case F2_SHEQ0:
+        next_extra = (shifter_output == 0) ? 0 : 1;
+        break;
+    case F2_BUS:
+        next_extra = (bus & MPC_ADDR_MASK);
+        break;
+    case F2_ALUCY:
+        next_extra = sim->aluC0;
+        break;
+    case F2_STORE_MD:
+        /* Implement this. */
+        break;
+    default:
+        break;
+    }
+
+    return next_extra;
+}
+
+/* Writes back the registers. */
+static
+void wb_registers(struct simulator *sim,
+                  uint16_t rsel, uint16_t bus, uint16_t alu,
+                  uint16_t shifter_output, int alu_carry)
+{
+    uint32_t mir;
+    uint16_t aluf;
+    uint16_t bs;
+    uint16_t f1, f2;
+    int load_l;
+    int load_t;
+    int use_constant;
+
+    mir = sim->mir;
+
+    aluf = MICROCODE_ALUF(mir);
+    bs = MICROCODE_BS(mir);
+    f1 = MICROCODE_F1(mir);
+    f2 = MICROCODE_F2(mir);
+    load_l = MICROCODE_L(mir);
+    load_t = MICROCODE_T(mir);
+
+    /* Writes back the results to the registers. */
+    if (load_l) {
+        sim->l = alu;
+        sim->m = alu;
+        sim->aluC0 = alu_carry;
+    }
+
+    if (load_t) {
+        if (LOAD_T_FROM_ALU(aluf)) {
+            sim->t = alu;
+        } else {
+            sim->t = bus;
+        }
+    }
+
+    /* Writes back the R register. */
+    use_constant = (f1 == F1_CONSTANT) || (f2 == F2_CONSTANT);
+    if (!use_constant && (bs == BS_LOAD_R)) {
+        sim->r[rsel] = shifter_output;
+    }
+}
+
+/* Updates the micro program counter and the current task.
+ * The bits that are to be modified in the NEXT field of the following
+ * instruction are given by `next_extra`.
+ */
+static
+void update_mpc(struct simulator *sim, uint16_t next_extra)
+{
+    uint32_t mcode;
+    uint16_t mpc;
+
+    /* Updates the MPC and MIR. */
+    mpc = sim->mpc[sim->ctask];
+    mcode = sim->microcode[mpc];
+    sim->mpc[sim->ctask] = (mpc & MPC_BANK_MASK)
+        | MICROCODE_NEXT(mcode) | next_extra;
+
+    sim->mir = mcode;
+
+    /* Updates the current task. */
+    sim->ctask = sim->ntask;
+}
+
+void simulator_step(struct simulator *sim)
+{
+    uint16_t rsel;
+    uint16_t bus;
+    uint16_t alu;
+    uint16_t shifter_output;
+    uint16_t next_extra;
+    int alu_carry;
+    int nova_carry;
+
+    /* Obtain the rsel (which might be modified by some F2
+     * functions when in the EMULATOR task.
+     */
+    rsel = get_rsel(sim);
+
+    /* Compute the bus. */
+    bus = read_bus(sim, rsel);
+
+    /* Compute the ALU. */
+    alu = compute_alu(sim, bus, &alu_carry);
+
+    /* Compute the shifter output. */
+    nova_carry = sim->carry;
+    shifter_output = do_shift(sim, &nova_carry);
+
+    /* Compute the F1 function. */
+    do_f1(sim, bus, alu, shifter_output);
+
+    /* Compute the F2 function. */
+    next_extra = do_f2(sim, bus, alu, shifter_output);
+
+    /* Write back the registers. */
+    wb_registers(sim, rsel, bus, alu, shifter_output, alu_carry);
+
+    /* Update the micro program counter and the current task. */
+    update_mpc(sim, next_extra);
 }
