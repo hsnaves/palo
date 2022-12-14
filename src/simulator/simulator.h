@@ -15,6 +15,7 @@ struct simulator {
     uint16_t mar;         /* Memory address register. */
     uint16_t ir;          /* The instruction register. */
     uint32_t mir;         /* The micro instruction register. */
+    uint16_t mpc;         /* The MPC corresponding to the MIR. */
 
     uint8_t ctask;        /* Current task. */
     uint8_t ntask;        /* The next task. */
@@ -31,7 +32,7 @@ struct simulator {
     uint16_t *consts;     /* Pointer to the constant rom. */
     uint32_t *microcode;  /* Microcode ROM + RAM. */
 
-    uint16_t *mpc;        /* Microcode program counter (1 per task). */
+    uint16_t *task_mpc;   /* Microcode program counter (1 per task). */
 
     uint16_t *mem;        /* Main memory. */
     uint16_t *xm_banks;   /* Banks for the different tasks. */
@@ -75,13 +76,19 @@ int simulator_load_constant_rom(struct simulator *sim,
  * Returns TRUE on success.
  */
 int simulator_load_microcode_rom(struct simulator *sim,
-                                 const char *filename,
-                                 unsigned int bank);
+                                 const char *filename, uint8_t bank);
 
 /* Resets the simulator. */
 void simulator_reset(struct simulator *sim);
 
 /* Performs a simulation step. */
 void simulator_step(struct simulator *sim);
+
+/* Disassembles the current microinstruction.
+ * The output is written to `output`, which is a buffer of size
+ * `output_size`.
+ */
+void simulator_disassemble(struct simulator *sim,
+                           char *output, size_t output_size);
 
 #endif /* __SIMULATOR_SIMULATOR_H */

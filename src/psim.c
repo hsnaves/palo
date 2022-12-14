@@ -73,7 +73,11 @@ int main(int argc, char **argv)
     simulator_reset(&sim);
 
     for (j = 0; j < 100; j++) {
+        char buffer[512];
+
         simulator_step(&sim);
+        simulator_disassemble(&sim, buffer, sizeof(buffer));
+        printf("%s\n", buffer);
     }
 
     simulator_destroy(&sim);

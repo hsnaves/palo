@@ -5,7 +5,8 @@ PMU_OBJS := common/allocator.o common/table.o common/utils.o \
 PDIS_OBJS := common/utils.o common/allocator.o disassembler/disassembler.o \
  microcode/microcode.o pdis.o
 
-PSIM_OBJS := common/utils.o simulator/simulator.o gui/gui.o psim.o
+PSIM_OBJS := common/utils.o simulator/simulator.o gui/gui.o \
+ microcode/microcode.o psim.o
 
 OBJS := common/allocator.o common/table.o common/utils.o \
  assembler/assembler.o parser/lexer.o parser/parser.o microcode/microcode.o \
@@ -29,6 +30,9 @@ pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
 disassembler/disassembler.o: disassembler/disassembler.c \
  disassembler/disassembler.h common/allocator.h microcode/microcode.h \
  common/utils.h
-gui/gui.o: gui/gui.c gui/gui.h common/utils.h
 pdis.o: pdis.c disassembler/disassembler.h common/allocator.h \
  common/utils.h
+simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
+ microcode/microcode.h common/utils.h
+gui/gui.o: gui/gui.c gui/gui.h common/utils.h
+psim.o: psim.c simulator/simulator.h common/utils.h

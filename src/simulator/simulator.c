@@ -31,7 +31,7 @@ void simulator_initvar(struct simulator *sim)
     sim->s = NULL;
     sim->consts = NULL;
     sim->microcode = NULL;
-    sim->mpc = NULL;
+    sim->task_mpc = NULL;
     sim->mem = NULL;
     sim->xm_banks = NULL;
 }
@@ -50,8 +50,8 @@ void simulator_destroy(struct simulator *sim)
     if (sim->microcode) free((void *) sim->microcode);
     sim->microcode = NULL;
 
-    if (sim->mpc) free((void *) sim->mpc);
-    sim->mpc = NULL;
+    if (sim->task_mpc) free((void *) sim->task_mpc);
+    sim->task_mpc = NULL;
 
     if (sim->mem) free((void *) sim->mem);
     sim->mem = NULL;
@@ -70,7 +70,7 @@ int simulator_create(struct simulator *sim)
         malloc(CONSTANT_SIZE * sizeof(uint16_t));
     sim->microcode = (uint32_t *)
         malloc(NUM_MICROCODE_BANKS * MICROCODE_SIZE * sizeof(uint32_t));
-    sim->mpc = (uint16_t *)
+    sim->task_mpc = (uint16_t *)
         malloc(TASK_NUM_TASKS * sizeof(uint16_t));
     sim->mem = (uint16_t *)
         malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
@@ -78,7 +78,7 @@ int simulator_create(struct simulator *sim)
         malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
 
     if (unlikely(!sim->r || !sim->s
-                 || !sim->consts || !sim->microcode || !sim->mpc
+                 || !sim->consts || !sim->microcode || !sim->task_mpc
                  || !sim->mem || !sim->xm_banks)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
@@ -137,8 +137,7 @@ error_eof:
 }
 
 int simulator_load_microcode_rom(struct simulator *sim,
-                                 const char *filename,
-                                 unsigned int bank)
+                                 const char *filename, uint8_t bank)
 {
     FILE *fp;
     uint16_t i, offset;
@@ -214,6 +213,7 @@ void simulator_reset(struct simulator *sim)
     sim->mar = 0;
     sim->ir = 0;
     sim->mir = 0;
+    sim->mpc = 0;
     sim->ctask = 0;
     sim->ntask = 0;
     sim->pending = (1 << TASK_EMULATOR);
@@ -224,7 +224,7 @@ void simulator_reset(struct simulator *sim)
     sim->rmr = 0xFFFF;
 
     for (task = 0; task < TASK_NUM_TASKS; task++) {
-        sim->mpc[task] = (uint16_t) task;
+        sim->task_mpc[task] = (uint16_t) task;
     }
 
     memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
@@ -293,6 +293,9 @@ uint16_t get_rsel(struct simulator *sim)
 
     if (ctask == TASK_EMULATOR) {
         ir = sim->ir;
+        /* Modify the last 3 bits according to the
+         * corresponding field in the IR register.
+         */
         if (f2 == F2_EMU_ACSOURCE) {
             rsel &= ~0x3;
             rsel |= (~(ir >> 13)) & 0x3;
@@ -317,6 +320,7 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
     uint16_t bs;
     uint16_t f1, f2;
     uint16_t output;
+    uint16_t t;
 
     mir = sim->mir;
     ctask = sim->ctask;
@@ -361,7 +365,13 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
         /* Implement this. */
         break;
     case BS_READ_DISP:
-        /* Implement this. */
+        t = sim->ir & 0x00FF;
+        if (((sim->ir >> 8) & 0x3) != 0) {
+            if ((sim->ir & (1 << 7)) != 0) {
+                t |= 0xFF00;
+            }
+        }
+        output &= t;
         break;
 
     default:
@@ -512,26 +522,46 @@ void do_f1(struct simulator *sim, uint16_t bus,
     case F1_LLSH1:
     case F1_LRSH1:
     case F1_LLCY8:
-        break;
+        return;
     case F1_LOAD_MAR:
         sim->mar = alu;
-        break;
+        return;
     case F1_TASK:
         /* Switch tasks. */
+        /* Maybe prevent two consecutive switches? */
         for (ts = TASK_NUM_TASKS; ts--;) {
             if (sim->pending & (1 << ts)) {
                 sim->ntask = ts;
                 break;
             }
         }
-        break;
+        return;
     case F1_BLOCK:
         /* Prevent the current task from running. */
         sim->pending &= ~(1 << ctask);
 
         /* There are other side effects to consider for specific tasks. */
-        break;
-    default:
+        return;
+    }
+
+    switch (ctask) {
+    case TASK_EMULATOR:
+        switch (f1) {
+        case F1_EMU_SWMODE:
+            break;
+        case F1_EMU_WRTRAM:
+            break;
+        case F1_EMU_RDRAM:
+            break;
+        case F1_EMU_LOAD_RMR:
+            break;
+        case F1_EMU_LOAD_ESRB:
+            break;
+        case F1_EMU_RSNF:
+            break;
+        case F1_EMU_STARTF:
+            break;
+        }
         break;
     }
 }
@@ -546,7 +576,6 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
 {
     uint32_t mir;
     uint16_t f2;
-    uint16_t next_extra;
     uint8_t ctask;
 
     mir = sim->mir;
@@ -554,36 +583,48 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
 
     f2 = MICROCODE_F2(mir);
 
-    next_extra = 0;
-
     /* Computes the F2 function. */
     switch (f2) {
     case F2_NONE:
     case F2_CONSTANT:
-        break;
+        return 0;
     case F2_BUSEQ0:
-        next_extra = (bus == 0) ? 0 : 1;
-        break;
+        return (bus == 0) ? 0 : 1;
     case F2_SHLT0:
-        next_extra = (shifter_output & 0x8000) ? 0 : 1;
-        break;
+        return (shifter_output & 0x8000) ? 0 : 1;
     case F2_SHEQ0:
-        next_extra = (shifter_output == 0) ? 0 : 1;
-        break;
+        return (shifter_output == 0) ? 0 : 1;
     case F2_BUS:
-        next_extra = (bus & MPC_ADDR_MASK);
-        break;
+        return (bus & MPC_ADDR_MASK);
     case F2_ALUCY:
-        next_extra = sim->aluC0;
-        break;
+        return (sim->aluC0) ? 1 : 0;
     case F2_STORE_MD:
         /* Implement this. */
-        break;
-    default:
+        return 0;
+    }
+
+    switch (ctask) {
+    case TASK_EMULATOR:
+        switch (f2) {
+        case F2_EMU_BUSODD:
+            break;
+        case F2_EMU_MAGIC:
+            break;
+        case F2_EMU_LOAD_DNS:
+            break;
+        case F2_EMU_ACDEST:
+            break;
+        case F2_EMU_LOAD_IR:
+            break;
+        case F2_EMU_IDISP:
+            break;
+        case F2_EMU_ACSOURCE:
+            break;
+        }
         break;
     }
 
-    return next_extra;
+    return 0;
 }
 
 /* Writes back the registers. */
@@ -640,14 +681,17 @@ void update_mpc(struct simulator *sim, uint16_t next_extra)
 {
     uint32_t mcode;
     uint16_t mpc;
+    uint8_t ctask;
 
     /* Updates the MPC and MIR. */
-    mpc = sim->mpc[sim->ctask];
+    ctask = sim->ctask;
+    mpc = sim->task_mpc[ctask];
     mcode = sim->microcode[mpc];
-    sim->mpc[sim->ctask] = (mpc & MPC_BANK_MASK)
+    sim->task_mpc[ctask] = (mpc & MPC_BANK_MASK)
         | MICROCODE_NEXT(mcode) | next_extra;
 
     sim->mir = mcode;
+    sim->mpc = mpc;
 
     /* Updates the current task. */
     sim->ctask = sim->ntask;
@@ -690,3 +734,63 @@ void simulator_step(struct simulator *sim)
     /* Update the micro program counter and the current task. */
     update_mpc(sim, next_extra);
 }
+
+
+/* Auxiliary function used by simulator_disassemble().
+ * Callback to print constants.
+ */
+static
+void sim_constant_cb(const struct decoder *dec, uint16_t val,
+                     struct decode_buffer *output)
+{
+    struct simulator *sim;
+    sim = (struct simulator *) dec->arg;
+    decode_buffer_print(output, "%o", sim->consts[val]);
+}
+
+/* Auxiliary function used by simulator_disassemble().
+ * Callback to print R registers.
+ */
+static
+void sim_register_cb(const struct decoder *dec, uint16_t val,
+                     struct decode_buffer *output)
+{
+    decode_buffer_print(output, "R%o", val);
+}
+
+/* Auxiliary function used by simulator_disassemble().
+ * Callback to print GOTO statements.
+ */
+static
+void sim_goto_cb(const struct decoder *dec, uint16_t val,
+                 struct decode_buffer *output)
+{
+    decode_buffer_print(output, ":%05o", val);
+}
+
+void simulator_disassemble(struct simulator *sim,
+                           char *output, size_t output_size)
+{
+    struct decoder dec;
+    struct decode_buffer out;
+
+    out.buf = output;
+    out.buf_size = output_size;
+    decode_buffer_reset(&out);
+
+    decode_buffer_print(&out,
+                        "TASK: %02o  MPC: %06o T: %06o L: %06o ",
+                        sim->ctask, sim->mpc,
+                        sim->t, sim->l);
+
+    dec.address = sim->mpc;
+    dec.microcode = sim->mir;
+    dec.task = sim->ctask;
+    dec.arg = sim;
+    dec.const_cb = &sim_constant_cb;
+    dec.reg_cb = &sim_register_cb;
+    dec.goto_cb = &sim_goto_cb;
+
+    decoder_decode(&dec, &out);
+}
+
