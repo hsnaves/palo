@@ -3,6 +3,7 @@
 #define __PARSER_PARSER_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include "parser/lexer.h"
 #include "common/allocator.h"
 #include "common/table.h"
@@ -35,13 +36,13 @@ enum declaration_type {
 struct declaration {
     enum declaration_type d_type; /* The declaration type. */
     struct string name;           /* The name being declared. */
-    unsigned int n1, n2, n3;      /* Parameters of the declaration. */
+    uint16_t n1, n2, n3;          /* Parameters of the declaration. */
     struct symbol_info *si;       /* The symbol information. */
 };
 
 /* Represents an address predefinition statement. */
 struct address_predefinition {
-    unsigned int n, k, l;         /* The parameters of the statement. */
+    uint16_t n, k, l;             /* The parameters of the statement. */
     int extended;                 /* If using the extended predefinition. */
     struct parser_node *labels;   /* The defined labels. */
     unsigned int num_labels;      /* The number of labels defined. */
@@ -67,7 +68,7 @@ struct executable_statement {
     struct string label;          /* The label of this statement. */
     struct clause *clauses;       /* The list of clauses. */
     struct symbol_info *si;       /* Symbol info for the label. */
-    unsigned int address;         /* Address of this statement. */
+    uint16_t address;             /* Address of this statement. */
 };
 
 /* Possible errors found during parsing. */
@@ -124,14 +125,11 @@ struct symbol_info {
                                    * be pointing to the corresponding
                                    * statement.
                                    */
-    unsigned int addr_index;      /* The index of the symbol within the
-                                   * address predeclaration.
-                                   */
     struct statement *exec;       /* If the symbol was defined as a label,
                                    * this is a pointer to the statement
                                    * containing it.
                                    */
-    unsigned int address;         /* The address of the symbol. */
+    uint16_t address;             /* The address of the symbol. */
     void *extra;                  /* Extra information. */
 };
 

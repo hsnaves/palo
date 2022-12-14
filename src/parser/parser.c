@@ -1,4 +1,5 @@
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -359,9 +360,9 @@ int parse_name(struct parser *p, struct string *name)
  * Returns TRUE or FALSE.
  */
 static
-int parse_octal_aux(const char *s, size_t len, unsigned int *num)
+int parse_octal_aux(const char *s, size_t len, uint16_t *num)
 {
-    unsigned int _num;
+    uint16_t _num;
     size_t i;
     char c;
 
@@ -370,7 +371,7 @@ int parse_octal_aux(const char *s, size_t len, unsigned int *num)
         c = s[i];
         if (c >= '0' && c <= '7') {
             _num *= 8;
-            _num += ((unsigned int) (c - '0'));
+            _num += ((uint16_t) (c - '0'));
         } else return FALSE;
     }
     *num = _num;
@@ -384,7 +385,7 @@ int parse_octal_aux(const char *s, size_t len, unsigned int *num)
  * Returns OK, FAIL or ERROR.
  */
 static
-int parse_octal(struct parser *p, unsigned int *num, int skip_first)
+int parse_octal(struct parser *p, uint16_t *num, int skip_first)
 {
     struct statement *st;
     const char *s;

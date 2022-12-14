@@ -60,8 +60,8 @@
 
 /* To build up the instruction. */
 struct instruction {
-    unsigned int f1, f2, f3;      /* F1, F2, and F3 fields .*/
-    unsigned int rsel, aluf, bs;  /* RSEL, ALUF, and BS fields. */
+    uint16_t f1, f2, f3;          /* F1, F2, and F3 fields .*/
+    uint16_t rsel, aluf, bs;      /* RSEL, ALUF, and BS fields. */
     int has_f1, has_f2, has_f3;   /* Indicators of field presence. */
     int has_rsel, has_aluf, has_bs;
 
@@ -159,24 +159,24 @@ int assembler_create(struct assembler *as)
  * Returns the slot number.
  */
 static
-unsigned int find_constant_slot(struct assembler *as, uint16_t val,
-                                unsigned int bs, int has_bs_mask)
+uint16_t find_constant_slot(struct assembler *as, uint16_t val,
+                            uint16_t bs, int has_bs_mask)
 {
-    unsigned int i;
-    for (i = 0; i < CONSTANT_SIZE; i++) {
-        if (as->const_sts[i]) {
-            if (as->consts[i] != val) continue;
+    uint16_t slot;
+    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
+        if (as->const_sts[slot]) {
+            if (as->consts[slot] != val) continue;
         }
         if (!has_bs_mask) break;
-        if ((i & 7) == bs) break;
+        if ((slot & 7) == bs) break;
     }
-    return i;
+    return slot;
 }
 
 int assembler_resolve_constants(struct assembler *as)
 {
     struct statement *st;
-    unsigned int i, bs;
+    uint16_t slot, bs;
     uint16_t val;
     int has_bs_mask;
 
@@ -191,35 +191,35 @@ int assembler_resolve_constants(struct assembler *as)
             case DECL_SYMBOL:
                 if (LITERAL_SYMB_TYPE(st->v.decl.n2) != LST_CONSTANT)
                     goto skip;
-                val = (uint16_t) LITERAL_SYMB_VALUE(st->v.decl.n2);
+                val = LITERAL_SYMB_VALUE(st->v.decl.n2);
                 bs = 0;
                 has_bs_mask = FALSE;
                 break;
 
             case DECL_CONSTANT:
-                val = (uint16_t) st->v.decl.n1;
+                val = st->v.decl.n1;
                 bs = 0;
                 has_bs_mask = FALSE;
                 break;
 
             case DECL_M_CONSTANT:
-                val = (uint16_t) st->v.decl.n2;
-                bs = (unsigned int) st->v.decl.n1;
+                val = st->v.decl.n2;
+                bs = st->v.decl.n1;
                 has_bs_mask = TRUE;
                 break;
 
             default:
                 goto skip;
             }
-            i = find_constant_slot(as, val, bs, has_bs_mask);
-            if (i >= CONSTANT_SIZE) {
+            slot = find_constant_slot(as, val, bs, has_bs_mask);
+            if (slot >= CONSTANT_SIZE) {
                 report_error("assembler: resolve_constants: %s:%d: overflow",
                              st->filename, st->line_num);
                 return FALSE;
             }
-            as->const_sts[i] = st;
-            as->consts[i] = val;
-            st->v.decl.si->address = i;
+            as->const_sts[slot] = st;
+            as->consts[slot] = val;
+            st->v.decl.si->address = slot;
             break;
 
         default:
@@ -238,12 +238,12 @@ int assembler_resolve_constants(struct assembler *as)
  * Returns the slot number.
  */
 static
-unsigned int find_microcode_slot(struct assembler *as,
-                                 struct address_predefinition *apdef)
+uint16_t find_microcode_slot(struct assembler *as,
+                             struct address_predefinition *apdef)
 {
-    unsigned int i, j, num, num_labels;
-    unsigned int mask1, mask2, not_mask2;
-    unsigned int len, start, val1, val2;
+    uint16_t address, j, num, num_labels;
+    uint16_t mask1, mask2, not_mask2;
+    uint16_t len, start, val1, val2;
     struct parser_node *pn;
     struct symbol_info *si;
 
@@ -264,28 +264,28 @@ unsigned int find_microcode_slot(struct assembler *as,
             not_mask2 <<= 1;
         not_mask2 = (not_mask2 - 1) ^ mask2;
 
-        for (i = 0; i < MICROCODE_SIZE; i++) {
-            if ((i & mask1) != start) continue;
-            if (as->micro_sts[i]) continue;
+        for (address = 0; address < MICROCODE_SIZE; address++) {
+            if ((address & mask1) != start) continue;
+            if (as->micro_sts[address]) continue;
 
             j = 0;
             for (num = 0; num < num_labels; num++) {
                 if (num > 0) {
-                    val1 = i & not_mask2;
-                    val2 = (i + j) & mask2;
-                    while ((((i + j) & not_mask2) != val1)
-                           || ((i + j) & mask2) == val2)
+                    val1 = address & not_mask2;
+                    val2 = (address + j) & mask2;
+                    while ((((address + j) & not_mask2) != val1)
+                           || ((address + j) & mask2) == val2)
                         j++;
-                    if ((((i + j) & mask2) == (i & mask2)))
+                    if ((((address + j) & mask2) == (address & mask2)))
                         break;
                 }
 
-                if (as->micro_sts[i + j]) break;
+                if (as->micro_sts[address + j]) break;
             }
             if (num == num_labels) break;
         }
 
-        if (i == MICROCODE_SIZE) return i;
+        if (address == MICROCODE_SIZE) return address;
 
         j = 0;
         for (num = 0; num < num_labels; num++) {
@@ -294,31 +294,31 @@ unsigned int find_microcode_slot(struct assembler *as,
             pn = pn->next;
 
             if (num > 0) {
-                val1 = i & not_mask2;
-                val2 = (i + j) & mask2;
-                while ((((i + j) & not_mask2) != val1)
-                       || ((i + j) & mask2) == val2)
+                val1 = address & not_mask2;
+                val2 = (address + j) & mask2;
+                while ((((address + j) & not_mask2) != val1)
+                       || ((address + j) & mask2) == val2)
                     j++;
             }
 
             if (si) {
-                si->address = i + j;
+                si->address = address + j;
                 as->micro_sts[si->address] = si->exec;
             }
         }
     } else {
         mask1 = apdef->n;
         len = apdef->k;
-        for (i = 0; i < MICROCODE_SIZE; i++) {
-            if ((i + len - 1) >= MICROCODE_SIZE) continue;
-            if (((i + len - 1) & mask1) != mask1) continue;
+        for (address = 0; address < MICROCODE_SIZE; address++) {
+            if ((address + len - 1) >= MICROCODE_SIZE) continue;
+            if (((address + len - 1) & mask1) != mask1) continue;
             for (j = 0; j < len; j++) {
-                if (as->micro_sts[i + j]) break;
+                if (as->micro_sts[address + j]) break;
             }
             if (j == len) break;
         }
 
-        if (i == MICROCODE_SIZE) return i;
+        if (address == MICROCODE_SIZE) return address;
 
         for (j = 0; j < len; j++) {
             if (!pn) break;
@@ -326,11 +326,11 @@ unsigned int find_microcode_slot(struct assembler *as,
             pn = pn->next;
 
             if (!si) continue;
-            si->address = i + j;
+            si->address = address + j;
             as->micro_sts[si->address] = si->exec;
         }
     }
-    return i;
+    return address;
 }
 
 int assembler_resolve_labels(struct assembler *as)
@@ -338,7 +338,7 @@ int assembler_resolve_labels(struct assembler *as)
     struct statement *st;
     struct address_predefinition apdef;
     struct symbol_info *si;
-    unsigned int i;
+    uint16_t address;
 
     memset(as->micro_sts, 0,
            MICROCODE_SIZE * sizeof(struct statement *));
@@ -352,8 +352,8 @@ int assembler_resolve_labels(struct assembler *as)
             break;
 
         case ST_ADDRESS_PREDEFINITION:
-            i = find_microcode_slot(as, &st->v.addr);
-            if (i == MICROCODE_SIZE)
+            address = find_microcode_slot(as, &st->v.addr);
+            if (address == MICROCODE_SIZE)
                 goto error_overflow;
             break;
 
@@ -365,7 +365,7 @@ int assembler_resolve_labels(struct assembler *as)
             }
 
             if (si) {
-                i = st->v.exec.si->address;
+                address = st->v.exec.si->address;
             } else {
                 apdef.n = 0;
                 apdef.k = 1;
@@ -373,14 +373,14 @@ int assembler_resolve_labels(struct assembler *as)
                 apdef.extended = FALSE;
                 apdef.labels = NULL;
                 apdef.num_labels = 0;
-                i = find_microcode_slot(as, &apdef);
-                if (i >= MICROCODE_SIZE)
+                address = find_microcode_slot(as, &apdef);
+                if (address >= MICROCODE_SIZE)
                     goto error_overflow;
                 si = st->v.exec.si;
-                if (si) si->address = i;
+                if (si) si->address = address;
             }
-            st->v.exec.address = i;
-            as->micro_sts[i] = st;
+            st->v.exec.address = address;
+            as->micro_sts[address] = st;
             break;
 
         default:
@@ -468,7 +468,7 @@ void resolve_rhs(struct assembler *as,
 }
 
 #define CREATE_SET_FUNCTION(field) \
-static int set_ ## field(struct instruction *insn, unsigned int val) \
+static int set_ ## field(struct instruction *insn, uint16_t val)     \
 {                                                                    \
     struct statement *st;                                            \
     st = insn->st;                                                   \
@@ -553,7 +553,7 @@ int process_function_clause(struct instruction *insn,
     struct statement *st;
     struct symbol_info *si;
     struct declaration *decl;
-    unsigned int lst, val;
+    uint16_t lst, val;
 
     st = insn->st;
     si = resolve_symbol(insn->as, &cl->name);
@@ -615,9 +615,9 @@ int process_assignment_clause(struct instruction *insn,
     struct symbol_info *si, *si_extra;
     struct parser_node *pn;
     struct declaration *decl;
-    unsigned int lst;
-    unsigned int req, def;
-    unsigned int val;
+    uint16_t lst;
+    uint16_t req, def;
+    uint16_t val;
     int has_load_t;
 
     has_load_t = FALSE;
@@ -870,7 +870,7 @@ int assemble_one(struct assembler *as, struct statement *st,
 {
     struct instruction insn;
     struct clause *cl;
-    unsigned int new_f1, new_f2;
+    uint16_t new_f1, new_f2;
     uint32_t microcode;
     int error;
 
@@ -955,9 +955,13 @@ int assemble_one(struct assembler *as, struct statement *st,
 int assembler_assemble(struct assembler *as)
 {
     struct statement *st, *next_st;
+    uint16_t address;
     int error;
 
-    memset(as->microcode, 0, MICROCODE_SIZE * sizeof(uint32_t));
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        /* Jump to the last address in rom. */
+        as->microcode[address] = 0xFFF77BFF;
+    }
 
     error = FALSE;
     next_st = as->p.first;
@@ -989,7 +993,7 @@ int assembler_dump_constant_rom(struct assembler *as,
                                 const char *filename)
 {
     FILE *fp;
-    unsigned int i;
+    uint16_t slot;
     uint16_t val;
     char c;
 
@@ -1001,8 +1005,8 @@ int assembler_dump_constant_rom(struct assembler *as,
         return FALSE;
     }
 
-    for (i = 0; i < CONSTANT_SIZE; i++) {
-        val = as->consts[i];
+    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
+        val = as->consts[slot];
         c = (char) (val & 0xFF);
         fwrite(&c, 1, 1, fp);
         c = (char) ((val >> 8) & 0xFF);
@@ -1017,7 +1021,7 @@ int assembler_dump_microcode_rom(struct assembler *as,
                                  const char *filename)
 {
     FILE *fp;
-    unsigned int i;
+    uint16_t address;
     uint32_t val;
     char c;
 
@@ -1029,8 +1033,8 @@ int assembler_dump_microcode_rom(struct assembler *as,
         return FALSE;
     }
 
-    for (i = 0; i < MICROCODE_SIZE; i++) {
-        val = as->microcode[i];
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        val = as->microcode[address];
         c = (char) (val & 0xFF);
         fwrite(&c, 1, 1, fp);
         c = (char) ((val >> 8) & 0xFF);
@@ -1050,20 +1054,20 @@ static
 void print_constants(struct assembler *as, FILE *fp)
 {
     struct statement *st;
-    unsigned int i;
+    uint16_t slot;
     char buffer[64];
 
     fprintf(fp, "--- CONSTANTS ---\n");
     fprintf(fp, "ADDRESS  VALUE     NAME          "
                 "DEFINITION             LOCATION\n");
-    for (i = 0; i < CONSTANT_SIZE; i++) {
-        st = as->const_sts[i];
+    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
+        st = as->const_sts[slot];
         if (!st) {
-            fprintf(fp, "%03o      %o\n", i, as->consts[i]);
+            fprintf(fp, "%03o      %o\n", slot, as->consts[slot]);
             continue;
         }
 
-        fprintf(fp, "%03o      %-6o    ", i, as->consts[i]);
+        fprintf(fp, "%03o      %-6o    ", slot, as->consts[slot]);
         fprintf(fp, "$%-12s ", st->v.decl.name.s);
 
         buffer[0] = '\0';
@@ -1123,7 +1127,7 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
         "LBA"
     };
     struct statement *st;
-    unsigned int req;
+    uint16_t req;
 
     fprintf(fp, "--- LITERAL SYMBOLS ---\n");
     fprintf(fp, "NAME          TYPE  VAL   "
@@ -1191,16 +1195,17 @@ void print_microcode(struct assembler *as, FILE *fp)
     struct statement *st;
     struct clause *cl;
     struct parser_node *pn;
+    unsigned int j;
     uint32_t microcode;
-    unsigned int i, j;
+    uint16_t address;
 
     fprintf(fp, "--- MICROCODE ---\n");
     fprintf(fp, "ADDRESS   MICROCODE    RSEL ALUF BS F1 F2 T L NEXT "
                 "LABEL      STATEMENT\n");
 
-    for (i = 0; i < MICROCODE_SIZE; i++) {
-        microcode = as->microcode[i];
-        fprintf(fp, "%05o     %011o  ", i, microcode);
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        microcode = as->microcode[address];
+        fprintf(fp, "%05o     %011o  ", address, microcode);
         fprintf(fp, "%02o   %02o   %o  %02o %02o %o %o %04o ",
                 MICROCODE_RSEL(microcode),
                 MICROCODE_ALUF(microcode),
@@ -1211,7 +1216,7 @@ void print_microcode(struct assembler *as, FILE *fp)
                 MICROCODE_L(microcode),
                 MICROCODE_NEXT(microcode));
 
-        st = as->micro_sts[i];
+        st = as->micro_sts[address];
         if (!st) {
             fprintf(fp, "\n");
             continue;
