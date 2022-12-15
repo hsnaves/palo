@@ -3,13 +3,18 @@
 #define __SIMULATOR_SIMULATOR_H
 
 #include <stdint.h>
+#include "simulator/disk.h"
+#include "simulator/display.h"
+#include "simulator/ethernet.h"
+#include "simulator/keyboard.h"
+#include "simulator/mouse.h"
 
 /* Possible alto systems. */
 enum system_type {
-    ALTO_I,          /* Alto I with 1K rom and 1K ram .*/
-    ALTO_II_1KROM,   /* Alto II with 1K rom and 1K ram .*/
-    ALTO_II_2KROM,   /* Alto II with 2K rom and 1K ram .*/
-    ALTO_II_3KRAM,   /* Alto II with 1K rom and 3K ram .*/
+    ALTO_I,               /* Alto I with 1K rom and 1K ram .*/
+    ALTO_II_1KROM,        /* Alto II with 1K rom and 1K ram .*/
+    ALTO_II_2KROM,        /* Alto II with 2K rom and 1K ram .*/
+    ALTO_II_3KRAM,        /* Alto II with 1K rom and 3K ram .*/
 };
 
 /* Data structures and types. */
@@ -57,6 +62,12 @@ struct simulator {
     int mem_which;        /* A boolean flag indicating which
                            * memory operation is happening.
                            */
+
+    struct disk dsk;      /* The disk controller. */
+    struct display disp;  /* The display controller. */
+    struct ethernet eth;  /* The ethernet controller. */
+    struct keyboard kb;   /* The keyboard controller. */
+    struct mouse ms;      /* The mouse controller. */
 };
 
 /* Functions. */

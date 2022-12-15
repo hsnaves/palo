@@ -377,10 +377,8 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
         break;
     case BS_READ_DISP:
         t = sim->ir & 0x00FF;
-        if (((sim->ir >> 8) & 0x3) != 0) {
-            if ((sim->ir & (1 << 7)) != 0) {
-                t |= 0xFF00;
-            }
+        if ((sim->ir & 0x300) != 0 && (sim->ir & 0x80) != 0) {
+            t |= 0xFF00;
         }
         output &= t;
         break;
@@ -548,7 +546,8 @@ void do_f1(struct simulator *sim, uint16_t bus,
         sim->mem_task = sim->ctask;
         sim->mem_low = 0xFFFF;
         sim->mem_high = 0xFFFF;
-        sim->mem_extended = (f2 == F2_STORE_MD);
+        sim->mem_extended = (sim->st != ALTO_I)
+                          ? (f2 == F2_STORE_MD) : FALSE;
         sim->mem_which = 0;
 
         /* Perform the reading now. */
@@ -609,7 +608,7 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
                uint16_t alu, uint16_t shifter_output)
 {
     uint32_t mir;
-    uint16_t f2;
+    uint16_t f1, f2;
     uint16_t next_extra;
     uint16_t addr;
     uint8_t ctask;
@@ -617,6 +616,7 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
     mir = sim->mir;
     ctask = sim->ctask;
 
+    f1 = MICROCODE_F1(mir);
     f2 = MICROCODE_F2(mir);
 
     /* Computes the F2 function. */
@@ -625,24 +625,26 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
     case F2_CONSTANT:
         return 0;
     case F2_BUSEQ0:
-        return (bus == 0) ? 0 : 1;
+        return (bus == 0) ? 1 : 0;
     case F2_SHLT0:
-        return (shifter_output & 0x8000) ? 0 : 1;
+        return (shifter_output & 0x8000) ? 1 : 0;
     case F2_SHEQ0:
-        return (shifter_output == 0) ? 0 : 1;
+        return (shifter_output == 0) ? 1 : 0;
     case F2_BUS:
         return (bus & MPC_ADDR_MASK);
     case F2_ALUCY:
         return (sim->aluC0) ? 1 : 0;
     case F2_STORE_MD:
         /* TODO: Check the cycle times. */
-        addr = sim->mar;
-        if (sim->mem_which) {
-            addr = (sim->st == ALTO_I) ? 1 | addr : 1 ^ addr;
+        if (f1 != F1_LOAD_MAR || sim->st == ALTO_I) {
+            addr = sim->mar;
+            if (sim->mem_which) {
+                addr = (sim->st == ALTO_I) ? 1 | addr : 1 ^ addr;
+            }
+            simulator_write(sim, addr, bus, sim->mem_task,
+                            sim->mem_extended);
+            sim->mem_which = (1 ^ sim->mem_which);
         }
-        simulator_write(sim, addr, bus, sim->mem_task,
-                        sim->mem_extended);
-        sim->mem_which = (1 ^ sim->mem_which);
         return 0;
     }
 

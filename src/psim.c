@@ -22,11 +22,9 @@ void usage(const char *prog_name)
  * The command line is stored in `buffer`, with the words separated by a
  * NUL character. The last word is ended with two consecutive NUL characters.
  * The size of the buffer is given by `buffer_size`.
- * Returns the length of the command (including the two terminating NUL
- * character of the last word).
  */
 static
-size_t get_command(char *buffer, size_t buffer_size)
+void get_command(char *buffer, size_t buffer_size)
 {
     size_t i, len;
     int c, last_is_space;
@@ -53,6 +51,9 @@ size_t get_command(char *buffer, size_t buffer_size)
         len++;
     }
 
+    /* Return the same command as before. */
+    if (i == 0) return;
+
     if (!last_is_space) {
         buffer[i++] = '\0';
         len++;
@@ -60,31 +61,33 @@ size_t get_command(char *buffer, size_t buffer_size)
     buffer[i++] = '\0';
     len++;
 
-    return len;
+    if (len >= buffer_size) {
+        printf("command too long\n");
+        buffer[0] = '\0';
+        buffer[1] = '\0';
+    }
 }
 
 /* To run the debugger. */
 static
 void debug_simulation(struct simulator *sim)
 {
-    char buffer[1024];
+    char cmd_buffer[256];
+    char out_buffer[1024];
     const char *cmd, *arg, *end;
     unsigned int num;
     uint16_t addr, val;
-    size_t cmd_len;
     int running;
+
+    cmd_buffer[0] = '\0';
+    cmd_buffer[1] = '\0';
 
     running = TRUE;
     while (running) {
-        cmd_len = get_command(buffer, sizeof(buffer));
-        if (cmd_len > sizeof(buffer)) {
-            printf("command too long\n");
-            continue;
-        }
-        if (cmd_len <= 2) continue;
+        get_command(cmd_buffer, sizeof(cmd_buffer));
 
-        cmd = (const char *) buffer;
-        arg = &buffer[strlen(cmd) + 1];
+        cmd = (const char *) cmd_buffer;
+        arg = &cmd[strlen(cmd) + 1];
 
         if (strcmp(cmd, "n") == 0) {
             if (arg[0] != '\0') {
@@ -100,18 +103,12 @@ void debug_simulation(struct simulator *sim)
             while (num-- > 0)
                 simulator_step(sim);
 
-            simulator_disassemble(sim, buffer, sizeof(buffer));
-            printf("%s\n", buffer);
-            continue;
+            goto disassemble;
         }
+
+        if (strcmp(cmd, "r") == 0) goto disassemble;
 
         if (strcmp(cmd, "d") == 0) {
-            simulator_disassemble(sim, buffer, sizeof(buffer));
-            printf("%s\n", buffer);
-            continue;
-        }
-
-        if (strcmp(cmd, "m") == 0) {
             if (arg[0] != '\0') {
                 addr = (uint16_t) strtoul(arg, (char **) &end, 8);
                 if (end[0] != '\0') {
@@ -130,18 +127,11 @@ void debug_simulation(struct simulator *sim)
             continue;
         }
 
-        if (strcmp(cmd, "r") == 0) {
-            simulator_print_registers(sim, buffer, sizeof(buffer));
-            printf("%s\n", buffer);
-            continue;
-        }
-
         if (strcmp(cmd, "h") == 0 || strcmp(cmd, "help") == 0) {
             printf("Commands:\n");
             printf("  n [num]     Step through the microcode\n");
-            printf("  d           Disassemble\n");
-            printf("  m [addr]    Shows the memory contents\n");
             printf("  r           Print the registers\n");
+            printf("  d [addr]    Dump the memory contents\n");
             printf("  h           Print this help\n");
             printf("  q           Quit the debugger\n");
             continue;
@@ -149,6 +139,15 @@ void debug_simulation(struct simulator *sim)
 
         if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0)
             break;
+
+        continue;
+
+    disassemble:
+        simulator_disassemble(sim, out_buffer, sizeof(out_buffer));
+        printf("%s\n", out_buffer);
+        simulator_print_registers(sim, out_buffer, sizeof(out_buffer));
+        printf("%s\n", out_buffer);
+        continue;
     }
 }
 
