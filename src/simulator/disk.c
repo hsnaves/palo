@@ -7,19 +7,19 @@
 
 /* Functions. */
 
-void disk_initvar(struct disk *d)
+void disk_initvar(struct disk *dsk)
 {
-    d->drives[0].sector_data = NULL;
-    d->drives[1].sector_data = NULL;
+    dsk->drives[0].sector_data = NULL;
+    dsk->drives[1].sector_data = NULL;
 }
 
-void disk_destroy(struct disk *d)
+void disk_destroy(struct disk *dsk)
 {
 }
 
-int disk_create(struct disk *d)
+int disk_create(struct disk *dsk)
 {
-    disk_initvar(d);
+    disk_initvar(dsk);
     return TRUE;
 }
 

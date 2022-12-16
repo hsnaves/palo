@@ -7,20 +7,20 @@
 
 /* Functions. */
 
-void display_initvar(struct display *d)
+void display_initvar(struct display *displ)
 {
-    d->data_buffer = NULL;
+    displ->data_buffer = NULL;
 }
 
-void display_destroy(struct display *d)
+void display_destroy(struct display *displ)
 {
-    if (d->data_buffer) free((void *) d->data_buffer);
-    d->data_buffer = NULL;
+    if (displ->data_buffer) free((void *) displ->data_buffer);
+    displ->data_buffer = NULL;
 }
 
-int display_create(struct display *d)
+int display_create(struct display *displ)
 {
-    display_initvar(d);
+    display_initvar(displ);
 
     return TRUE;
 }

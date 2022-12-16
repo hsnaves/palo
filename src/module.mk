@@ -30,13 +30,13 @@ microcode/microcode.o: microcode/microcode.c microcode/microcode.h \
 pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
  common/allocator.h common/table.h parser/parser.h common/utils.h
 disassembler/disassembler.o: disassembler/disassembler.c \
- disassembler/disassembler.h common/allocator.h microcode/microcode.h \
+ disassembler/disassembler.h microcode/microcode.h common/allocator.h \
  common/utils.h
-pdis.o: pdis.c disassembler/disassembler.h common/allocator.h \
- common/utils.h
+pdis.o: pdis.c disassembler/disassembler.h microcode/microcode.h \
+ common/allocator.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
- simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h microcode/microcode.h \
+ microcode/microcode.h simulator/disk.h simulator/display.h \
+ simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
  common/utils.h
 simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h
 simulator/display.o: simulator/display.c simulator/display.h \
@@ -47,4 +47,6 @@ simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
  common/utils.h
 simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h
 gui/gui.o: gui/gui.c gui/gui.h common/utils.h
-psim.o: psim.c simulator/simulator.h common/utils.h
+psim.o: psim.c simulator/simulator.h microcode/microcode.h \
+ simulator/disk.h simulator/display.h simulator/ethernet.h \
+ simulator/keyboard.h simulator/mouse.h common/utils.h

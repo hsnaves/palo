@@ -6,21 +6,21 @@
 
 /* Functions. */
 
-void mouse_initvar(struct mouse *m)
+void mouse_initvar(struct mouse *mous)
 {
 }
 
-void mouse_destroy(struct mouse *m)
+void mouse_destroy(struct mouse *mous)
 {
 }
 
-int mouse_create(struct mouse *m)
+int mouse_create(struct mouse *mous)
 {
-    mouse_initvar(m);
+    mouse_initvar(mous);
     return TRUE;
 }
 
-uint16_t mouse_poll_bits(struct mouse *m)
+uint16_t mouse_poll_bits(struct mouse *mous)
 {
     return 0;
 }

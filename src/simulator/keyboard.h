@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 /* Data structures and types. */
+
+/* The keyboard controller for the simulator. */
 struct keyboard {
     uint16_t keys[4];
 };
@@ -15,19 +17,19 @@ struct keyboard {
  * Note that this does not create the object yet.
  * This obeys the initvar / destroy / create protocol.
  */
-void keyboard_initvar(struct keyboard *k);
+void keyboard_initvar(struct keyboard *keyb);
 
 /* Destroys the keyboard object
  * (and releases all the used resources).
  * This obeys the initvar / destroy / create protocol.
  */
-void keyboard_destroy(struct keyboard *k);
+void keyboard_destroy(struct keyboard *keyb);
 
 /* Creates a new keyboard object.
  * This obeys the initvar / destroy / create protocol.
  * Returns TRUE on success.
  */
-int keyboard_create(struct keyboard *k);
+int keyboard_create(struct keyboard *keyb);
 
 
 #endif /* __SIMULATOR_KEYBOARD_H */

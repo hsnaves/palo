@@ -7,18 +7,18 @@
 
 /* Functions. */
 
-void ethernet_initvar(struct ethernet *e)
+void ethernet_initvar(struct ethernet *ether)
 {
-    e->fifo_buffer = NULL;
+    ether->fifo_buffer = NULL;
 }
 
-void ethernet_destroy(struct ethernet *e)
+void ethernet_destroy(struct ethernet *ether)
 {
 }
 
-int ethernet_create(struct ethernet *e)
+int ethernet_create(struct ethernet *ether)
 {
-    ethernet_initvar(e);
+    ethernet_initvar(ether);
     return TRUE;
 }
 

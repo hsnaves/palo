@@ -3,73 +3,71 @@
 #define __SIMULATOR_SIMULATOR_H
 
 #include <stdint.h>
+#include "microcode/microcode.h"
 #include "simulator/disk.h"
 #include "simulator/display.h"
 #include "simulator/ethernet.h"
 #include "simulator/keyboard.h"
 #include "simulator/mouse.h"
 
-/* Possible alto systems. */
-enum system_type {
-    ALTO_I,               /* Alto I with 1K rom and 1K ram .*/
-    ALTO_II_1KROM,        /* Alto II with 1K rom and 1K ram .*/
-    ALTO_II_2KROM,        /* Alto II with 2K rom and 1K ram .*/
-    ALTO_II_3KRAM,        /* Alto II with 1K rom and 3K ram .*/
-};
-
 /* Data structures and types. */
 struct simulator {
-    enum system_type st;  /* The alto system type. */
-    int error;            /* The simulator is in an error state. */
-    uint16_t *r;          /* R register file (32 registers). */
-    uint16_t *s;          /* S register file (8 x 32 registers). */
+    enum system_type sys_type;    /* The alto system type. */
+    int error;                    /* The simulator is in an error state. */
+    uint16_t *r;                  /* R register file (32 registers). */
+    uint16_t *s;                  /* S register file (8 x 32 registers). */
 
-    uint16_t t;           /* T register. */
-    uint16_t l;           /* L register. */
-    uint16_t m;           /* M register. */
-    uint16_t mar;         /* Memory address register. */
-    uint16_t ir;          /* The instruction register. */
-    uint32_t mir;         /* The micro instruction register. */
-    uint16_t mpc;         /* The MPC corres ponding to the MIR. */
+    uint16_t t;                   /* T register. */
+    uint16_t l;                   /* L register. */
+    uint16_t m;                   /* M register. */
+    uint16_t mar;                 /* Memory address register. */
+    uint16_t ir;                  /* The instruction register. */
+    uint32_t mir;                 /* The micro instruction register. */
+    uint16_t mpc;                 /* The MPC corres ponding to the MIR. */
 
-    uint8_t ctask;        /* Current task. */
-    uint8_t ntask;        /* The next task. */
-    uint16_t pending;     /* The bit mask of pending tasks. */
+    uint8_t ctask;                /* Current task. */
+    uint8_t ntask;                /* The next task. */
+    uint16_t pending;             /* The bit mask of pending tasks. */
 
-    int aluC0;            /* Last carry of ALU when loading L. */
-    int skip;             /* Skip flag. */
-    int carry;            /* Carry flag. */
-    int dns;              /* Do NOVA style shifts. */
-    uint16_t rmr;         /* Reset mode register
-                           * (for tasks to start in either ROM0 or RAM0).
-                           */
+    int aluC0;                    /* Last carry of ALU when loading L. */
+    int skip;                     /* Skip flag. */
+    int carry;                    /* Carry flag. */
+    int dns;                      /* Do NOVA style shifts. */
+    uint16_t rmr;                 /* Reset mode register (for tasks to start
+                                   * in either ROM0 or RAM0).
+                                   */
 
-    uint16_t *consts;     /* Pointer to the constant rom. */
-    uint32_t *microcode;  /* Microcode ROM + RAM. */
+    uint16_t *consts;             /* Pointer to the constant rom. */
+    uint32_t *microcode;          /* Microcode ROM + RAM. */
 
-    uint16_t *task_mpc;   /* Microcode program counter (1 per task). */
-    uint64_t cycle;       /* Current cpu cycle. */
+    uint16_t *task_mpc;           /* Microcode program counter + bank
+                                   * select (1 per task).
+                                   */
+    uint64_t cycle;               /* Current cpu cycle. */
+    uint64_t next_cycle;          /* Next cycle when the simulator needs
+                                   * to check the controllers for events.
+                                   */
 
-    uint16_t *mem;        /* Main memory. */
-    uint16_t *xm_banks;   /* Banks for the different tasks. */
-    uint8_t *sr_banks;    /* S register banks for the tasks. */
+    uint16_t *mem;                /* Main memory. */
+    uint16_t *xm_banks;           /* Banks for the different tasks. */
+    uint8_t *sr_banks;            /* S register banks for the tasks. */
 
-    uint16_t mem_cycle;   /* A counter to keep track the current
-                           * memory cycle (for reading and writing).
-                           */
-    uint8_t mem_task;     /* The task accessing memory. */
-    uint16_t mem_low;     /* Latched memory value (1st word). */
-    uint16_t mem_high;    /* Latched memory value (2nd word). */
-    int mem_extended;     /* Extended memory access. */
-    int mem_which;        /* A boolean flag indicating which
-                           * memory operation is happening.
-                           */
+    uint16_t mem_cycle;           /* A counter to keep track the current
+                                   * memory cycle (for reading and writing).
+                                   */
+    uint8_t mem_task;             /* The task accessing memory. */
+    uint16_t mem_low;             /* Latched memory value (1st word). */
+    uint16_t mem_high;            /* Latched memory value (2nd word). */
+    int mem_extended;             /* Extended memory access. */
+    int mem_which;                /* A boolean flag indicating which
+                                   * memory operation is happening.
+                                   */
 
-    struct disk dsk;      /* The disk controller. */
-    struct display dpl;   /* The display controller. */
-    struct ethernet eth;  /* The ethernet controller. */
-    struct keyboard kb;   /* The keyboard controller. */
-    struct mouse ms;      /* The mouse controller. */
+    struct disk dsk;              /* The disk controller. */
+    struct display displ;         /* The display controller. */
+    struct ethernet ether;        /* The ethernet controller. */
+    struct keyboard keyb;         /* The keyboard controller. */
+    struct mouse mous;            /* The mouse controller. */
 };
 
 /* Functions. */
@@ -88,10 +86,10 @@ void simulator_destroy(struct simulator *sim);
 
 /* Creates a new simulator object.
  * This obeys the initvar / destroy / create protocol.
- * The `st` variable specifies the system type.
+ * The `sys_type` variable specifies the system type.
  * Returns TRUE on success.
  */
-int simulator_create(struct simulator *sim, enum system_type st);
+int simulator_create(struct simulator *sim, enum system_type sys_type);
 
 /* Loads the constant rom from a file.
  * The filename with the constants is defined by parameter `filename`.

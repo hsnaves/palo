@@ -6,17 +6,17 @@
 
 /* Functions. */
 
-void keyboard_initvar(struct keyboard *k)
+void keyboard_initvar(struct keyboard *keyb)
 {
 }
 
-void keyboard_destroy(struct keyboard *k)
+void keyboard_destroy(struct keyboard *keyb)
 {
 }
 
-int keyboard_create(struct keyboard *k)
+int keyboard_create(struct keyboard *keyb)
 {
-    keyboard_initvar(k);
+    keyboard_initvar(keyb);
     return TRUE;
 }
 

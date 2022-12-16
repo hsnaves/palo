@@ -75,10 +75,14 @@
 #define F1_LRSH1                  05
 #define F1_LLCY8                  06
 #define F1_CONSTANT               07
+#define F1_SPECIFIC_THRESH       010
+/* F1 functions of ram tasks. */
+#define F1_RAM_SWMODE            010
+#define F1_RAM_WRTRAM            011
+#define F1_RAM_RDRAM             012
+#define F1_RAM_LOAD_SRB          013
 /* F1 functions specific to the emulator task. */
 #define F1_EMU_SWMODE            010
-#define F1_EMU_WRTRAM            011
-#define F1_EMU_RDRAM             012
 #define F1_EMU_LOAD_RMR          013
 #define F1_EMU_LOAD_ESRB         015
 #define F1_EMU_RSNF              016
@@ -105,6 +109,7 @@
 #define F2_ALUCY                  05
 #define F2_STORE_MD               06
 #define F2_CONSTANT               07
+#define F2_SPECIFIC_THRESH       010
 /* F2 functions specific to the emulator task. */
 #define F2_EMU_BUSODD            010
 #define F2_EMU_MAGIC             011
@@ -148,14 +153,14 @@
 #define NEXT_MASK_CONSTANT   0x40000
 
 /* Decoding the microcode. */
-#define MICROCODE_RSEL(microcode) (((microcode) >> 27) & R_MASK)
-#define MICROCODE_ALUF(microcode) (((microcode) >> 23) & 0x0F)
-#define MICROCODE_BS(microcode) (((microcode) >> 20) & 0x07)
-#define MICROCODE_F1(microcode) (((microcode) >> 16) & 0x0F)
-#define MICROCODE_F2(microcode) (((microcode) >> 12) & 0x0F)
-#define MICROCODE_T(microcode) (((microcode) >> 11) & 0x01)
-#define MICROCODE_L(microcode) (((microcode) >> 10) & 0x01)
-#define MICROCODE_NEXT(microcode) ((microcode) & 0x3FF)
+#define MICROCODE_RSEL(mcode) (((mcode) >> 27) & R_MASK)
+#define MICROCODE_ALUF(mcode) (((mcode) >> 23) & 0x0F)
+#define MICROCODE_BS(mcode) (((mcode) >> 20) & 0x07)
+#define MICROCODE_F1(mcode) (((mcode) >> 16) & 0x0F)
+#define MICROCODE_F2(mcode) (((mcode) >> 12) & 0x0F)
+#define MICROCODE_T(mcode) (((mcode) >> 11) & 0x01)
+#define MICROCODE_L(mcode) (((mcode) >> 10) & 0x01)
+#define MICROCODE_NEXT(mcode) ((mcode) & 0x3FF)
 
 /* For constant address. */
 #define CONST_ADDR_RSEL(addr) ((addr) >> 3)
@@ -164,11 +169,46 @@
 
 /* Data structures and types. */
 
+/* Possible alto systems. */
+enum system_type {
+    ALTO_I,                       /* Alto I with 1K rom and 1K ram. */
+    ALTO_II_1KROM,                /* Alto II with 1K rom and 1K ram. */
+    ALTO_II_2KROM,                /* Alto II with 2K rom and 1K ram. */
+    ALTO_II_3KRAM,                /* Alto II with 1K rom and 3K ram. */
+};
+
+/* Structure representing the partially decoded microcode. */
+struct microcode {
+    enum system_type sys_type;    /* The alto system type. */
+    uint16_t address;             /* The address of the microcode
+                                   * (including bank number).
+                                   */
+    uint32_t mcode;               /* The microcode itself. */
+    uint8_t task;                 /* The current task. */
+
+    uint16_t rsel;                /* The register select. */
+    uint16_t aluf;                /* The alu function. */
+    uint16_t bs;                  /* The bus source. */
+    uint16_t f1;                  /* The F1 function. */
+    uint16_t f2;                  /* The F2 function. */
+    int load_t;                   /* Load T. */
+    int load_l;                   /* Load L. */
+    uint16_t next;                /* The address of the next
+                                   * microinstruction.
+                                   */
+    int load_t_from_alu;          /* To load T from the ALU results. */
+    int use_constant;             /* If either F1 or F2 specify a
+                                   * constant.
+                                   */
+    int bs_use_crom;              /* If the BS fields uses constants. */
+    uint16_t const_addr;          /* The address of the constant. */
+    int ram_task;                 /* If this is a RAM task. */
+};
+
 /* A buffer used by the decoder. */
 struct decode_buffer {
     char *buf;                    /* The character buffer. */
     size_t buf_size;              /* The buffer size in bytes. */
-    size_t pos;                   /* The current buffer position. */
     size_t len;                   /* Total length of the string. */
 };
 
@@ -177,39 +217,50 @@ struct decode_buffer {
  * and the GOTO destination labels.
  */
 struct decoder;
-typedef void (*decoder_cb)(const struct decoder *dec, uint16_t val,
+typedef void (*decoder_cb)(struct decoder *dec, uint16_t val,
                            struct decode_buffer *output);
 
 /* The microcode decoder. */
 struct decoder {
-    uint16_t address;             /* The address of the microcode. */
-    uint32_t microcode;           /* The microcode itself. */
-    uint8_t task;                 /* The current task. */
-    void *arg;                    /* Extra parameter used by the
-                                   * callbacks.
-                                   */
+    struct microcode mc;          /* The microcode itself. */
+    int error;                    /* Indicates an error. */
+    int has_bus_assignment;       /* Decoding detected bus assignment. */
+    int has_alu_assignment;       /* Decoding detected alu assignment. */
 
     decoder_cb const_cb;          /* To decode constants. */
     decoder_cb reg_cb;            /* To decode R register names. */
     decoder_cb goto_cb;           /* To decode GOTO statements. */
+
+    void *arg;                    /* Extra parameter used by the
+                                   * callbacks.
+                                   */
 };
 
 /* Functions. */
 
+/* Predecodes the microcode.
+ * The system type is given by `sys_type`, the address of the microcode
+ * in `address` (this might include the bank number), the microcode
+ * itself in `mcode` and the current task in `task`.
+ */
+void microcode_predecode(struct microcode *mc,
+                         enum system_type sys_type,
+                         uint16_t address, uint32_t mcode,
+                         uint8_t task);
+
 /* Function to guess the task from the microcode.
  * Returns a mask of possible tasks that can run the microcode.
  */
-uint16_t microcode_guess_tasks(uint32_t microcode);
+uint16_t microcode_guess_tasks(const struct microcode *mc);
 
 /* Which bits of the following microcode's NEXT field can be
- * modified by the current microcode. The current task is
- * indicate by the `task` parameter.
+ * modified by the current microcode.
  * Returns the bit mask of modified by the microcode.
  * The result is 32 bits so it can accomodate some other meta
  * bits such as NEXT_MASK_DSK_INIT, NEXT_MASK_BUS, and
  * NEXT_MASK_CONSTANT.
  */
-uint32_t microcode_next_mask(uint32_t microcode, uint8_t  task);
+uint32_t microcode_next_mask(const struct microcode *mc);
 
 /* Resets the decode buffer. */
 void decode_buffer_reset(struct decode_buffer *buf);
@@ -219,10 +270,17 @@ void decode_buffer_print(struct decode_buffer *buf,
                          const char *fmt, ...)
     __attribute__((format (printf, 2, 3)));
 
-/* Decodes the microinstruction from the decoder `dec` into the
- * output buffer `output`.
+/* Rewinds the decode buffer by a few characters.
+ * The number of characters to rewind is given in `num_chars`.
  */
-void decoder_decode(const struct decoder *dec,
+void decode_buffer_rewind(struct decode_buffer *buf, size_t num_chars);
+
+/* Decodes the microinstruction from the decoder `dec` into the
+ * output buffer `output`. The details of the microinstruction are
+ * given by `mc`.
+ */
+void decoder_decode(struct decoder *dec,
+                    const struct microcode *mc,
                     struct decode_buffer *output);
 
 

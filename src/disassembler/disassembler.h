@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/allocator.h"
 
 /* Data structures and types. */
@@ -34,6 +35,7 @@ struct instruction {
 
 /* Structure to represent the disassembler. */
 struct disassembler {
+    enum system_type sys_type;    /* The alto system type. */
     struct allocator oalloc;      /* The object allocator. */
 
     uint16_t *consts;             /* The value of the constants. */
@@ -65,9 +67,11 @@ void disassembler_destroy(struct disassembler *dis);
 
 /* Creates a new disassembler object.
  * This obeys the initvar / destroy / create protocol.
+ * The `sys_type` variable specifies the system type.
  * Returns TRUE on success.
  */
-int disassembler_create(struct disassembler *dis);
+int disassembler_create(struct disassembler *dis,
+                        enum system_type sys_type);
 
 /* Loads the constant rom from a file.
  * The filename with the constants is defined by parameter `filename`.

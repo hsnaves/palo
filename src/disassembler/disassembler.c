@@ -43,7 +43,8 @@ void disassembler_destroy(struct disassembler *dis)
     allocator_destroy(&dis->oalloc);
 }
 
-int disassembler_create(struct disassembler *dis)
+int disassembler_create(struct disassembler *dis,
+                        enum system_type sys_type)
 {
     disassembler_initvar(dis);
 
@@ -69,6 +70,7 @@ int disassembler_create(struct disassembler *dis)
         return FALSE;
     }
 
+    dis->sys_type = sys_type;
     dis->free_nodes = NULL;
     return TRUE;
 }
@@ -283,11 +285,10 @@ int add_call(struct disassembler *dis, uint16_t from, uint16_t to,
 static
 int propagate_information(struct disassembler *dis, uint8_t task)
 {
+    struct microcode mc;
     struct instruction *insn;
     struct address_node *n;
-    uint16_t address, next, t, bm;
-    uint16_t rsel, bs;
-    uint32_t microcode;
+    uint16_t address, tm, bm;
     uint32_t next_mask, following_next_mask;
     uint32_t prev_next_mask;
     int should_continue;
@@ -300,21 +301,21 @@ int propagate_information(struct disassembler *dis, uint8_t task)
         insn->details &= ~INSN_PENDING;
         insn->details |= INSN_VISITED;
 
-        microcode = dis->microcode[address];
+        microcode_predecode(&mc,
+                            dis->sys_type,
+                            address,
+                            dis->microcode[address],
+                            task);
 
-        rsel = MICROCODE_RSEL(microcode);
-        bs = MICROCODE_BS(microcode);
-        next = MICROCODE_NEXT(microcode);
-
-        t = microcode_guess_tasks(microcode);
-        if (!(t & (1 << task))) {
+        tm = microcode_guess_tasks(&mc);
+        if (!(tm & (1 << task))) {
             /* This microcode cannot run in this task. */
             insn->details |= INSN_NOT_VALID;
         }
 
-        following_next_mask = microcode_next_mask(microcode, task);
+        following_next_mask = microcode_next_mask(&mc);
         if (following_next_mask & NEXT_MASK_CONSTANT) {
-            bm = dis->consts[CONST_ADDR(rsel, bs)];
+            bm = dis->consts[mc.const_addr];
             bm &= (uint16_t) following_next_mask;
             following_next_mask &= ~(0xFFFF);
             following_next_mask |= bm;
@@ -333,7 +334,7 @@ int propagate_information(struct disassembler *dis, uint8_t task)
                     if (prev_next_mask & NEXT_MASK_BUS) {
                         /* Skip BUS jumps for now. */
                         if (bm == 0xFFFF) {
-                            if (next == 0) continue;
+                            if (mc.next == 0) continue;
                             bm = 0x0000;
                         }
                     }
@@ -346,8 +347,11 @@ int propagate_information(struct disassembler *dis, uint8_t task)
                             continue;
                     }
 
-                    if (unlikely(!add_call(dis, address, next | next_mask,
-                                           next_mask, following_next_mask,
+                    if (unlikely(!add_call(dis,
+                                           address,
+                                           mc.next | next_mask,
+                                           next_mask,
+                                           following_next_mask,
                                            task)))
                         return FALSE;
                 }
@@ -401,7 +405,7 @@ int disassembler_find_task_addresses(struct disassembler *dis)
  * Callback to print constants.
  */
 static
-void disasm_constant_cb(const struct decoder *dec, uint16_t val,
+void disasm_constant_cb(struct decoder *dec, uint16_t val,
                         struct decode_buffer *output)
 {
     struct disassembler *dis;
@@ -413,7 +417,7 @@ void disasm_constant_cb(const struct decoder *dec, uint16_t val,
  * Callback to print R registers.
  */
 static
-void disasm_register_cb(const struct decoder *dec, uint16_t val,
+void disasm_register_cb(struct decoder *dec, uint16_t val,
                         struct decode_buffer *output)
 {
     if (val <= R_MASK) {
@@ -427,7 +431,7 @@ void disasm_register_cb(const struct decoder *dec, uint16_t val,
  * Callback to print GOTO statements.
  */
 static
-void disasm_goto_cb(const struct decoder *dec, uint16_t val,
+void disasm_goto_cb(struct decoder *dec, uint16_t val,
                     struct decode_buffer *output)
 {
     decode_buffer_print(output, ":%05o", val);
@@ -437,15 +441,9 @@ int disassembler_disassemble(struct disassembler *dis,
                              uint16_t address, uint8_t task,
                              char *output, size_t output_size)
 {
+    struct microcode mc;
     struct decoder dec;
     struct decode_buffer out;
-    uint32_t microcode;
-    uint16_t rsel;
-    uint16_t aluf;
-    uint16_t bs;
-    uint16_t f1, f2;
-    int load_t, load_l;
-    uint16_t next;
 
     if (unlikely(address >= MICROCODE_SIZE)) return FALSE;
 
@@ -453,31 +451,26 @@ int disassembler_disassemble(struct disassembler *dis,
     out.buf_size = output_size;
     decode_buffer_reset(&out);
 
-    microcode = dis->microcode[address];
-    rsel = MICROCODE_RSEL(microcode);
-    aluf = MICROCODE_ALUF(microcode);
-    bs = MICROCODE_BS(microcode);
-    f1 = MICROCODE_F1(microcode);
-    f2 = MICROCODE_F2(microcode);
-    load_t = MICROCODE_T(microcode);
-    load_l = MICROCODE_L(microcode);
-    next = MICROCODE_NEXT(microcode);
+    microcode_predecode(&mc,
+                        dis->sys_type,
+                        address,
+                        dis->microcode[address],
+                        task);
 
     decode_buffer_print(&out,
                         "%05o   %02o    %011o  %02o   %02o   %o  "
                         "%02o %02o %o %o %04o   ",
-                        address, task, microcode, rsel, aluf, bs,
-                        f1, f2, load_t, load_l, next);
+                        mc.address, mc.task, mc.mcode, mc.rsel,
+                        mc.aluf, mc.bs,
+                        mc.f1, mc.f2, mc.load_t, mc.load_l,
+                        mc.next);
 
-    dec.address = address;
-    dec.microcode = microcode;
-    dec.task = task;
     dec.arg = dis;
     dec.const_cb = &disasm_constant_cb;
     dec.reg_cb = &disasm_register_cb;
     dec.goto_cb = &disasm_goto_cb;
 
-    decoder_decode(&dec, &out);
+    decoder_decode(&dec, &mc, &out);
     return TRUE;
 }
 

@@ -3,9 +3,10 @@
 #define __GUI_GUI_H
 
 /* Data structures and types. */
+/* A structure representing the user interface. */
 struct gui {
-    int running;    /* User interface is running. */
-    void *internal; /* opaque internal structure. */
+    int running;                  /* User interface is running. */
+    void *internal;               /* Opaque internal structure. */
 };
 
 /* Functions. */

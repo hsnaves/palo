@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "disassembler/disassembler.h"
+#include "microcode/microcode.h"
 #include "common/utils.h"
 
 static
@@ -57,7 +58,7 @@ int main(int argc, char **argv)
 
     disassembler_initvar(&dis);
 
-    if (unlikely(!disassembler_create(&dis))) {
+    if (unlikely(!disassembler_create(&dis, ALTO_II_3KRAM))) {
         report_error("main: could not create disassembler");
         goto error;
     }
