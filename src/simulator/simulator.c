@@ -686,10 +686,13 @@ void do_f1(struct simulator *sim, uint16_t bus,
         case F1_EMU_STARTF:
             break;
         default:
-            report_error("simulator: step: "
-                         "invalid F1 function for emulator");
-            sim->error = TRUE;
-            return;
+            if (f1 > F1_CONSTANT) {
+                report_error("simulator: step: "
+                             "invalid F1 function %o for emulator",
+                         f1);
+                sim->error = TRUE;
+                return;
+            }
         }
         break;
     }
