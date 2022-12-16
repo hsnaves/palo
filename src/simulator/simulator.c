@@ -23,6 +23,48 @@
 #define MEMORY_TOP              0xFDFF
 #define XM_BANK_START           0xFFE0
 
+/* For fixing the microcode in RAM. */
+#define MC_INVERT_MASK      0x00088400
+
+/* Static tables. */
+
+/* Table used to implement F2_EMU_ACSOURCE and F2_EMU_IDISP. */
+static const uint8_t ACSROM[] = {
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01,
+    0x02, 0x05, 0x03, 0x06, 0x07, 0x0E, 0x0E, 0x0E,
+    0x0E, 0x04, 0x04, 0x0E, 0x0E, 0x0E, 0x01, 0x0E,
+    0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0E,
+    0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0E, 0x0F,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+    0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
+    0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+    0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+    0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+    0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+    0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+    0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
+    0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
+    0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
+    0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05,
+    0x01, 0x00, 0x02, 0x03, 0x04, 0x05, 0x0E, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0d, 0x06, 0x0F,
+    0x01, 0x00, 0x02, 0x03, 0x04, 0x05, 0x0E, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0d, 0x06, 0x0F
+};
+
+
 /* Functions. */
 
 void simulator_initvar(struct simulator *sim)
@@ -34,7 +76,7 @@ void simulator_initvar(struct simulator *sim)
     sim->task_mpc = NULL;
     sim->mem = NULL;
     sim->xm_banks = NULL;
-    sim->sr_banks = NULL;
+    sim->sreg_banks = NULL;
 
     disk_initvar(&sim->dsk);
     display_initvar(&sim->displ);
@@ -72,8 +114,8 @@ void simulator_destroy(struct simulator *sim)
     if (sim->xm_banks) free((void *) sim->xm_banks);
     sim->xm_banks = NULL;
 
-    if (sim->sr_banks) free((void *) sim->sr_banks);
-    sim->sr_banks = NULL;
+    if (sim->sreg_banks) free((void *) sim->sreg_banks);
+    sim->sreg_banks = NULL;
 }
 
 int simulator_create(struct simulator *sim, enum system_type sys_type)
@@ -92,12 +134,12 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
         malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     sim->xm_banks = (uint16_t *)
         malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
-    sim->sr_banks = (uint8_t *)
+    sim->sreg_banks = (uint8_t *)
         malloc(NUM_BANK_SLOTS * sizeof(uint8_t));
 
     if (unlikely(!sim->r || !sim->s
                  || !sim->consts || !sim->microcode || !sim->task_mpc
-                 || !sim->mem || !sim->xm_banks || !sim->sr_banks)) {
+                 || !sim->mem || !sim->xm_banks || !sim->sreg_banks)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
         return FALSE;
@@ -257,7 +299,7 @@ void simulator_reset(struct simulator *sim)
     memset(sim->s, 0, NUM_S_REGISTERS * sizeof(uint16_t));
     memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
-    memset(sim->sr_banks, 0, NUM_BANK_SLOTS * sizeof(uint8_t));
+    memset(sim->sreg_banks, 0, NUM_BANK_SLOTS * sizeof(uint8_t));
 
     for (task = 0; task < TASK_NUM_TASKS; task++) {
         sim->task_mpc[task] = (uint16_t) task;
@@ -272,22 +314,26 @@ void simulator_reset(struct simulator *sim)
     sim->ir = 0;
     sim->mir = 0;
     sim->mpc = 0;
-    sim->ctask = 0;
-    sim->ntask = 0;
+    sim->ctask = TASK_EMULATOR;
+    sim->ntask = TASK_EMULATOR;
+    sim->nntask = TASK_EMULATOR;
     sim->pending = (1 << TASK_EMULATOR);
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
-    sim->dns = FALSE;
     sim->rmr = 0xFFFF;
+    sim->rdram = FALSE;
+    sim->wrtram = FALSE;
+    sim->soft_reset = FALSE;
+    sim->cram_addr = 0x0;
+    sim->cycle = 0;
+    sim->next_cycle = 0;
     sim->mem_cycle = 0;
     sim->mem_task = TASK_EMULATOR;
     sim->mem_low = 0xFFFF;
     sim->mem_high = 0xFFFF;
     sim->mem_extended = 0;
     sim->mem_which = 0;
-    sim->cycle = 0;
-    sim->next_cycle = 0;
 }
 
 uint16_t simulator_read(const struct simulator *sim, uint16_t address,
@@ -332,7 +378,8 @@ void simulator_write(struct simulator *sim, uint16_t address,
     }
 }
 
-/* Obtains the RSEL value (which can be modified by ACSOURCE and ACDEST).
+/* Obtains the RSEL value (which can be modified by F2_EMU_ACSOURCE,
+ * F2_EMU_ACDEST, and F2_EMU_LOAD_DNS).
  * The current predecoded microcode is in `mc`.
  * Returns the RSEL value.
  */
@@ -362,6 +409,95 @@ uint16_t get_modified_rsel(struct simulator *sim,
     return rsel;
 }
 
+/* Decodes an address to access the microcode RAM.
+ * The parameter `low_half` specifies whether to read the lower
+ * or the upper half of the word.
+ * Returns the RAM address.
+ */
+static
+uint16_t decode_ram_address(struct simulator *sim,
+                            int *low_half)
+{
+    uint16_t addr;
+    uint8_t bank;
+
+    if ((sim->cram_addr & 0x0800) != 0) {
+        report_error("simulator: step: "
+                     "reading from (or writing to) ROM "
+                     "is not supported");
+        sim->error = TRUE;
+        return 0;
+    }
+
+    *low_half = ((sim->cram_addr & 0x0400) == 0);
+    addr = sim->cram_addr & 0x3FF;
+
+    if (sim->sys_type == ALTO_II_3KRAM) {
+        bank = (sim->cram_addr >> 12) & 3;
+        if (bank == 3) {
+            report_error("simulator: step: "
+                         "RAM bank 3 not supported");
+            sim->error = TRUE;
+            return 0xFFFF;
+        }
+        /* Plus 1 for the ROM bank. */
+        bank += 1;
+    } else if (sim->sys_type == ALTO_II_2KROM) {
+        /* Plus 2 for the ROM banks. */
+        bank = 2;
+    } else {
+        /* Plus 1 for the ROM bank. */
+        bank = 1;
+    }
+
+    addr += (bank << 10);
+    return addr;
+}
+
+/* Performs any pending reads from the microcode RAM.
+ * Returns the value read from the microcode RAM.
+ */
+static
+uint16_t do_rdram(struct simulator *sim)
+{
+    uint32_t mcode;
+    uint16_t addr, val;
+    int low_half;
+
+    if (!sim->rdram) return 0xFFFF;
+    addr = decode_ram_address(sim, &low_half);
+    if (sim->error) return 0xFFFF;
+
+    mcode = sim->microcode[addr];
+    mcode ^= MC_INVERT_MASK;
+
+    val = (low_half) ? mcode : (mcode >> 16);
+    sim->rdram = FALSE;
+    return val;
+}
+
+/* Performs any pending writes to the microcode RAM.
+ * The value of the alu isin `alu`.
+ */
+static
+void do_wrtram(struct simulator *sim, uint16_t alu)
+{
+    uint32_t mcode;
+    uint16_t addr;
+    int low_half;
+
+    if (!sim->wrtram) return;
+    addr = decode_ram_address(sim, &low_half);
+    if (sim->error) return;
+
+    mcode = ((uint32_t) sim->m) << 16;
+    mcode |= alu;
+    mcode ^= MC_INVERT_MASK;
+
+    sim->microcode[addr] = mcode;
+    sim->wrtram = FALSE;
+}
+
 /* Auxiliary function to obtain the value of the bus.
  * The current predecoded microcode is in `mc`.
  * The parameter `modified_rsel` specifies the modified RSEL value.
@@ -375,15 +511,16 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
     uint16_t t;
     uint8_t rb;
 
+    output = do_rdram(sim);
+
     if (mc->use_constant) {
         /* Not used the modified RSEL here. */
-        return sim->consts[mc->const_addr];
+        output &= sim->consts[mc->const_addr];
+        return output;
     }
 
     if (mc->bs_use_crom) {
-        output = sim->consts[mc->const_addr];
-    } else {
-        output = 0xFFFF;
+        output &= sim->consts[mc->const_addr];
     }
 
     switch (mc->bs) {
@@ -408,7 +545,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         break;
     case BS_READ_MD:
         /* TODO: check for delays. */
-        output = (sim->mem_which) ? sim->mem_high : sim->mem_low;
+        output &= (sim->mem_which) ? sim->mem_high : sim->mem_low;
         sim->mem_which = (1 ^ sim->mem_which);
         break;
     case BS_READ_MOUSE:
@@ -424,7 +561,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
 
     default:
         if (mc->ram_task) {
-            rb = sim->sr_banks[mc->task];
+            rb = sim->sreg_banks[mc->task];
             if (mc->bs == BS_RAM_READ_S_LOCATION) {
                 /* Do not use modified_rsel here. */
                 if (mc->rsel == 0) {
@@ -534,6 +671,8 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
 
 /* Auxiliary function to perform the shift computation.
  * The current predecoded microcode is in `mc`.
+ * This function might modify the value of `load_r`, in case it is
+ * performing a NOVA style shift.
  * The value of the nova carry is given by `nova_carry`, and since it is
  * a pointer, it will be populated with the new value of the nova carry
  * on return.
@@ -541,21 +680,58 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
  */
 static
 uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
-                  int *nova_carry)
+                  int *load_r, int *nova_carry)
 {
     uint16_t res;
-    int has_magic;
+    int dns, has_magic;
+    int carry;
 
+    dns = (mc->f2 == F2_EMU_LOAD_DNS);
     has_magic = (mc->f2 == F2_EMU_MAGIC);
+
+    if (dns) {
+        *load_r = ((sim->ir & 0x0008) == 0);
+
+        switch ((sim->ir >> 4) & 3) {
+        case 0: /* not affected. */
+            carry = sim->carry;
+        case 1: /* Z */
+            carry = 0;
+        case 2: /* O */
+            carry = 1;
+        case 3: /* C */
+            carry = !(sim->carry);
+        }
+
+        switch ((sim->ir >> 8) & 7) {
+        case 0:
+        case 2:
+        case 7:
+            /* COM, MOV, AND - carry unaffected. */
+            break;
+        case 1:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+            if (sim->aluC0) {
+                carry = !carry;
+            }
+            break;
+        }
+    } else {
+        carry = 0;
+        *nova_carry = 0;
+    }
 
     switch (mc->f1) {
     case F1_LLSH1:
         res = sim->l << 1;
         if (has_magic) {
             res |= (sim->t & 0x8000) ? 1 : 0;
-        } else if (sim->dns) {
+        } else if (dns) {
             /* Nova style shift */
-            res |= (*nova_carry) ? 1 : 0;
+            res |= (carry) ? 1 : 0;
             *nova_carry = (sim->l & 0x8000) ? 1 : 0;
         }
         break;
@@ -563,9 +739,9 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
         res = sim->l >> 1;
         if (has_magic) {
             res |= (sim->t & 1) ? 0x8000 : 0;
-        } else if (sim->dns) {
+        } else if (dns) {
             /* Nova style shift */
-            res |= (nova_carry) ? 0x8000 : 0;
+            res |= (carry) ? 0x8000 : 0;
             *nova_carry = sim->l & 1;
         }
         break;
@@ -584,11 +760,10 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
 /* Performs the F1 function.
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
- * Lastly, the value of the shifter is in `shifter_output`.
  */
 static
 void do_f1(struct simulator *sim, const struct microcode *mc,
-           uint16_t bus, uint16_t alu, uint16_t shifter_output)
+           uint16_t bus, uint16_t alu)
 {
     uint16_t addr;
     uint8_t tmp;
@@ -596,7 +771,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     switch (mc->f1) {
     case F1_NONE:
         /* Nothing to do. */
-        break;
+        return;
     case F1_CONSTANT:
     case F1_LLSH1:
     case F1_LRSH1:
@@ -633,7 +808,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         /* TODO: Maybe prevent two consecutive switches? */
         for (tmp = TASK_NUM_TASKS; tmp--;) {
             if (sim->pending & (1 << tmp)) {
-                sim->ntask = tmp;
+                sim->nntask = tmp;
                 break;
             }
         }
@@ -664,15 +839,17 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             }
             break;
         case F1_RAM_WRTRAM:
+            sim->wrtram = TRUE;
             break;
         case F1_RAM_RDRAM:
+            sim->rdram = TRUE;
             break;
         case F1_RAM_LOAD_SRB:
             if (mc->task == TASK_EMULATOR) break;
             tmp = (uint8_t) ((bus >> 1) & 0x7);
             if (sim->sys_type != ALTO_II_3KRAM)
                 tmp = 0;
-            sim->sr_banks[mc->task] = tmp;
+            sim->sreg_banks[mc->task] = tmp;
             break;
         }
     }
@@ -689,21 +866,36 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             tmp = (uint8_t) ((bus >> 1) & 0x7);
             if (sim->sys_type != ALTO_II_3KRAM)
                 tmp = 0;
-            sim->sr_banks[mc->task] = tmp;
+            sim->sreg_banks[mc->task] = tmp;
             break;
         case F1_EMU_RSNF:
             /* Already handled. */
             break;
         case F1_EMU_STARTF:
+            if (bus & 0x8000) {
+                sim->soft_reset = TRUE;
+            } else {
+                switch (bus) {
+                case 0x01:
+                case 0x02:
+                case 0x03:
+                    /* TODO: Implement this. */
+                    break;
+
+                default:
+                    report_error("simulator: step: "
+                                 "invalid STARTF value");
+                    sim->error = TRUE;
+                    return;
+                }
+            }
             break;
         default:
-            if (mc->f1 >= F1_SPECIFIC_THRESH) {
-                report_error("simulator: step: "
-                             "invalid F1 function %o for emulator",
-                             mc->f1);
-                sim->error = TRUE;
-                return;
-            }
+            report_error("simulator: step: "
+                         "invalid F1 function %o for emulator",
+                         mc->f1);
+            sim->error = TRUE;
+            return;
         }
         break;
     }
@@ -712,13 +904,15 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 /* Performs the F2 function.
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
- * Lastly, the value of the shifter is in `shifter_output`.
+ * The value of the shifter is in `shifter_output`, and the
+ * value of the nova style carry is in `nova_carry`.
  * Retuns the bits that should be modified for the NEXT part of the
  * following instruction.
  */
 static
 uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
-               uint16_t bus, uint16_t alu, uint16_t shifter_output)
+               uint16_t bus, uint16_t alu, uint16_t shifter_output,
+               int nova_carry)
 {
     uint16_t next_extra;
     uint16_t addr;
@@ -768,6 +962,35 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         case F2_EMU_BUSODD:
             return (bus & 1);
         case F2_EMU_LOAD_DNS:
+            switch (sim->ir & 7) {
+            case 0:
+                sim->skip = FALSE;
+                break;
+            case 1: /* SKP */
+                sim->skip = TRUE;
+                break;
+            case 2: /* SZC */
+                sim->skip = (!nova_carry);
+                break;
+            case 3: /* SNC */
+                sim->skip = nova_carry;
+                break;
+            case 4: /* SZR */
+                sim->skip = (shifter_output == 0);
+                break;
+            case 5: /* SNR */
+                sim->skip = (shifter_output != 0);
+                break;
+            case 6: /* SEZ */
+                sim->skip = (shifter_output == 0 || (!nova_carry));
+                break;
+            case 7: /* SBN */
+                sim->skip = (shifter_output != 0 && nova_carry);
+                break;
+            }
+            if ((sim->ir & 0x0008) == 0) {
+                sim->carry = nova_carry;
+            }
             break;
         case F2_EMU_LOAD_IR:
             sim->ir = bus;
@@ -776,9 +999,25 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             if (bus & 0x8000) next_extra |= 0x8;
             return next_extra;
         case F2_EMU_IDISP:
-            break;
+            if (sim->ir & 0x8000) {
+                next_extra = 3 - ((sim->ir >> 6) & 3);
+            } else {
+                next_extra = ACSROM[((sim->ir >> 8) & 0x7F) + 0x80];
+            }
+            return next_extra;
         case F2_EMU_ACSOURCE:
-            break;
+            if (sim->ir & 0x8000) {
+                next_extra = 3 - ((sim->ir >> 6) & 3);
+            } else {
+                next_extra = ACSROM[(sim->ir >> 8) & 0x7F];
+            }
+            return next_extra;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for emulator",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
         }
         break;
     }
@@ -788,23 +1027,29 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
 
 /* Writes back the registers.
  * The current predecoded microcode is in `mc`.
- * The value of the modified RSEL is in `modified_rsel`, bus is in `bus`,
- * alu in `alu`, the output of the shifter is in `shifter_output`, and
- * the carry from the ALU in `alu_carry`.
+ * The value of the modified RSEL is in `modified_rsel`. The flag
+ * `load_r` tells this function to load the new value of the R register.
+ * The bus value is in `bus`, the alu in `alu`, the output of the
+ * shifter is in `shifter_output`, and the carry from the ALU in `aluC0`.
  */
 static
-void wb_registers(struct simulator *sim, const struct microcode *mc,
-                  uint16_t modified_rsel, uint16_t bus, uint16_t alu,
-                  uint16_t shifter_output, int alu_carry)
+void wb_registers(struct simulator *sim,
+                  const struct microcode *mc,
+                  uint16_t modified_rsel, int load_r,
+                  uint16_t bus, uint16_t alu,
+                  uint16_t shifter_output, int aluC0)
 {
     uint8_t rb;
 
     /* Writes back the R register. */
+    if (load_r) {
+        sim->r[modified_rsel] = shifter_output;
+    }
+
+    /* Writes back the S register. */
     if (!mc->use_constant) {
-        if (mc->bs == BS_LOAD_R) {
-            sim->r[modified_rsel] = shifter_output;
-        } else if (mc->ram_task && mc->bs == BS_RAM_LOAD_S_LOCATION) {
-            rb = sim->sr_banks[mc->task];
+        if (mc->ram_task && mc->bs == BS_RAM_LOAD_S_LOCATION) {
+            rb = sim->sreg_banks[mc->task];
             sim->s[rb * NUM_R_REGISTERS + mc->rsel] = sim->m;
         }
     }
@@ -815,7 +1060,7 @@ void wb_registers(struct simulator *sim, const struct microcode *mc,
         if (mc->task == TASK_EMULATOR) {
             sim->m = alu;
         }
-        sim->aluC0 = alu_carry;
+        sim->aluC0 = aluC0;
     }
 
     /* Writes back the T register. */
@@ -825,6 +1070,7 @@ void wb_registers(struct simulator *sim, const struct microcode *mc,
         } else {
             sim->t = bus;
         }
+        sim->cram_addr = alu;
     }
 }
 
@@ -837,20 +1083,23 @@ void update_program_counters(struct simulator *sim, uint16_t next_extra)
 {
     uint32_t mcode;
     uint16_t mpc;
-    uint8_t ctask;
+    uint8_t task;
+
+    /* Updates the current task. */
+    sim->ctask = sim->ntask;
 
     /* Updates the MPC and MIR. */
-    ctask = sim->ctask;
-    mpc = sim->task_mpc[ctask];
+    task = sim->ctask;
+    mpc = sim->task_mpc[task];
     mcode = sim->microcode[mpc];
-    sim->task_mpc[ctask] = (mpc & MPC_BANK_MASK)
+    sim->task_mpc[task] = (mpc & MPC_BANK_MASK)
         | MICROCODE_NEXT(mcode) | next_extra;
 
     sim->mir = mcode;
     sim->mpc = mpc;
 
-    /* Updates the current task. */
-    sim->ctask = sim->ntask;
+    /* Updates the next task. */
+    sim->ntask = sim->nntask;
     sim->cycle++;
 
     /* Updates the memory cycle. */
@@ -863,6 +1112,45 @@ void update_program_counters(struct simulator *sim, uint16_t next_extra)
     }
 }
 
+/* Performs a soft reset. */
+static
+void do_soft_reset(struct simulator *sim)
+{
+    uint16_t addr, ram_addr;
+    uint8_t task;
+
+    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
+
+    if (sim->sys_type == ALTO_II_2KROM) {
+        ram_addr = 2048;
+    } else {
+        ram_addr = 1024;
+    }
+
+    for (task = 0; task < TASK_NUM_TASKS; task++) {
+        if ((1 << task) & sim->rmr) {
+            addr = ram_addr;
+            addr |= (uint16_t) task;
+        } else {
+            addr = (uint16_t) task;
+        }
+        sim->task_mpc[task] = addr;
+    }
+
+    sim->ctask = TASK_EMULATOR;
+    sim->ntask = TASK_EMULATOR;
+    sim->nntask = TASK_EMULATOR;
+    sim->mpc = sim->task_mpc[sim->ctask];
+    sim->mir = sim->microcode[sim->mpc];
+    sim->task_mpc[sim->ctask] = (sim->mpc & MPC_BANK_MASK)
+        | MICROCODE_NEXT(sim->mir);
+
+    /* This is a hack copied from ContrAlto source code. */
+    sim->pending |= (1 << TASK_DISK_SECTOR);
+    sim->pending &= ~(1 << TASK_DISK_WORD);
+    sim->rmr = 0xFFFF;
+}
+
 void simulator_step(struct simulator *sim)
 {
     struct microcode mc;
@@ -871,8 +1159,10 @@ void simulator_step(struct simulator *sim)
     uint16_t alu;
     uint16_t shifter_output;
     uint16_t next_extra;
-    int alu_carry;
+    int aluC0;
     int nova_carry;
+    int load_r;
+    int soft_reset;
 
     if (sim->error) {
         report_error("simulator: step: "
@@ -880,11 +1170,17 @@ void simulator_step(struct simulator *sim)
         return;
     }
 
+    /* Copy the soft_reset in a local variable. */
+    soft_reset = sim->soft_reset;
+    sim->soft_reset = FALSE;
+
     microcode_predecode(&mc,
                         sim->sys_type,
                         sim->mpc,
                         sim->mir,
                         sim->ctask);
+
+    load_r = (!mc.use_constant && mc.bs == BS_LOAD_R);
 
     /* Obtain the rsel (which might be modified by some F2
      * functions when in the EMULATOR task.
@@ -896,27 +1192,33 @@ void simulator_step(struct simulator *sim)
     if (sim->error) return;
 
     /* Compute the ALU. */
-    alu = compute_alu(sim, &mc, bus, &alu_carry);
+    alu = compute_alu(sim, &mc, bus, &aluC0);
     if (sim->error) return;
 
+    /* Perform pending writes to the microcode RAM. */
+    do_wrtram(sim, alu);
+
     /* Compute the shifter output. */
-    nova_carry = sim->carry;
-    shifter_output = do_shift(sim, &mc, &nova_carry);
+    shifter_output = do_shift(sim, &mc, &load_r, &nova_carry);
 
     /* Compute the F1 function. */
-    do_f1(sim, &mc, bus, alu, shifter_output);
+    do_f1(sim, &mc, bus, alu);
     if (sim->error) return;
 
     /* Compute the F2 function. */
-    next_extra = do_f2(sim, &mc, bus, alu, shifter_output);
+    next_extra = do_f2(sim, &mc, bus, alu,
+                       shifter_output, nova_carry);
     if (sim->error) return;
 
     /* Write back the registers. */
-    wb_registers(sim, &mc, modified_rsel, bus,
-                 alu, shifter_output, alu_carry);
+    wb_registers(sim, &mc, modified_rsel, load_r,
+                 bus, alu, shifter_output, aluC0);
 
     /* Update the micro program counter and the current task. */
     update_program_counters(sim, next_extra);
+
+    /* Perform the soft reset. */
+    if (soft_reset) do_soft_reset(sim);
 }
 
 /* Auxiliary function used by simulator_disassemble().
@@ -1018,17 +1320,16 @@ void simulator_print_registers(struct simulator *sim,
 
     decode_buffer_print(&out,
                         "ALUC0: %-6o   CARRY: %-6o   "
-                        "SKIP : %-6o   DNS  : %-6o\n",
+                        "SKIP : %-6o\n",
                         sim->aluC0 ? 1 : 0,
                         sim->carry ? 1 : 0,
-                        sim->skip ? 1 : 0,
-                        sim->dns ? 1 : 0);
+                        sim->skip ? 1 : 0);
 
     decode_buffer_print(&out,
                         "XM_B : %06o   SR_B : %03o      "
                         "PEND : %06o   RMR  : %06o\n",
                         sim->xm_banks[sim->ctask],
-                        sim->sr_banks[sim->ctask],
+                        sim->sreg_banks[sim->ctask],
                         sim->pending, sim->rmr);
 
     decode_buffer_print(&out,

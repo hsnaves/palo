@@ -27,15 +27,18 @@ struct simulator {
 
     uint8_t ctask;                /* Current task. */
     uint8_t ntask;                /* The next task. */
+    uint8_t nntask;               /* The next next task. */
     uint16_t pending;             /* The bit mask of pending tasks. */
 
     int aluC0;                    /* Last carry of ALU when loading L. */
     int skip;                     /* Skip flag. */
     int carry;                    /* Carry flag. */
-    int dns;                      /* Do NOVA style shifts. */
     uint16_t rmr;                 /* Reset mode register (for tasks to start
                                    * in either ROM0 or RAM0).
                                    */
+    int rdram;                    /* Previous instruction had RDRAM. */
+    int wrtram;                   /* Previous instruction had WRTRAM. */
+    int soft_reset;               /* Previous instruction had soft reset. */
 
     uint16_t *consts;             /* Pointer to the constant rom. */
     uint32_t *microcode;          /* Microcode ROM + RAM. */
@@ -43,6 +46,7 @@ struct simulator {
     uint16_t *task_mpc;           /* Microcode program counter + bank
                                    * select (1 per task).
                                    */
+    uint16_t cram_addr;           /* Control RAM address. */
     uint64_t cycle;               /* Current cpu cycle. */
     uint64_t next_cycle;          /* Next cycle when the simulator needs
                                    * to check the controllers for events.
@@ -50,7 +54,7 @@ struct simulator {
 
     uint16_t *mem;                /* Main memory. */
     uint16_t *xm_banks;           /* Banks for the different tasks. */
-    uint8_t *sr_banks;            /* S register banks for the tasks. */
+    uint8_t *sreg_banks;          /* S register banks for the tasks. */
 
     uint16_t mem_cycle;           /* A counter to keep track the current
                                    * memory cycle (for reading and writing).
