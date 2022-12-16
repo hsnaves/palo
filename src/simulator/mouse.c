@@ -19,3 +19,8 @@ int mouse_create(struct mouse *m)
     mouse_initvar(m);
     return TRUE;
 }
+
+uint16_t mouse_poll_bits(struct mouse *m)
+{
+    return 0;
+}

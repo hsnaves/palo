@@ -20,6 +20,7 @@ enum system_type {
 /* Data structures and types. */
 struct simulator {
     enum system_type st;  /* The alto system type. */
+    int error;            /* The simulator is in an error state. */
     uint16_t *r;          /* R register file (32 registers). */
     uint16_t *s;          /* S register file (8 x 32 registers). */
 
@@ -51,6 +52,7 @@ struct simulator {
 
     uint16_t *mem;        /* Main memory. */
     uint16_t *xm_banks;   /* Banks for the different tasks. */
+    uint8_t *sr_banks;    /* S register banks for the tasks. */
 
     uint16_t mem_cycle;   /* A counter to keep track the current
                            * memory cycle (for reading and writing).
@@ -64,7 +66,7 @@ struct simulator {
                            */
 
     struct disk dsk;      /* The disk controller. */
-    struct display disp;  /* The display controller. */
+    struct display dpl;   /* The display controller. */
     struct ethernet eth;  /* The ethernet controller. */
     struct keyboard kb;   /* The keyboard controller. */
     struct mouse ms;      /* The mouse controller. */

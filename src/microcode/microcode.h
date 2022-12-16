@@ -23,6 +23,7 @@
 #define TASK_DISK_WORD           016
 #define TASK_NUM_TASKS           020
 #define TASK_VALID_MASK       0x7F91
+#define TASK_RAM_MASK         0x0001
 
 /* ALU functions (values of ALUF field in microinstruction). */
 #define ALU_BUS                    0
@@ -54,9 +55,9 @@
 #define BS_READ_MD                05
 #define BS_READ_MOUSE             06
 #define BS_READ_DISP              07
-/* Emulator bus sources. */
-#define BS_EMU_READ_S_LOCATION    03
-#define BS_EMU_LOAD_S_LOCATION    04
+/* Ram task bus sources. */
+#define BS_RAM_READ_S_LOCATION    03
+#define BS_RAM_LOAD_S_LOCATION    04
 /* KSEC (disk sector), KWD (disk word) bus sources. */
 #define BS_DSK_READ_KSTAT         03
 #define BS_DSK_READ_KDATA         04

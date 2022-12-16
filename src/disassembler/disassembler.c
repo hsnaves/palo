@@ -416,7 +416,11 @@ static
 void disasm_register_cb(const struct decoder *dec, uint16_t val,
                         struct decode_buffer *output)
 {
-    decode_buffer_print(output, "R%o", val);
+    if (val <= R_MASK) {
+        decode_buffer_print(output, "R%o", val);
+    } else {
+        decode_buffer_print(output, "S%o", val & R_MASK);
+    }
 }
 
 /* Auxiliary function used by disassembler_disassemble().

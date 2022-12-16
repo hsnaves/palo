@@ -6,6 +6,7 @@
 
 /* Data structures and types. */
 struct ethernet {
+    uint16_t address;
     uint16_t *fifo_buffer;
 };
 

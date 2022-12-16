@@ -34,10 +34,23 @@ void simulator_initvar(struct simulator *sim)
     sim->task_mpc = NULL;
     sim->mem = NULL;
     sim->xm_banks = NULL;
+    sim->sr_banks = NULL;
+
+    disk_initvar(&sim->dsk);
+    display_initvar(&sim->dpl);
+    ethernet_initvar(&sim->eth);
+    keyboard_initvar(&sim->kb);
+    mouse_initvar(&sim->ms);
 }
 
 void simulator_destroy(struct simulator *sim)
 {
+    disk_destroy(&sim->dsk);
+    display_destroy(&sim->dpl);
+    ethernet_destroy(&sim->eth);
+    keyboard_destroy(&sim->kb);
+    mouse_destroy(&sim->ms);
+
     if (sim->r) free((void *) sim->r);
     sim->r = NULL;
 
@@ -58,6 +71,9 @@ void simulator_destroy(struct simulator *sim)
 
     if (sim->xm_banks) free((void *) sim->xm_banks);
     sim->xm_banks = NULL;
+
+    if (sim->sr_banks) free((void *) sim->sr_banks);
+    sim->sr_banks = NULL;
 }
 
 int simulator_create(struct simulator *sim, enum system_type st)
@@ -76,11 +92,43 @@ int simulator_create(struct simulator *sim, enum system_type st)
         malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     sim->xm_banks = (uint16_t *)
         malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
+    sim->sr_banks = (uint8_t *)
+        malloc(NUM_BANK_SLOTS * sizeof(uint8_t));
 
     if (unlikely(!sim->r || !sim->s
                  || !sim->consts || !sim->microcode || !sim->task_mpc
-                 || !sim->mem || !sim->xm_banks)) {
+                 || !sim->mem || !sim->xm_banks || !sim->sr_banks)) {
         report_error("sim: create: could not allocate memory");
+        simulator_destroy(sim);
+        return FALSE;
+    }
+
+    if (unlikely(!disk_create(&sim->dsk))) {
+        report_error("sim: create: could not create disk controller");
+        simulator_destroy(sim);
+        return FALSE;
+    }
+
+    if (unlikely(!display_create(&sim->dpl))) {
+        report_error("sim: create: could not create display controller");
+        simulator_destroy(sim);
+        return FALSE;
+    }
+
+    if (unlikely(!ethernet_create(&sim->eth))) {
+        report_error("sim: create: could not create ethernet controller");
+        simulator_destroy(sim);
+        return FALSE;
+    }
+
+    if (unlikely(!keyboard_create(&sim->kb))) {
+        report_error("sim: create: could not create keyboard controller");
+        simulator_destroy(sim);
+        return FALSE;
+    }
+
+    if (unlikely(!mouse_create(&sim->ms))) {
+        report_error("sim: create: could not create mouse controller");
         simulator_destroy(sim);
         return FALSE;
     }
@@ -207,6 +255,15 @@ void simulator_reset(struct simulator *sim)
 
     memset(sim->r, 0, NUM_R_REGISTERS * sizeof(uint16_t));
     memset(sim->s, 0, NUM_S_REGISTERS * sizeof(uint16_t));
+    memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
+    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
+    memset(sim->sr_banks, 0, NUM_BANK_SLOTS * sizeof(uint8_t));
+
+    for (task = 0; task < TASK_NUM_TASKS; task++) {
+        sim->task_mpc[task] = (uint16_t) task;
+    }
+
+    sim->error = FALSE;
 
     sim->t = 0;
     sim->l = 0;
@@ -223,14 +280,6 @@ void simulator_reset(struct simulator *sim)
     sim->carry = FALSE;
     sim->dns = FALSE;
     sim->rmr = 0xFFFF;
-
-    for (task = 0; task < TASK_NUM_TASKS; task++) {
-        sim->task_mpc[task] = (uint16_t) task;
-    }
-
-    memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
-    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
-
     sim->mem_cycle = 0;
     sim->mem_task = TASK_EMULATOR;
     sim->mem_low = 0xFFFF;
@@ -308,7 +357,7 @@ uint16_t get_rsel(struct simulator *sim)
         if (f2 == F2_EMU_ACSOURCE) {
             rsel &= ~0x3;
             rsel |= (~(ir >> 13)) & 0x3;
-        } else if (f2 == F2_EMU_ACDEST) {
+        } else if (f2 == F2_EMU_ACDEST || f2 == F2_EMU_LOAD_DNS) {
             rsel &= ~0x3;
             rsel |= (~(ir >> 11)) & 0x3;
         }
@@ -330,6 +379,7 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
     uint16_t f1, f2;
     uint16_t output;
     uint16_t t;
+    uint8_t rb;
 
     mir = sim->mir;
     ctask = sim->ctask;
@@ -338,7 +388,6 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
     f1 = MICROCODE_F1(mir);
     f2 = MICROCODE_F2(mir);
 
-    /* Compute the bus. */
     if (f1 == F1_CONSTANT || f2 == F2_CONSTANT)
         return sim->consts[CONST_ADDR(rsel, bs)];
 
@@ -359,9 +408,10 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
         output &= 0;
         break;
     case BS_NONE:
-        /* Implement this. */
         if (ctask == TASK_EMULATOR && f1 == F1_EMU_RSNF) {
+            output &= (sim->eth.address & 0xFF00);
         } else if (ctask == TASK_ETHERNET) {
+            /* Implement this. */
             if (f1 == F1_ETH_EILFCT) {
             } else if (f1 == F1_ETH_EPFCT) {
             }
@@ -373,7 +423,7 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
         sim->mem_which = (1 ^ sim->mem_which);
         break;
     case BS_READ_MOUSE:
-        /* Implement this. */
+        output &= (0xfff0 & mouse_poll_bits(&sim->ms));
         break;
     case BS_READ_DISP:
         t = sim->ir & 0x00FF;
@@ -384,17 +434,39 @@ uint16_t read_bus(struct simulator *sim, uint16_t rsel)
         break;
 
     default:
-        /* Implement this. */
-        if (ctask == TASK_ETHERNET && bs == BS_ETH_EIDFCT) {
+        if ((1 << ctask) & TASK_RAM_MASK) {
+            rb = sim->sr_banks[ctask];
+            if (bs == BS_RAM_READ_S_LOCATION) {
+                if (rsel == 0) {
+                    output &= sim->m;
+                } else {
+                    output &= sim->s[rb * NUM_R_REGISTERS + rsel];
+                }
+                break;
+            } else if (bs == BS_RAM_LOAD_S_LOCATION) {
+                /* To be handled later. */
+                break;
+            }
+        } else if (ctask == TASK_ETHERNET && bs == BS_ETH_EIDFCT) {
+            /* Implement this. */
             output &= 0xFFFF;
+            break;
         } else if ((ctask == TASK_DISK_SECTOR)
                    || (ctask == TASK_DISK_WORD)) {
+            /* Implement this. */
             if (bs == BS_DSK_READ_KSTAT) {
                 output &= 0xFFFF;
+                break;
             } else if (bs == BS_DSK_READ_KDATA) {
                 output &= 0xFFFF;
+                break;
             }
         }
+
+        report_error("simulator: step: "
+                     "invalid bus source");
+        sim->error = TRUE;
+        return 0;
     }
 
     return output;
@@ -455,8 +527,11 @@ uint16_t compute_alu(struct simulator *sim, uint16_t bus, int *carry)
         res = a & (~b) & 0xFFFF;
         break;
     default:
-        res = 0xDEAD;
-        break;
+        report_error("simulator: step: "
+                     "invalid ALUF = %o", aluf);
+        sim->error = TRUE;
+        *carry = 0;
+        return 0xDEAD;
     }
 
     *carry = ((res & 0x10000) != 0);
@@ -518,8 +593,8 @@ void do_f1(struct simulator *sim, uint16_t bus,
 {
     uint32_t mir;
     uint16_t f1, f2;
-    uint8_t ctask, ts;
     uint16_t addr;
+    uint8_t ctask, tmp;
 
     mir = sim->mir;
     ctask = sim->ctask;
@@ -529,10 +604,13 @@ void do_f1(struct simulator *sim, uint16_t bus,
 
     switch (f1) {
     case F1_NONE:
+        /* Nothing to do. */
+        break;
     case F1_CONSTANT:
     case F1_LLSH1:
     case F1_LRSH1:
     case F1_LLCY8:
+        /* Already handled. */
         return;
     case F1_LOAD_MAR:
         /* TODO: Check if this load is not violating any
@@ -561,15 +639,22 @@ void do_f1(struct simulator *sim, uint16_t bus,
         return;
     case F1_TASK:
         /* Switch tasks. */
-        /* Maybe prevent two consecutive switches? */
-        for (ts = TASK_NUM_TASKS; ts--;) {
-            if (sim->pending & (1 << ts)) {
-                sim->ntask = ts;
+        /* TODO: Maybe prevent two consecutive switches? */
+        for (tmp = TASK_NUM_TASKS; tmp--;) {
+            if (sim->pending & (1 << tmp)) {
+                sim->ntask = tmp;
                 break;
             }
         }
         return;
     case F1_BLOCK:
+        if (ctask == TASK_EMULATOR) {
+            report_error("simulator: step: "
+                         "emulator task cannot block");
+            sim->error = TRUE;
+            return;
+        }
+
         /* Prevent the current task from running. */
         sim->pending &= ~(1 << ctask);
 
@@ -587,13 +672,24 @@ void do_f1(struct simulator *sim, uint16_t bus,
         case F1_EMU_RDRAM:
             break;
         case F1_EMU_LOAD_RMR:
+            sim->rmr = bus;
             break;
         case F1_EMU_LOAD_ESRB:
+            tmp = (uint8_t) ((bus >> 1) & 0x7);
+            if (sim->st != ALTO_II_3KRAM)
+                tmp = 0;
+            sim->sr_banks[ctask] = tmp;
             break;
         case F1_EMU_RSNF:
+            /* Already handled. */
             break;
         case F1_EMU_STARTF:
             break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F1 function for emulator");
+            sim->error = TRUE;
+            return;
         }
         break;
     }
@@ -622,7 +718,10 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
     /* Computes the F2 function. */
     switch (f2) {
     case F2_NONE:
+        /* Nothing to do. */
+        return 0;
     case F2_CONSTANT:
+        /* Already handled. */
         return 0;
     case F2_BUSEQ0:
         return (bus == 0) ? 1 : 0;
@@ -652,12 +751,12 @@ uint16_t do_f2(struct simulator *sim, uint16_t bus,
     case TASK_EMULATOR:
         switch (f2) {
         case F2_EMU_MAGIC:
+        case F2_EMU_ACDEST:
+            /* Already handled. */
             break;
         case F2_EMU_BUSODD:
             return (bus & 1);
         case F2_EMU_LOAD_DNS:
-            break;
-        case F2_EMU_ACDEST:
             break;
         case F2_EMU_LOAD_IR:
             sim->ir = bus;
@@ -686,11 +785,13 @@ void wb_registers(struct simulator *sim,
     uint16_t aluf;
     uint16_t bs;
     uint16_t f1, f2;
+    uint8_t ctask, rb;
     int load_l;
     int load_t;
     int use_constant;
 
     mir = sim->mir;
+    ctask = sim->ctask;
 
     aluf = MICROCODE_ALUF(mir);
     bs = MICROCODE_BS(mir);
@@ -700,24 +801,35 @@ void wb_registers(struct simulator *sim,
     load_t = MICROCODE_T(mir);
 
     /* Writes back the results to the registers. */
+
+    /* Writes back the R register. */
+    use_constant = (f1 == F1_CONSTANT) || (f2 == F2_CONSTANT);
+    if (!use_constant) {
+        if (bs == BS_LOAD_R) {
+            sim->r[rsel] = shifter_output;
+        } else if (((1 << ctask) & TASK_RAM_MASK)
+                   && bs == BS_RAM_LOAD_S_LOCATION) {
+            rb = sim->sr_banks[ctask];
+            sim->s[rb * NUM_R_REGISTERS + rsel] = sim->m;
+        }
+    }
+
+    /* Writes back the L, M and ALUC0 registers. */
     if (load_l) {
         sim->l = alu;
-        sim->m = alu;
+        if (ctask == TASK_EMULATOR) {
+            sim->m = alu;
+        }
         sim->aluC0 = alu_carry;
     }
 
+    /* Writes back the T register. */
     if (load_t) {
         if (LOAD_T_FROM_ALU(aluf)) {
             sim->t = alu;
         } else {
             sim->t = bus;
         }
-    }
-
-    /* Writes back the R register. */
-    use_constant = (f1 == F1_CONSTANT) || (f2 == F2_CONSTANT);
-    if (!use_constant && (bs == BS_LOAD_R)) {
-        sim->r[rsel] = shifter_output;
     }
 }
 
@@ -766,6 +878,12 @@ void simulator_step(struct simulator *sim)
     int alu_carry;
     int nova_carry;
 
+    if (sim->error) {
+        report_error("simulator: step: "
+                     "simulator is in error state");
+        return;
+    }
+
     /* Obtain the rsel (which might be modified by some F2
      * functions when in the EMULATOR task.
      */
@@ -773,9 +891,11 @@ void simulator_step(struct simulator *sim)
 
     /* Compute the bus. */
     bus = read_bus(sim, rsel);
+    if (sim->error) return;
 
     /* Compute the ALU. */
     alu = compute_alu(sim, bus, &alu_carry);
+    if (sim->error) return;
 
     /* Compute the shifter output. */
     nova_carry = sim->carry;
@@ -783,9 +903,11 @@ void simulator_step(struct simulator *sim)
 
     /* Compute the F1 function. */
     do_f1(sim, bus, alu, shifter_output);
+    if (sim->error) return;
 
     /* Compute the F2 function. */
     next_extra = do_f2(sim, bus, alu, shifter_output);
+    if (sim->error) return;
 
     /* Write back the registers. */
     wb_registers(sim, rsel, bus, alu, shifter_output, alu_carry);
@@ -793,7 +915,6 @@ void simulator_step(struct simulator *sim)
     /* Update the micro program counter and the current task. */
     update_program_counters(sim, next_extra);
 }
-
 
 /* Auxiliary function used by simulator_disassemble().
  * Callback to print constants.
@@ -814,7 +935,11 @@ static
 void sim_register_cb(const struct decoder *dec, uint16_t val,
                      struct decode_buffer *output)
 {
-    decode_buffer_print(output, "R%o", val);
+    if (val <= R_MASK) {
+        decode_buffer_print(output, "R%o", val);
+    } else {
+        decode_buffer_print(output, "S%o", val & R_MASK);
+    }
 }
 
 /* Auxiliary function used by simulator_disassemble().
@@ -893,8 +1018,17 @@ void simulator_print_registers(struct simulator *sim,
                         sim->dns ? 1 : 0);
 
     decode_buffer_print(&out,
-                        "PEND : %06o   RMR  : %06o",
+                        "XM_B : %06o   SR_B : %03o      "
+                        "PEND : %06o   RMR  : %06o\n",
+                        sim->xm_banks[sim->ctask],
+                        sim->sr_banks[sim->ctask],
                         sim->pending, sim->rmr);
 
-}
+    decode_buffer_print(&out,
+                        "CYCLE: %lu",
+                        sim->cycle);
 
+    if (sim->error) {
+        decode_buffer_print(&out, "\nsimulator in error state");
+    }
+}

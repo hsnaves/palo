@@ -31,4 +31,9 @@ void mouse_destroy(struct mouse *m);
 int mouse_create(struct mouse *m);
 
 
+/* Get the bits for the "<-MOUSE" bus source.
+ * Returns the mouse bits.
+ */
+uint16_t mouse_poll_bits(struct mouse *m);
+
 #endif /* __SIMULATOR_MOUSE_H */

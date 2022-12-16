@@ -73,7 +73,7 @@ static
 void debug_simulation(struct simulator *sim)
 {
     char cmd_buffer[256];
-    char out_buffer[1024];
+    char out_buffer[4096];
     const char *cmd, *arg, *end;
     unsigned int num;
     uint16_t addr, val;
