@@ -25,11 +25,10 @@ struct display {
     uint16_t cursor_data;         /* The cursor data. */
 
     uint32_t intr_cycle;          /* Cycle of the next interrupt. */
-    int dw_pending;               /* Display word task pending. */
-    int dh_pending;               /* Display horizontal task pending. */
-    int dv_pending;               /* Display vertical task pending. */
-    int cur_pending;              /* Cursor task pending. */
-    int mr_pending;               /* Memory refersh task pending. */
+    uint32_t dw_intr_cycle;       /* Interrupt cycle for display word. */
+    uint32_t dh_intr_cycle;       /* Interrupt cycle for display horizontal. */
+    uint32_t dv_intr_cycle;       /* Interrupt cycle for display vertical. */
+    uint16_t pending;             /* The task pending mask. */
 };
 
 /* Functions. */
@@ -60,10 +59,34 @@ void display_reset(struct display *displ);
  */
 void display_load_ddr(struct display *displ, uint16_t bus);
 
+/* Loads a word into the cursor X position register.
+ * The word from the bus to load is given by `bus`.
+ */
+void display_load_xpreg(struct display *displ, uint16_t bus);
+
+/* Loads a word into the cursor data register.
+ * The word from the bus to load is given by `bus`.
+ */
+void display_load_csr(struct display *displ, uint16_t bus);
+
+/* Checks if it is an even field
+ * (each frame consists of 2 fields, even and odd).
+ * Returns the bits to be modified in the NEXT part of the
+ * following microinstruction.
+ */
+uint16_t display_even_field(struct display *displ);
+
 /* Sets the display mode.
  * The bus value is given by the parameter `bus`.
+ * Returns the bits to be modified in the NEXT part of the
+ * following microinstruction.
  */
-void display_set_mode(struct display *displ, uint16_t bus);
+uint16_t display_set_mode(struct display *displ, uint16_t bus);
+
+/* Processes a BLOCK instruction.
+ * The task to be blocked is in the parameter `task`.
+ */
+void display_block_task(struct display *displ, uint8_t task);
 
 /* Processes the display interrupts. */
 void display_interrupt(struct display *displ);

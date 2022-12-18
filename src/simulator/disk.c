@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "simulator/disk.h"
+#include "microcode/microcode.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -190,10 +191,111 @@ error:
 void disk_reset(struct disk *dsk)
 {
     dsk->intr_cycle = 0xFFFFFFFFU;
-    dsk->dw_pending = FALSE;
-    dsk->ds_pending = FALSE;
+    dsk->pending = 0;
+}
+
+uint16_t disk_read_kstat(struct disk *dsk)
+{
+    /* TODO: Implement this. */
+    return dsk->kstat;
+}
+
+void disk_load_kstat(struct disk *dsk, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    dsk->kstat &= 0xFFF4U;
+    dsk->kstat |= (bus & 0x0B);
+    dsk->kstat |= ((~bus) & 0x04);
+}
+
+uint16_t disk_read_kdata(struct disk *dsk)
+{
+    /* TODO: Implement this. */
+    return dsk->kdata;
+}
+
+void disk_load_kdata(struct disk *dsk, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    dsk->kdata = bus;
+}
+
+void disk_load_kcomm(struct disk *dsk, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    dsk->kcomm = (bus >> 10) & 0x1F;
+}
+
+void disk_load_kadr(struct disk *dsk, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    dsk->kadr = (bus & 0xFF);
+}
+
+void disk_strobe(struct disk *dsk)
+{
+    /* TODO: Implement this. */
+}
+
+void disk_increcno(struct disk *dsk)
+{
+    /* TODO: Implement this. */
+}
+
+void disk_clrstat(struct disk *dsk)
+{
+    /* TODO: Implement this. */
+}
+
+uint16_t disk_init(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_rwc(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_recno(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_xfrdat(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_swrnrdy(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_nfer(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+uint16_t disk_strobon(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    return 0;
+}
+
+void disk_block_task(struct disk *dsk, uint8_t task)
+{
+    /* TODO: Implement this. */
+    dsk->pending &= ~(1 << task);
 }
 
 void disk_interrupt(struct disk *dsk)
 {
+    /* TODO: Implement this. */
 }

@@ -292,39 +292,6 @@ error_eof:
     return FALSE;
 }
 
-/* Updates the pending mask. */
-static
-void update_pending_tasks(struct simulator *sim)
-{
-    sim->pending = (1 << TASK_EMULATOR);
-
-    /* Disk controller related tasks. */
-    if (sim->dsk.dw_pending)
-        sim->pending |= (1 << TASK_DISK_WORD);
-    if (sim->dsk.ds_pending)
-        sim->pending |= (1 << TASK_DISK_SECTOR);
-
-    /* Display controller related tasks. */
-    if (sim->displ.dw_pending)
-        sim->pending |= (1 << TASK_DISPLAY_WORD);
-    if (sim->displ.dh_pending)
-        sim->pending |= (1 << TASK_DISPLAY_HORIZONTAL);
-    if (sim->displ.dv_pending)
-        sim->pending |= (1 << TASK_DISPLAY_VERTICAL);
-    if (sim->displ.cur_pending)
-        sim->pending |= (1 << TASK_CURSOR);
-
-    /* We put the memory refresh together with the display. */
-    if (sim->displ.mr_pending)
-        sim->pending |= (1 << TASK_MEMORY_REFRESH);
-
-    /* Ethernet controller related tasks. */
-    if (sim->ether.eth_pending)
-        sim->pending |= (1 << TASK_ETHERNET);
-
-    /* TASK_PARITY is never awaken. */
-}
-
 void simulator_reset(struct simulator *sim)
 {
     uint8_t task;
@@ -372,8 +339,6 @@ void simulator_reset(struct simulator *sim)
     sim->mem_high = 0xFFFFU;
     sim->mem_extended = 0;
     sim->mem_which = 0;
-
-    update_pending_tasks(sim);
 
     /* Sets the next interrupt cycle. */
     sim->intr_cycle = sim->dsk.intr_cycle;
@@ -607,11 +572,12 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         break;
     case BS_NONE:
         if (mc->task == TASK_EMULATOR && mc->f1 == F1_EMU_RSNF) {
-            output &= (sim->ether.address & 0xFF00U);
+            output &= ethernet_rsnf(&sim->ether);
         } else if (mc->task == TASK_ETHERNET) {
-            /* TODO: Implement this. */
             if (mc->f1 == F1_ETH_EILFCT) {
+                output &= ethernet_eilfct(&sim->ether);
             } else if (mc->f1 == F1_ETH_EPFCT) {
+                output &= ethernet_epfct(&sim->ether);
             }
         }
         break;
@@ -621,7 +587,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         sim->mem_which = (1 ^ sim->mem_which);
         break;
     case BS_READ_MOUSE:
-        output &= (0xfff0 & mouse_poll_bits(&sim->mous));
+        output &= mouse_poll_bits(&sim->mous);
         break;
     case BS_READ_DISP:
         t = sim->ir & 0x00FFU;
@@ -648,16 +614,15 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
                 break;
             }
         } else if (mc->task == TASK_ETHERNET && mc->bs == BS_ETH_EIDFCT) {
-            /* TODO: Implement this. */
-            output &= 0xFFFFU;
+            output &= ethernet_eidfct(&sim->ether);
             break;
         } else if ((mc->task == TASK_DISK_SECTOR)
                    || (mc->task == TASK_DISK_WORD)) {
             if (mc->bs == BS_DSK_READ_KSTAT) {
-                output &= sim->dsk.kstat;
+                output &= disk_read_kstat(&sim->dsk);
                 break;
             } else if (mc->bs == BS_DSK_READ_KDATA) {
-                output &= sim->dsk.kdata;
+                output &= disk_read_kdata(&sim->dsk);
                 break;
             }
         }
@@ -828,6 +793,29 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
     return res;
 }
 
+/* Obtains the pending tasks.
+ * Returns a bitset of pending tasks.
+ */
+static
+uint16_t get_pending(struct simulator *sim)
+{
+    uint16_t pending;
+    pending = (1 << TASK_EMULATOR);
+    pending |= sim->dsk.pending;
+    pending |= sim->displ.pending;
+    pending |= sim->ether.pending;
+    return pending;
+}
+
+/* Performas a BLOCK. */
+static
+void do_block(struct simulator *sim, uint8_t task)
+{
+    disk_block_task(&sim->dsk, task);
+    display_block_task(&sim->displ, task);
+    ethernet_block_task(&sim->ether, task);
+}
+
 /* Performs the F1 function.
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
@@ -839,7 +827,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
            uint16_t bus, uint16_t alu, uint8_t *nntask)
 {
     uint16_t addr;
-    uint8_t tmp;
+    uint8_t pending, tmp;
 
     *nntask = sim->ntask;
 
@@ -859,7 +847,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
          */
         sim->mar = alu;
         sim->mem_cycle = 0; /* This will be incremented at
-                             * update_program_counters() to 1, which
+                             * update_cycles() to 1, which
                              * is the correct value.
                              */
         sim->mem_task = mc->task;
@@ -885,8 +873,9 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case F1_TASK:
         /* Switch tasks. */
         /* TODO: Maybe prevent two consecutive switches? */
+        pending = get_pending(sim);
         for (tmp = TASK_NUM_TASKS; tmp--;) {
-            if (sim->pending & (1 << tmp)) {
+            if (pending & (1 << tmp)) {
                 *nntask = tmp;
                 break;
             }
@@ -901,9 +890,8 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         }
 
         /* Prevent the current task from running. */
-        sim->pending &= ~(1 << mc->task);
+        do_block(sim, mc->task);
 
-        /* There are other side effects to consider for specific tasks. */
         return;
     }
 
@@ -983,27 +971,25 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case TASK_DISK_WORD:
         switch (mc->f1) {
         case F1_DSK_STROBE:
-            /* TODO: Implement this. */
+            disk_strobe(&sim->dsk);
             break;
         case F1_DSK_LOAD_KSTAT:
-            sim->dsk.kstat &= 0xFFF4U;
-            sim->dsk.kstat |= (bus & 0x0B);
-            sim->dsk.kstat |= ((~bus) & 0x04);
+            disk_load_kstat(&sim->dsk, bus);
             break;
         case F1_DSK_INCRECNO:
-            /* TODO: Implement this. */
+            disk_increcno(&sim->dsk);
             break;
         case F1_DSK_CLRSTAT:
-            /* TODO: Implement this. */
+            disk_clrstat(&sim->dsk);
             break;
         case F1_DSK_LOAD_KCOMM:
-            sim->dsk.kcomm = (bus >> 10) & 0x1F;
+            disk_load_kcomm(&sim->dsk, bus);
             break;
         case F1_DSK_LOAD_KADR:
-            sim->dsk.kadr = (bus & 0xFF);
+            disk_load_kadr(&sim->dsk, bus);
             break;
         case F1_DSK_LOAD_KDATA:
-            sim->dsk.kdata = bus;
+            disk_load_kdata(&sim->dsk, bus);
             break;
         default:
             report_error("simulator: step: "
@@ -1017,13 +1003,11 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case TASK_ETHERNET:
         switch (mc->f1) {
         case F1_ETH_EILFCT:
-            /* TODO: Implement this. */
-            break;
         case F1_ETH_EPFCT:
-            /* TODO: Implement this. */
+            /* Already handled. */
             break;
         case F1_ETH_EWFCT:
-            /* TODO: Implement this. */
+            ethernet_ewfct(&sim->ether);
             break;
         default:
             report_error("simulator: step: "
@@ -1162,26 +1146,19 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISK_WORD:
         switch (mc->f2) {
         case F2_DSK_INIT:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_init(&sim->dsk, mc->task);
         case F2_DSK_RWC:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_rwc(&sim->dsk, mc->task);;
         case F2_DSK_RECNO:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_recno(&sim->dsk, mc->task);
         case F2_DSK_XFRDAT:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_xfrdat(&sim->dsk, mc->task);
         case F2_DSK_SWRNRDY:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_swrnrdy(&sim->dsk, mc->task);
         case F2_DSK_NFER:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_nfer(&sim->dsk, mc->task);
         case F2_DSK_STROBON:
-            /* TODO: Implement this. */
-            return 0;
+            return disk_strobon(&sim->dsk, mc->task);
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for disk tasks",
@@ -1194,25 +1171,22 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_ETHERNET:
         switch (mc->f2) {
         case F2_ETH_EODFCT:
-            /* TODO: Implement this. */
+            ethernet_eodfct(&sim->ether, bus);
             return 0;
         case F2_ETH_EOSFCT:
-            /* TODO: Implement this. */
+            ethernet_eosfct(&sim->ether);
             return 0;
         case F2_ETH_ERBFCT:
-            /* TODO: Implement this. */
-            return 0;
+            return ethernet_erbfct(&sim->ether);
         case F2_ETH_EEFCT:
-            /* TODO: Implement this. */
+            ethernet_eefct(&sim->ether);
             return 0;
         case F2_ETH_EBFCT:
-            /* TODO: Implement this. */
-            return 0;
+            return ethernet_ebfct(&sim->ether);
         case F2_ETH_ECBFCT:
-            /* TODO: Implement this. */
-            return 0;
+            return ethernet_ecbfct(&sim->ether);
         case F2_ETH_EISFCT:
-            /* TODO: Implement this. */
+            ethernet_eisfct(&sim->ether);
             return 0;
         default:
             report_error("simulator: step: "
@@ -1240,11 +1214,10 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_CURSOR:
         switch (mc->f2) {
         case F2_CUR_LOAD_XPREG:
-            /* TODO: Maybe signal this to the display controller? */
-            sim->displ.cursor_x = bus;
+            display_load_xpreg(&sim->displ, bus);
             return 0;
         case F2_CUR_LOAD_CSR:
-            sim->displ.cursor_data = bus;
+            display_load_csr(&sim->displ, bus);
             return 0;
         default:
             report_error("simulator: step: "
@@ -1258,10 +1231,9 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_HORIZONTAL:
         switch (mc->f2) {
         case F2_DH_EVENFIELD:
-            return (sim->displ.even_field) ? 1 : 0;
+            return display_even_field(&sim->displ);
         case F2_DH_SETMODE:
-            display_set_mode(&sim->displ, bus);
-            return (bus & 0x8000) ? 1 : 0;
+            return display_set_mode(&sim->displ, bus);
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for display horizontal",
@@ -1274,7 +1246,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_VERTICAL:
         switch (mc->f2) {
         case F2_DV_EVENFIELD:
-            return (sim->displ.even_field) ? 1 : 0;
+            return display_even_field(&sim->displ);
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for display vertical",
@@ -1430,9 +1402,11 @@ void do_soft_reset(struct simulator *sim)
         | MICROCODE_NEXT(sim->mir);
 
     /* This is a hack copied from ContrAlto source code. */
-    sim->pending |= (1 << TASK_DISK_SECTOR);
-    sim->pending &= ~(1 << TASK_DISK_WORD);
+    sim->dsk.pending |= (1 << TASK_DISK_SECTOR);
+    sim->dsk.pending &= ~(1 << TASK_DISK_WORD);
     sim->rmr = 0xFFFF;
+
+    /* TODO: Finish this implementation. */
 }
 
 /* Checks for interrupts.
@@ -1473,8 +1447,6 @@ void check_for_interrupts(struct simulator *sim, uint32_t prev_cycle)
 
         sim->intr_cycle = intr_diff + prev_cycle;
     }
-
-    update_pending_tasks(sim);
 }
 
 void simulator_step(struct simulator *sim)
@@ -1634,6 +1606,7 @@ void simulator_print_registers(struct simulator *sim,
                                char *output, size_t output_size)
 {
     struct decode_buffer out;
+    uint16_t pending;
     unsigned int i;
 
     out.buf = output;
@@ -1669,12 +1642,13 @@ void simulator_print_registers(struct simulator *sim,
                         sim->carry ? 1 : 0,
                         sim->skip ? 1 : 0);
 
+    pending = get_pending(sim);
     decode_buffer_print(&out,
                         "XM_B : %06o   SR_B : %03o      "
                         "PEND : %06o   RMR  : %06o\n",
                         sim->xm_banks[sim->ctask],
                         sim->sreg_banks[sim->ctask],
-                        sim->pending, sim->rmr);
+                        pending, sim->rmr);
 
     decode_buffer_print(&out,
                         "CYCLE: %u",

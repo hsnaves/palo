@@ -5,15 +5,11 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define MOVE_NOCHANGE        0x001
-#define MOVE_DOWN            0x002
-#define MOVE_UP              0x004
-#define MOVE_LEFT            0x008
-#define MOVE_DOWN_LEFT       0x010
-#define MOVE_UP_LEFT         0x020
-#define MOVE_RIGHT           0x040
-#define MOVE_DOWN_RIGHT      0x080
-#define MOVE_UP_RIGHT        0x100
+#define MOVE_NOCHANGE        0x0
+#define MOVE_DOWN            0x1
+#define MOVE_UP              0x2
+#define MOVE_LEFT            0x3
+#define MOVE_RIGHT           0x6
 
 /* Static tables. */
 
@@ -70,24 +66,26 @@ uint16_t mouse_poll_bits(struct mouse *mous)
     dx = mous->target_x - mous->x;
     dy = mous->target_y - mous->y;
 
-    bits = 0;
+    bits = MOVE_NOCHANGE;
     if (dx == 0 && dy == 0) return bits;
 
     /* Simulate the mouse movement. */
     if (mous->dir_x) {
         if (dx > 0)
-            bits |= MOVE_RIGHT;
+            bits = MOVE_RIGHT;
         else if (dx < 0)
-            bits |= MOVE_LEFT;
+            bits = MOVE_LEFT;
     } else {
         if (dy > 0)
-            bits |= MOVE_UP;
+            bits = MOVE_UP;
         else if (dy < 0)
-            bits |= MOVE_DOWN;
+            bits = MOVE_DOWN;
     }
 
     mous->dir_x = !(mous->dir_x);
-    return bits;
+
+    /* Rest of the bits are 1. */
+    return (0xFFF0 | bits);
 }
 
 void mouse_press_button(struct mouse *mous, enum alto_button btn)

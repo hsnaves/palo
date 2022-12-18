@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "simulator/display.h"
+#include "microcode/microcode.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -55,11 +56,10 @@ void display_reset(struct display *displ)
     displ->cursor_data = 0;
 
     displ->intr_cycle = 0xFFFFFFFFU;
-    displ->dw_pending = FALSE;
-    displ->dh_pending = FALSE;
-    displ->dv_pending = FALSE;
-    displ->cur_pending = FALSE;
-    displ->mr_pending = FALSE;
+    displ->dw_intr_cycle = 0xFFFFFFFFU;
+    displ->dh_intr_cycle = 0xFFFFFFFFU;
+    displ->dv_intr_cycle = 0xFFFFFFFFU;
+    displ->pending = 0;
 }
 
 void display_load_ddr(struct display *displ, uint16_t bus)
@@ -67,11 +67,53 @@ void display_load_ddr(struct display *displ, uint16_t bus)
     /* TODO: Implement this. */
 }
 
-void display_set_mode(struct display *displ, uint16_t bus)
+void display_load_xpreg(struct display *displ, uint16_t bus)
 {
     /* TODO: Implement this. */
+    displ->cursor_x = bus;
+}
+
+void display_load_csr(struct display *displ, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    displ->cursor_data = bus;
+}
+
+uint16_t display_even_field(struct display *displ)
+{
+    return (displ->even_field) ? 1 : 0;
+}
+
+uint16_t display_set_mode(struct display *displ, uint16_t bus)
+{
+    /* TODO: Implement this. */
+    return (bus & 0x8000) ? 1 : 0;
+}
+
+/* Updates the intr_cycle. */
+static
+void update_intr_cycle(struct display *displ)
+{
+    uint32_t tmp, diff;
+
+    diff = displ->dw_intr_cycle;
+    tmp = displ->dh_intr_cycle;
+    if (diff > tmp) diff = tmp;
+    tmp = displ->dv_intr_cycle;
+    if (diff > tmp) diff = tmp;
+
+    displ->intr_cycle += diff;
+}
+
+void display_block_task(struct display *displ, uint8_t task)
+{
+    /* TODO: Implement this. */
+    displ->pending &= ~(1 << task);
 }
 
 void display_interrupt(struct display *displ)
 {
+    /* TODO: Implement this. */
+
+    update_intr_cycle(displ);
 }
