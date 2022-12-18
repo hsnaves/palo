@@ -27,7 +27,6 @@ struct simulator {
 
     uint8_t ctask;                /* Current task. */
     uint8_t ntask;                /* The next task. */
-    uint8_t nntask;               /* The next next task. */
     uint16_t pending;             /* The bit mask of pending tasks. */
 
     int aluC0;                    /* Last carry of ALU when loading L. */

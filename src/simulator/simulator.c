@@ -20,8 +20,9 @@
 #define NUM_MICROCODE_BANKS          4
 #define NUM_BANKS                    4
 #define NUM_BANK_SLOTS  TASK_NUM_TASKS
-#define MEMORY_TOP              0xFDFF
+#define MEMORY_TOP              0xFE00
 #define XM_BANK_START           0xFFE0
+#define XM_BANK_END (XM_BANK_START + NUM_BANK_SLOTS)
 
 /* For fixing the microcode in RAM. */
 #define MC_INVERT_MASK      0x00088400
@@ -316,7 +317,6 @@ void simulator_reset(struct simulator *sim)
     sim->mpc = 0;
     sim->ctask = TASK_EMULATOR;
     sim->ntask = TASK_EMULATOR;
-    sim->nntask = TASK_EMULATOR;
     sim->pending = (1 << TASK_EMULATOR);
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
@@ -339,13 +339,26 @@ void simulator_reset(struct simulator *sim)
 uint16_t simulator_read(const struct simulator *sim, uint16_t address,
                         uint8_t task, int extended_memory)
 {
-    if (address >= XM_BANK_START
-        && address <= (XM_BANK_START + NUM_BANK_SLOTS)) {
-        /* NB: While not specified in documentation, some code (IFS in
-         * particular) relies on the fact that the upper 12 bits of the
-         * bank registers are all 1s.
-         */
-        return ((uint16_t) 0xFFF0) | sim->xm_banks[address - XM_BANK_START];
+    if (address >= MEMORY_TOP) {
+        if (address >= MOUSE_BASE && address < MOUSE_END) {
+            return mouse_read(&sim->mous, address);
+        }
+
+        if (address >= KEYBOARD_BASE && address < KEYBOARD_END) {
+            return keyboard_read(&sim->keyb, address);
+        }
+
+        if (address >= XM_BANK_START && address < XM_BANK_END) {
+            /* NB: While not specified in documentation, some code (IFS in
+             * particular) relies on the fact that the upper 12 bits of the
+             * bank registers are all 1s.
+             */
+            return ((uint16_t) 0xFFF0)
+                | sim->xm_banks[address - XM_BANK_START];
+        }
+
+        /* Returns some garbage. */
+        return 0xBEEF;
     } else {
         const uint16_t *base_mem;
         int bank_number;
@@ -360,13 +373,25 @@ uint16_t simulator_read(const struct simulator *sim, uint16_t address,
 void simulator_write(struct simulator *sim, uint16_t address,
                      uint16_t data, uint8_t task, int extended_memory)
 {
-    if (address >= XM_BANK_START
-        && address <= (XM_BANK_START + NUM_BANK_SLOTS)) {
-        /* NB: While not specified in documentation, some code (IFS in
-         * particular) relies on the fact that the upper 12 bits of the
-         * bank registers are all 1s.
-         */
-        sim->xm_banks[address - XM_BANK_START] = data;
+    if (address >= MEMORY_TOP) {
+        if (address >= MOUSE_BASE && address < MOUSE_END) {
+            /* Nothing to do here. */
+            return;
+        }
+
+        if (address >= KEYBOARD_BASE && address < KEYBOARD_END) {
+            /* Nothing to do here. */
+            return;
+        }
+
+        if (address >= XM_BANK_START && address < XM_BANK_END) {
+            /* NB: While not specified in documentation, some code (IFS in
+             * particular) relies on the fact that the upper 12 bits of the
+             * bank registers are all 1s.
+             */
+            sim->xm_banks[address - XM_BANK_START] = data;
+            return;
+        }
     } else {
         uint16_t *base_mem;
         int bank_number;
@@ -581,12 +606,11 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
             break;
         } else if ((mc->task == TASK_DISK_SECTOR)
                    || (mc->task == TASK_DISK_WORD)) {
-            /* Implement this. */
             if (mc->bs == BS_DSK_READ_KSTAT) {
-                output &= 0xFFFF;
+                output &= sim->dsk.kstat;
                 break;
             } else if (mc->bs == BS_DSK_READ_KDATA) {
-                output &= 0xFFFF;
+                output &= sim->dsk.kdata;
                 break;
             }
         }
@@ -760,13 +784,17 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
 /* Performs the F1 function.
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
+ * The next task after the following microinstruction is returned
+ * in  `nntask`.
  */
 static
 void do_f1(struct simulator *sim, const struct microcode *mc,
-           uint16_t bus, uint16_t alu)
+           uint16_t bus, uint16_t alu, uint8_t *nntask)
 {
     uint16_t addr;
     uint8_t tmp;
+
+    *nntask = sim->ntask;
 
     switch (mc->f1) {
     case F1_NONE:
@@ -802,13 +830,17 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         addr = (sim->sys_type == ALTO_I) ? 1 | addr : 1 ^ addr;
         sim->mem_high = simulator_read(sim, addr, sim->mem_task,
                                        sim->mem_extended);
+
+        /* TODO: Check that for TASK_MEMORY_REFRESH, loading MAR
+         * with RSEL = 037 performs a BLOCK.
+         */
         return;
     case F1_TASK:
         /* Switch tasks. */
         /* TODO: Maybe prevent two consecutive switches? */
         for (tmp = TASK_NUM_TASKS; tmp--;) {
             if (sim->pending & (1 << tmp)) {
-                sim->nntask = tmp;
+                *nntask = tmp;
                 break;
             }
         }
@@ -893,6 +925,61 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         default:
             report_error("simulator: step: "
                          "invalid F1 function %o for emulator",
+                         mc->f1);
+            sim->error = TRUE;
+            return;
+        }
+        break;
+
+    case TASK_DISK_SECTOR:
+    case TASK_DISK_WORD:
+        switch (mc->f1) {
+        case F1_DSK_STROBE:
+            /* TODO: Implement this. */
+            break;
+        case F1_DSK_LOAD_KSTAT:
+            sim->dsk.kstat &= 0xFFF4;
+            sim->dsk.kstat |= (bus & 0x0B);
+            sim->dsk.kstat |= ((~bus) & 0x04);
+            break;
+        case F1_DSK_INCRECNO:
+            /* TODO: Implement this. */
+            break;
+        case F1_DSK_CLRSTAT:
+            /* TODO: Implement this. */
+            break;
+        case F1_DSK_LOAD_KCOMM:
+            sim->dsk.kcomm = (bus >> 10) & 0x1F;
+            break;
+        case F1_DSK_LOAD_KADR:
+            sim->dsk.kadr = (bus & 0xFF);
+            break;
+        case F1_DSK_LOAD_KDATA:
+            sim->dsk.kdata = bus;
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F1 function %o for disk tasks",
+                         mc->f1);
+            sim->error = TRUE;
+            return;
+        }
+        break;
+
+    case TASK_ETHERNET:
+        switch (mc->f1) {
+        case F1_ETH_EILFCT:
+            /* TODO: Implement this. */
+            break;
+        case F1_ETH_EPFCT:
+            /* TODO: Implement this. */
+            break;
+        case F1_ETH_EWFCT:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F1 function %o for ethernet",
                          mc->f1);
             sim->error = TRUE;
             return;
@@ -1020,6 +1107,140 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return 0;
         }
         break;
+
+    case TASK_DISK_SECTOR:
+    case TASK_DISK_WORD:
+        switch (mc->f2) {
+        case F2_DSK_INIT:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_RWC:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_RECNO:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_XFRDAT:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_SWRNRDY:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_NFER:
+            /* TODO: Implement this. */
+            break;
+        case F2_DSK_STROBON:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for disk tasks",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    case TASK_ETHERNET:
+        switch (mc->f2) {
+        case F2_ETH_EODFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_EOSFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_ERBFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_EEFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_EBFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_ECBFCT:
+            /* TODO: Implement this. */
+            break;
+        case F2_ETH_EISFCT:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for ethernet",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    case TASK_DISPLAY_WORD:
+        switch (mc->f2) {
+        case F2_DW_LOAD_DDR:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for display word",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    case TASK_CURSOR:
+        switch (mc->f2) {
+        case F2_CUR_LOAD_XPREG:
+            /* TODO: Implement this. */
+            break;
+        case F2_CUR_LOAD_CSR:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for cursor",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    case TASK_DISPLAY_HORIZONTAL:
+        switch (mc->f2) {
+        case F2_DH_EVENFIELD:
+            /* TODO: Implement this. */
+            break;
+        case F2_DH_SETMODE:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for display horizontal",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    case TASK_DISPLAY_VERTICAL:
+        switch (mc->f2) {
+        case F2_DV_EVENFIELD:
+            /* TODO: Implement this. */
+            break;
+        default:
+            report_error("simulator: step: "
+                         "invalid F2 function %o for display vertical",
+                         mc->f2);
+            sim->error = TRUE;
+            return 0;
+        }
+        break;
+
+    default:
+        report_error("simulator: step: "
+                     "invalid F2 function %o",
+                     mc->f2);
+        sim->error = TRUE;
+        return 0;
     }
 
     return 0;
@@ -1074,12 +1295,14 @@ void wb_registers(struct simulator *sim,
     }
 }
 
-/* Updates the micro program counter and the current task.
+/* Updates the micro program counter and the next task.
  * The bits that are to be modified in the NEXT field of the following
- * instruction are given by `next_extra`.
+ * instruction are given by `next_extra`. The task following the next
+ * instruction is given by `nntask`.
  */
 static
-void update_program_counters(struct simulator *sim, uint16_t next_extra)
+void update_program_counters(struct simulator *sim,
+                             uint16_t next_extra, uint8_t nntask)
 {
     uint32_t mcode;
     uint16_t mpc;
@@ -1099,7 +1322,7 @@ void update_program_counters(struct simulator *sim, uint16_t next_extra)
     sim->mpc = mpc;
 
     /* Updates the next task. */
-    sim->ntask = sim->nntask;
+    sim->ntask = nntask;
     sim->cycle++;
 
     /* Updates the memory cycle. */
@@ -1139,7 +1362,6 @@ void do_soft_reset(struct simulator *sim)
 
     sim->ctask = TASK_EMULATOR;
     sim->ntask = TASK_EMULATOR;
-    sim->nntask = TASK_EMULATOR;
     sim->mpc = sim->task_mpc[sim->ctask];
     sim->mir = sim->microcode[sim->mpc];
     sim->task_mpc[sim->ctask] = (sim->mpc & MPC_BANK_MASK)
@@ -1159,6 +1381,7 @@ void simulator_step(struct simulator *sim)
     uint16_t alu;
     uint16_t shifter_output;
     uint16_t next_extra;
+    uint8_t nntask;
     int aluC0;
     int nova_carry;
     int load_r;
@@ -1202,7 +1425,7 @@ void simulator_step(struct simulator *sim)
     shifter_output = do_shift(sim, &mc, &load_r, &nova_carry);
 
     /* Compute the F1 function. */
-    do_f1(sim, &mc, bus, alu);
+    do_f1(sim, &mc, bus, alu, &nntask);
     if (sim->error) return;
 
     /* Compute the F2 function. */
@@ -1214,8 +1437,8 @@ void simulator_step(struct simulator *sim)
     wb_registers(sim, &mc, modified_rsel, load_r,
                  bus, alu, shifter_output, aluC0);
 
-    /* Update the micro program counter and the current task. */
-    update_program_counters(sim, next_extra);
+    /* Update the micro program counter and the next task. */
+    update_program_counters(sim, next_extra, nntask);
 
     /* Perform the soft reset. */
     if (soft_reset) do_soft_reset(sim);
