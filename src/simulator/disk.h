@@ -38,6 +38,10 @@ struct disk {
     uint16_t kdata;               /* KDATA register. */
     uint16_t kadr;                /* KADR register. */
     uint16_t kcomm;               /* KCOMM register. */
+
+    uint32_t intr_cycle;          /* Cycle of the next interrupt. */
+    int dw_pending;               /* If the disk word task is pending. */
+    int ds_pending;               /* If the disk sector task is pending. */
 };
 
 /* Functions. */
@@ -72,5 +76,10 @@ int disk_load_image(struct disk *dsk, unsigned int drive_num,
 int disk_save_image(const struct disk *dsk, unsigned int drive_num,
                     const char *filename);
 
+/* Resets the disk controller. */
+void disk_reset(struct disk *dsk);
+
+/* Processes the disk interrupts. */
+void disk_interrupt(struct disk *dsk);
 
 #endif /* __SIMULATOR_DISK_H */

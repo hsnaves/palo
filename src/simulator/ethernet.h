@@ -8,8 +8,11 @@
 
 /* The ethernet controller for the simulator. */
 struct ethernet {
-    uint16_t address;
-    uint16_t *fifo_buffer;
+    uint16_t address;             /* The ethernet address. */
+    uint16_t *fifo_buffer;        /* For sending / receiving data. */
+
+    uint32_t intr_cycle;          /* Cycle of the next interrupt. */
+    int eth_pending;              /* If the ethernet task is pending. */
 };
 
 /* Functions. */
@@ -32,5 +35,13 @@ void ethernet_destroy(struct ethernet *ether);
  */
 int ethernet_create(struct ethernet *ether);
 
+/* Resets the ethernet controller. */
+void ethernet_reset(struct ethernet *ether);
+
+/* Processes the F1_EMU_STARTF function. */
+void ethernet_startf(struct ethernet *ether, uint16_t bus);
+
+/* Processes the ethernet interrupts. */
+void ethernet_interrupt(struct ethernet *ether);
 
 #endif /* __SIMULATOR_ETHERNET_H */

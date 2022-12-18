@@ -35,14 +35,14 @@ int lexer_create(struct lexer *l,
 
     l->tbuf = (char *) malloc(TBUF_SIZE);
     if (unlikely(!l->tbuf)) {
-        lexer_destroy(l);
         report_error("lexer: create: memory exhausted");
+        lexer_destroy(l);
         return FALSE;
     }
 
     if (unlikely(!table_create(&l->tokens))) {
-        lexer_destroy(l);
         report_error("lexer: create: could not create table");
+        lexer_destroy(l);
         return FALSE;
     }
 

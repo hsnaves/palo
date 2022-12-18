@@ -61,6 +61,7 @@ int disk_create(struct disk *dsk)
         dd->length *= dd->dg.num_sectors;
     }
 
+    disk_reset(dsk);
     return TRUE;
 }
 
@@ -186,3 +187,13 @@ error:
     return FALSE;
 }
 
+void disk_reset(struct disk *dsk)
+{
+    dsk->intr_cycle = 0xFFFFFFFFU;
+    dsk->dw_pending = FALSE;
+    dsk->ds_pending = FALSE;
+}
+
+void disk_interrupt(struct disk *dsk)
+{
+}

@@ -292,6 +292,39 @@ error_eof:
     return FALSE;
 }
 
+/* Updates the pending mask. */
+static
+void update_pending_tasks(struct simulator *sim)
+{
+    sim->pending = (1 << TASK_EMULATOR);
+
+    /* Disk controller related tasks. */
+    if (sim->dsk.dw_pending)
+        sim->pending |= (1 << TASK_DISK_WORD);
+    if (sim->dsk.ds_pending)
+        sim->pending |= (1 << TASK_DISK_SECTOR);
+
+    /* Display controller related tasks. */
+    if (sim->displ.dw_pending)
+        sim->pending |= (1 << TASK_DISPLAY_WORD);
+    if (sim->displ.dh_pending)
+        sim->pending |= (1 << TASK_DISPLAY_HORIZONTAL);
+    if (sim->displ.dv_pending)
+        sim->pending |= (1 << TASK_DISPLAY_VERTICAL);
+    if (sim->displ.cur_pending)
+        sim->pending |= (1 << TASK_CURSOR);
+
+    /* We put the memory refresh together with the display. */
+    if (sim->displ.mr_pending)
+        sim->pending |= (1 << TASK_MEMORY_REFRESH);
+
+    /* Ethernet controller related tasks. */
+    if (sim->ether.eth_pending)
+        sim->pending |= (1 << TASK_ETHERNET);
+
+    /* TASK_PARITY is never awaken. */
+}
+
 void simulator_reset(struct simulator *sim)
 {
     uint8_t task;
@@ -306,6 +339,12 @@ void simulator_reset(struct simulator *sim)
         sim->task_mpc[task] = (uint16_t) task;
     }
 
+    disk_reset(&sim->dsk);
+    display_reset(&sim->displ);
+    ethernet_reset(&sim->ether);
+    keyboard_reset(&sim->keyb);
+    mouse_reset(&sim->mous);
+
     sim->error = FALSE;
 
     sim->t = 0;
@@ -317,23 +356,31 @@ void simulator_reset(struct simulator *sim)
     sim->mpc = 0;
     sim->ctask = TASK_EMULATOR;
     sim->ntask = TASK_EMULATOR;
-    sim->pending = (1 << TASK_EMULATOR);
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
-    sim->rmr = 0xFFFF;
+    sim->rmr = 0xFFFFU;
     sim->rdram = FALSE;
     sim->wrtram = FALSE;
+    sim->swmode = FALSE;
     sim->soft_reset = FALSE;
     sim->cram_addr = 0x0;
     sim->cycle = 0;
-    sim->next_cycle = 0;
     sim->mem_cycle = 0;
     sim->mem_task = TASK_EMULATOR;
-    sim->mem_low = 0xFFFF;
-    sim->mem_high = 0xFFFF;
+    sim->mem_low = 0xFFFFU;
+    sim->mem_high = 0xFFFFU;
     sim->mem_extended = 0;
     sim->mem_which = 0;
+
+    update_pending_tasks(sim);
+
+    /* Sets the next interrupt cycle. */
+    sim->intr_cycle = sim->dsk.intr_cycle;
+    if (sim->intr_cycle > sim->displ.intr_cycle)
+        sim->intr_cycle = sim->displ.intr_cycle;
+    if (sim->intr_cycle > sim->ether.intr_cycle)
+        sim->intr_cycle = sim->ether.intr_cycle;
 }
 
 uint16_t simulator_read(const struct simulator *sim, uint16_t address,
@@ -463,7 +510,7 @@ uint16_t decode_ram_address(struct simulator *sim,
             report_error("simulator: step: "
                          "RAM bank 3 not supported");
             sim->error = TRUE;
-            return 0xFFFF;
+            return 0xFFFFU;
         }
         /* Plus 1 for the ROM bank. */
         bank += 1;
@@ -489,9 +536,9 @@ uint16_t do_rdram(struct simulator *sim)
     uint16_t addr, val;
     int low_half;
 
-    if (!sim->rdram) return 0xFFFF;
+    if (!sim->rdram) return 0xFFFFU;
     addr = decode_ram_address(sim, &low_half);
-    if (sim->error) return 0xFFFF;
+    if (sim->error) return 0xFFFFU;
 
     mcode = sim->microcode[addr];
     mcode ^= MC_INVERT_MASK;
@@ -560,9 +607,9 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         break;
     case BS_NONE:
         if (mc->task == TASK_EMULATOR && mc->f1 == F1_EMU_RSNF) {
-            output &= (sim->ether.address & 0xFF00);
+            output &= (sim->ether.address & 0xFF00U);
         } else if (mc->task == TASK_ETHERNET) {
-            /* Implement this. */
+            /* TODO: Implement this. */
             if (mc->f1 == F1_ETH_EILFCT) {
             } else if (mc->f1 == F1_ETH_EPFCT) {
             }
@@ -577,9 +624,9 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         output &= (0xfff0 & mouse_poll_bits(&sim->mous));
         break;
     case BS_READ_DISP:
-        t = sim->ir & 0x00FF;
+        t = sim->ir & 0x00FFU;
         if ((sim->ir & 0x300) != 0 && (sim->ir & 0x80) != 0) {
-            t |= 0xFF00;
+            t |= 0xFF00U;
         }
         output &= t;
         break;
@@ -601,8 +648,8 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
                 break;
             }
         } else if (mc->task == TASK_ETHERNET && mc->bs == BS_ETH_EIDFCT) {
-            /* Implement this. */
-            output &= 0xFFFF;
+            /* TODO: Implement this. */
+            output &= 0xFFFFU;
             break;
         } else if ((mc->task == TASK_DISK_SECTOR)
                    || (mc->task == TASK_DISK_WORD)) {
@@ -661,16 +708,16 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
         res = a + 1;
         break;
     case ALU_BUS_MINUS_1:
-        res = a + 0xFFFF;
+        res = a + 0xFFFFU;
         break;
     case ALU_BUS_PLUS_T:
         res = a + b;
         break;
     case ALU_BUS_MINUS_T:
-        res = a + ((~b) & 0xFFFF) + 1;
+        res = a + ((~b) & 0xFFFFU) + 1;
         break;
     case ALU_BUS_MINUS_T_MINUS_1:
-        res = a + ((~b) & 0xFFFF);
+        res = a + ((~b) & 0xFFFFU);
         break;
     case ALU_BUS_PLUS_T_PLUS_1:
         res = a + b + 1;
@@ -679,7 +726,7 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
         res = a + ((uint32_t) (sim->skip ? 1 : 0));
         break;
     case ALU_BUS_AND_NOT_T:
-        res = a & (~b) & 0xFFFF;
+        res = a & (~b) & 0xFFFFU;
         break;
     default:
         report_error("simulator: step: "
@@ -816,8 +863,8 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                              * is the correct value.
                              */
         sim->mem_task = mc->task;
-        sim->mem_low = 0xFFFF;
-        sim->mem_high = 0xFFFF;
+        sim->mem_low = 0xFFFFU;
+        sim->mem_high = 0xFFFFU;
         sim->mem_extended = (sim->sys_type != ALTO_I)
                           ? (mc->f2 == F2_STORE_MD) : FALSE;
         sim->mem_which = 0;
@@ -890,6 +937,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case TASK_EMULATOR:
         switch (mc->f1) {
         case F1_EMU_SWMODE:
+            sim->swmode = TRUE;
             break;
         case F1_EMU_LOAD_RMR:
             sim->rmr = bus;
@@ -911,7 +959,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                 case 0x01:
                 case 0x02:
                 case 0x03:
-                    /* TODO: Implement this. */
+                    ethernet_startf(&sim->ether, bus);
                     break;
 
                 default:
@@ -938,7 +986,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             /* TODO: Implement this. */
             break;
         case F1_DSK_LOAD_KSTAT:
-            sim->dsk.kstat &= 0xFFF4;
+            sim->dsk.kstat &= 0xFFF4U;
             sim->dsk.kstat |= (bus & 0x0B);
             sim->dsk.kstat |= ((~bus) & 0x04);
             break;
@@ -1045,7 +1093,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         case F2_EMU_MAGIC:
         case F2_EMU_ACDEST:
             /* Already handled. */
-            break;
+            return 0;
         case F2_EMU_BUSODD:
             return (bus & 1);
         case F2_EMU_LOAD_DNS:
@@ -1078,7 +1126,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             if ((sim->ir & 0x0008) == 0) {
                 sim->carry = nova_carry;
             }
-            break;
+            return 0;
         case F2_EMU_LOAD_IR:
             sim->ir = bus;
             sim->skip = FALSE;
@@ -1089,6 +1137,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             if (sim->ir & 0x8000) {
                 next_extra = 3 - ((sim->ir >> 6) & 3);
             } else {
+                /* Using the ACSROM makes it a little faster. */
                 next_extra = ACSROM[((sim->ir >> 8) & 0x7F) + 0x80];
             }
             return next_extra;
@@ -1096,6 +1145,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             if (sim->ir & 0x8000) {
                 next_extra = 3 - ((sim->ir >> 6) & 3);
             } else {
+                /* Using the ACSROM makes it a little faster. */
                 next_extra = ACSROM[(sim->ir >> 8) & 0x7F];
             }
             return next_extra;
@@ -1113,25 +1163,25 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         switch (mc->f2) {
         case F2_DSK_INIT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_RWC:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_RECNO:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_XFRDAT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_SWRNRDY:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_NFER:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_DSK_STROBON:
             /* TODO: Implement this. */
-            break;
+            return 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for disk tasks",
@@ -1145,25 +1195,25 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         switch (mc->f2) {
         case F2_ETH_EODFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_EOSFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_ERBFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_EEFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_EBFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_ECBFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         case F2_ETH_EISFCT:
             /* TODO: Implement this. */
-            break;
+            return 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for ethernet",
@@ -1176,8 +1226,8 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_WORD:
         switch (mc->f2) {
         case F2_DW_LOAD_DDR:
-            /* TODO: Implement this. */
-            break;
+            display_load_ddr(&sim->displ, bus);
+            return 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for display word",
@@ -1190,11 +1240,12 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_CURSOR:
         switch (mc->f2) {
         case F2_CUR_LOAD_XPREG:
-            /* TODO: Implement this. */
-            break;
+            /* TODO: Maybe signal this to the display controller? */
+            sim->displ.cursor_x = bus;
+            return 0;
         case F2_CUR_LOAD_CSR:
-            /* TODO: Implement this. */
-            break;
+            sim->displ.cursor_data = bus;
+            return 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for cursor",
@@ -1207,11 +1258,10 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_HORIZONTAL:
         switch (mc->f2) {
         case F2_DH_EVENFIELD:
-            /* TODO: Implement this. */
-            break;
+            return (sim->displ.even_field) ? 1 : 0;
         case F2_DH_SETMODE:
-            /* TODO: Implement this. */
-            break;
+            display_set_mode(&sim->displ, bus);
+            return (bus & 0x8000) ? 1 : 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for display horizontal",
@@ -1224,8 +1274,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_VERTICAL:
         switch (mc->f2) {
         case F2_DV_EVENFIELD:
-            /* TODO: Implement this. */
-            break;
+            return (sim->displ.even_field) ? 1 : 0;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for display vertical",
@@ -1323,6 +1372,12 @@ void update_program_counters(struct simulator *sim,
 
     /* Updates the next task. */
     sim->ntask = nntask;
+}
+
+/* Updates the simulator and memory cycles. */
+static
+void update_cycles(struct simulator *sim)
+{
     sim->cycle++;
 
     /* Updates the memory cycle. */
@@ -1333,6 +1388,13 @@ void update_program_counters(struct simulator *sim,
             sim->mem_cycle += 1;
         }
     }
+}
+
+/* Performs a SWMODE. */
+static
+void do_swmode(struct simulator *sim)
+{
+    /* TODO: Implement this. */
 }
 
 /* Performs a soft reset. */
@@ -1373,9 +1435,52 @@ void do_soft_reset(struct simulator *sim)
     sim->rmr = 0xFFFF;
 }
 
+/* Checks for interrupts.
+ * The parameter `prev_cycle` records the number of cycles before
+ * the execution of the last microinstruction.
+ */
+static
+void check_for_interrupts(struct simulator *sim, uint32_t prev_cycle)
+{
+    uint32_t diff, intr_diff;
+    uint32_t tmp;
+
+    diff = sim->cycle - prev_cycle;
+    intr_diff = sim->intr_cycle - prev_cycle;
+
+    while (diff > intr_diff) {
+        /* Updates prev_cycle to match the current interrupt time. */
+        prev_cycle += intr_diff;
+        diff -= intr_diff;
+
+        /* Dispatch the interrupts. */
+        if (sim->intr_cycle == sim->dsk.intr_cycle) {
+            disk_interrupt(&sim->dsk);
+        }
+        if (sim->intr_cycle == sim->displ.intr_cycle) {
+            display_interrupt(&sim->displ);
+        }
+        if (sim->intr_cycle == sim->ether.intr_cycle) {
+            ethernet_interrupt(&sim->ether);
+        }
+
+        /* Computes the next interrupt cycle. */
+        intr_diff = sim->dsk.intr_cycle - prev_cycle;
+        tmp = sim->displ.intr_cycle - prev_cycle;
+        if (intr_diff > tmp) intr_diff = tmp;
+        tmp = sim->ether.intr_cycle - prev_cycle;
+        if (intr_diff > tmp) intr_diff = tmp;
+
+        sim->intr_cycle = intr_diff + prev_cycle;
+    }
+
+    update_pending_tasks(sim);
+}
+
 void simulator_step(struct simulator *sim)
 {
     struct microcode mc;
+    uint32_t prev_cycle;
     uint16_t modified_rsel;
     uint16_t bus;
     uint16_t alu;
@@ -1385,6 +1490,7 @@ void simulator_step(struct simulator *sim)
     int aluC0;
     int nova_carry;
     int load_r;
+    int swmode;
     int soft_reset;
 
     if (sim->error) {
@@ -1392,6 +1498,13 @@ void simulator_step(struct simulator *sim)
                      "simulator is in error state");
         return;
     }
+
+    /* Copy this to detect interrupts later. */
+    prev_cycle = sim->cycle;
+
+    /* Copy the swmode in a local variable. */
+    swmode = sim->swmode;
+    sim->swmode = FALSE;
 
     /* Copy the soft_reset in a local variable. */
     soft_reset = sim->soft_reset;
@@ -1440,16 +1553,24 @@ void simulator_step(struct simulator *sim)
     /* Update the micro program counter and the next task. */
     update_program_counters(sim, next_extra, nntask);
 
+    /* Updates the cycles. */
+    update_cycles(sim);
+
+    /* Perform the SWMODE. */
+    if (swmode) do_swmode(sim);
+
     /* Perform the soft reset. */
     if (soft_reset) do_soft_reset(sim);
+
+    check_for_interrupts(sim, prev_cycle);
 }
 
 /* Auxiliary function used by simulator_disassemble().
  * Callback to print constants.
  */
 static
-void sim_constant_cb(struct decoder *dec, uint16_t val,
-                     struct decode_buffer *output)
+void disasm_constant_cb(struct decoder *dec, uint16_t val,
+                            struct decode_buffer *output)
 {
     struct simulator *sim;
     sim = (struct simulator *) dec->arg;
@@ -1460,8 +1581,8 @@ void sim_constant_cb(struct decoder *dec, uint16_t val,
  * Callback to print R registers.
  */
 static
-void sim_register_cb(struct decoder *dec, uint16_t val,
-                     struct decode_buffer *output)
+void disasm_register_cb(struct decoder *dec, uint16_t val,
+                        struct decode_buffer *output)
 {
     if (val <= R_MASK) {
         decode_buffer_print(output, "R%o", val);
@@ -1474,8 +1595,8 @@ void sim_register_cb(struct decoder *dec, uint16_t val,
  * Callback to print GOTO statements.
  */
 static
-void sim_goto_cb(struct decoder *dec, uint16_t val,
-                 struct decode_buffer *output)
+void disasm_goto_cb(struct decoder *dec, uint16_t val,
+                    struct decode_buffer *output)
 {
     decode_buffer_print(output, ":%05o", val);
 }
@@ -1502,9 +1623,9 @@ void simulator_disassemble(struct simulator *sim,
                         sim->ctask, sim->mpc, sim->mir);
 
     dec.arg = sim;
-    dec.const_cb = &sim_constant_cb;
-    dec.reg_cb = &sim_register_cb;
-    dec.goto_cb = &sim_goto_cb;
+    dec.const_cb = &disasm_constant_cb;
+    dec.reg_cb = &disasm_register_cb;
+    dec.goto_cb = &disasm_goto_cb;
 
     decoder_decode(&dec, &mc, &out);
 }
@@ -1556,7 +1677,7 @@ void simulator_print_registers(struct simulator *sim,
                         sim->pending, sim->rmr);
 
     decode_buffer_print(&out,
-                        "CYCLE: %lu",
+                        "CYCLE: %u",
                         sim->cycle);
 
     if (sim->error) {

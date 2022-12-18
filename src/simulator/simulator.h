@@ -37,6 +37,7 @@ struct simulator {
                                    */
     int rdram;                    /* Previous instruction had RDRAM. */
     int wrtram;                   /* Previous instruction had WRTRAM. */
+    int swmode;                   /* Previous instruction had SWMODE. */
     int soft_reset;               /* Previous instruction had soft reset. */
 
     uint16_t *consts;             /* Pointer to the constant rom. */
@@ -46,8 +47,8 @@ struct simulator {
                                    * select (1 per task).
                                    */
     uint16_t cram_addr;           /* Control RAM address. */
-    uint64_t cycle;               /* Current cpu cycle. */
-    uint64_t next_cycle;          /* Next cycle when the simulator needs
+    uint32_t cycle;               /* Current cpu cycle. */
+    uint32_t intr_cycle;          /* Next cycle when the simulator needs
                                    * to check the controllers for events.
                                    */
 
