@@ -976,13 +976,23 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case TASK_DISK_WORD:
         switch (mc->f1) {
         case F1_DSK_STROBE:
-            disk_strobe(&sim->dsk);
+            if (!disk_strobe(&sim->dsk, sim->cycle)) {
+                report_error("simulator: step: "
+                             "error on disk STROBE");
+                sim->error = TRUE;
+                return;
+            }
             break;
         case F1_DSK_LOAD_KSTAT:
             disk_load_kstat(&sim->dsk, bus);
             break;
         case F1_DSK_INCRECNO:
-            disk_increcno(&sim->dsk);
+            if (!disk_increcno(&sim->dsk)) {
+                report_error("simulator: step: "
+                             "error on disk INCRECNO");
+                sim->error = TRUE;
+                return;
+            }
             break;
         case F1_DSK_CLRSTAT:
             disk_clrstat(&sim->dsk);

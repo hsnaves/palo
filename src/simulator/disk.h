@@ -29,17 +29,39 @@ struct disk_drive {
     struct disk_sector *sectors;  /* The disk sectors. */
     uint16_t length;              /* Total length of the disk in sectors. */
     uint16_t size;                /* Total allocated size (in sectors). */
+    int loaded;                   /* Disk was loaded. */
 };
 
 /* Structure representing the disk controller for the simulator. */
 struct disk {
     struct disk_drive drives[2];  /* The two disk drives. */
     uint16_t kstat;               /* KSTAT register. */
-    uint16_t kdata;               /* KDATA register. */
+    uint16_t kdata_read;          /* KDATA register (to read). */
+    uint16_t kdata;               /* KDATA register (written value). */
+    int has_kdata;                /* KDATA was written. */
     uint16_t kadr;                /* KADR register. */
     uint16_t kcomm;               /* KCOMM register. */
 
+    uint16_t disk;                /* Current disk. */
+    uint16_t head;                /* Current head. */
+    uint16_t cylinder;            /* Current cylinder. */
+    uint16_t target_cylinder;     /* The target cylinder for seek. */
+    uint16_t sector;              /* Current sector. */
+    uint16_t sector_word;         /* Current word in the sector. */
+
+    int rec_no;                   /* Record number. */
+    int data_transfer;            /* To perform a data transfer (or
+                                   * only seek).
+                                   */
+    int restore;                  /* Restore operation. */
+    int sync_word_written;        /* The sync word was written. */
+    int wdinit;                   /* WDINIT bit used by task. */
+
     int32_t intr_cycle;           /* Cycle of the next interrupt. */
+    int32_t ds_intr_cycle;        /* Disk sector interrupt cycle. */
+    int32_t dw_intr_cycle;        /* Disk word interrupt cycle. */
+    int32_t seek_intr_cycle;      /* Seek interrupt cycle. */
+    int32_t seclate_intr_cycle;   /* SECLATE interrupt cycle. */
     uint16_t pending;             /* The task pending mask. */
 };
 
@@ -108,11 +130,16 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus);
  */
 void disk_load_kadr(struct disk *dsk, uint16_t bus);
 
-/* Executes a F1_DSK_STROBE. */
-void disk_strobe(struct disk *dsk);
+/* Executes a F1_DSK_STROBE.
+ * The `cycle` parameter specifies the current cycle.
+ * Returns TRUE on success.
+ */
+int disk_strobe(struct disk *dsk, int32_t cycle);
 
-/* Executes a F1_DSK_INCRECNO. */
-void disk_increcno(struct disk *dsk);
+/* Executes a F1_DSK_INCRECNO.
+ * Returns TRUE on success.
+ */
+int disk_increcno(struct disk *dsk);
 
 /* Executes a F1_DSK_CLRSTAT. */
 void disk_clrstat(struct disk *dsk);

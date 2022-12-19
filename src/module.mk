@@ -38,8 +38,8 @@ simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  microcode/microcode.h simulator/disk.h simulator/display.h \
  simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
  simulator/utils.h common/utils.h
-simulator/disk.o: simulator/disk.c simulator/disk.h microcode/microcode.h \
- common/utils.h
+simulator/disk.o: simulator/disk.c simulator/disk.h simulator/utils.h \
+ microcode/microcode.h common/utils.h
 simulator/display.o: simulator/display.c simulator/display.h \
  simulator/utils.h microcode/microcode.h common/utils.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
