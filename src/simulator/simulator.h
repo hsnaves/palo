@@ -27,6 +27,7 @@ struct simulator {
 
     uint8_t ctask;                /* Current task. */
     uint8_t ntask;                /* The next task. */
+    int task_swtch;               /* If a task switch just happened. */
 
     int aluC0;                    /* Last carry of ALU when loading L. */
     int skip;                     /* Skip flag. */

@@ -101,7 +101,7 @@ void simulator_destroy(struct simulator *sim)
     sim->s = NULL;
 
     if (sim->consts) free((void *) sim->consts);
-    sim->microcode = NULL;
+    sim->consts = NULL;
 
     if (sim->microcode) free((void *) sim->microcode);
     sim->microcode = NULL;
@@ -323,6 +323,7 @@ void simulator_reset(struct simulator *sim)
     sim->mpc = 0;
     sim->ctask = TASK_EMULATOR;
     sim->ntask = TASK_EMULATOR;
+    sim->task_swtch = TRUE;
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
@@ -827,7 +828,8 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
            uint16_t bus, uint16_t alu, uint8_t *nntask)
 {
     uint16_t addr;
-    uint8_t pending, tmp;
+    uint16_t pending;
+    uint8_t tmp;
 
     *nntask = sim->ntask;
 
@@ -871,8 +873,10 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
          */
         return;
     case F1_TASK:
+        /* Should we not prevent two consecutive switches? */
+        if (sim->task_swtch) return;
+
         /* Switch tasks. */
-        /* TODO: Maybe prevent two consecutive switches? */
         pending = get_pending(sim);
         for (tmp = TASK_NUM_TASKS; tmp--;) {
             if (pending & (1 << tmp)) {
@@ -891,7 +895,6 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 
         /* Prevent the current task from running. */
         do_block(sim, mc->task);
-
         return;
     }
 
@@ -1330,6 +1333,7 @@ void update_program_counters(struct simulator *sim,
     uint8_t task;
 
     /* Updates the current task. */
+    sim->task_swtch = (sim->ctask != sim->ntask);
     sim->ctask = sim->ntask;
 
     /* Updates the MPC and MIR. */
@@ -1344,6 +1348,18 @@ void update_program_counters(struct simulator *sim,
 
     /* Updates the next task. */
     sim->ntask = nntask;
+
+    if (!sim->task_swtch) return;
+
+    if (sim->ctask == TASK_DISPLAY_WORD
+        || sim->ctask == TASK_DISPLAY_HORIZONTAL
+        || sim->ctask == TASK_DISPLAY_VERTICAL) {
+
+        /* Dispatches the "on switch task" event to the display
+         * controller.
+         */
+        display_on_switch_task(&sim->displ, sim->ctask);
+    }
 }
 
 /* Updates the simulator and memory cycles. */
@@ -1439,11 +1455,13 @@ void check_for_interrupts(struct simulator *sim, uint32_t prev_cycle)
         }
 
         /* Computes the next interrupt cycle. */
-        intr_diff = sim->dsk.intr_cycle - prev_cycle;
+        intr_diff = 0xFFFFFFFFU;
+        tmp = sim->dsk.intr_cycle - prev_cycle;
+        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
         tmp = sim->displ.intr_cycle - prev_cycle;
-        if (intr_diff > tmp) intr_diff = tmp;
+        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
         tmp = sim->ether.intr_cycle - prev_cycle;
-        if (intr_diff > tmp) intr_diff = tmp;
+        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
 
         sim->intr_cycle = intr_diff + prev_cycle;
     }

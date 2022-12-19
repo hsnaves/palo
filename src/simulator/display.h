@@ -19,15 +19,30 @@ struct display {
     uint8_t fifo_start, fifo_end; /* To control the FIFO. */
 
     int even_field;               /* If this is an even or odd field. */
-    int scanline;                 /* The current scal line. */
+    int scanline;                 /* The current scanline. */
+    int vblank_scanline;          /* Scanline in vertical blank period. */
+    int word;                     /* The current word in the scanline. */
 
     uint16_t cursor_x;            /* Cursor X position. */
+    uint16_t cursor_x_latched;    /* Latched position for scanline. */
+    int has_cursor_x;             /* X data latched. */
     uint16_t cursor_data;         /* The cursor data. */
+    uint16_t cursor_data_latched; /* Latched data for scanline. */
+    int has_cursor_data;          /* Cursor data latched. */
+
+    int switch_mode;              /* Pending switch mode requested. */
+    int low_res;                  /* Low resolution mode. */
+    int low_res_latched;          /* The latched mode for scanline. */
+    int wob;                      /* White on black. */
+    int wob_latched;              /* Latched wob for scanline. */
+
+    int dw_blocked;               /* Display word blocked itself. */
+    int dh_blocked;               /* Display horizontal blocked itself. */
 
     uint32_t intr_cycle;          /* Cycle of the next interrupt. */
-    uint32_t dw_intr_cycle;       /* Interrupt cycle for display word. */
-    uint32_t dh_intr_cycle;       /* Interrupt cycle for display horizontal. */
     uint32_t dv_intr_cycle;       /* Interrupt cycle for display vertical. */
+    uint32_t dh_intr_cycle;       /* Interrupt cycle for display horizontal. */
+    uint32_t dw_intr_cycle;       /* Interrupt cycle for display word. */
     uint16_t pending;             /* The task pending mask. */
 };
 
@@ -90,5 +105,10 @@ void display_block_task(struct display *displ, uint8_t task);
 
 /* Processes the display interrupts. */
 void display_interrupt(struct display *displ);
+
+/* Callback for when the simulation switches to a display task.
+ * The new task is given by `task`.
+ */
+void display_on_switch_task(struct display *displ, uint8_t task);
 
 #endif /* __SIMULATOR_DISPLAY_H */
