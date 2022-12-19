@@ -11,7 +11,7 @@ struct ethernet {
     uint16_t address;             /* The ethernet address. */
     uint16_t *fifo_buffer;        /* For sending / receiving data. */
 
-    uint32_t intr_cycle;          /* Cycle of the next interrupt. */
+    int32_t intr_cycle;           /* Cycle of the next interrupt. */
     uint16_t pending;             /* The task pending mask. */
 };
 

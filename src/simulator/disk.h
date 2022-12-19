@@ -39,7 +39,7 @@ struct disk {
     uint16_t kadr;                /* KADR register. */
     uint16_t kcomm;               /* KCOMM register. */
 
-    uint32_t intr_cycle;          /* Cycle of the next interrupt. */
+    int32_t intr_cycle;           /* Cycle of the next interrupt. */
     uint16_t pending;             /* The task pending mask. */
 };
 

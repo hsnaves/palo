@@ -29,7 +29,7 @@ int ethernet_create(struct ethernet *ether)
 
 void ethernet_reset(struct ethernet *ether)
 {
-    ether->intr_cycle = 0xFFFFFFFFU;
+    ether->intr_cycle = -1;
     ether->pending = 0;
 }
 

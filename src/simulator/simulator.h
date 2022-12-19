@@ -47,8 +47,8 @@ struct simulator {
                                    * select (1 per task).
                                    */
     uint16_t cram_addr;           /* Control RAM address. */
-    uint32_t cycle;               /* Current cpu cycle. */
-    uint32_t intr_cycle;          /* Next cycle when the simulator needs
+    int32_t cycle;                /* Current cpu cycle. */
+    int32_t intr_cycle;           /* Next cycle when the simulator needs
                                    * to check the controllers for events.
                                    */
 

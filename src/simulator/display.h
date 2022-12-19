@@ -39,10 +39,10 @@ struct display {
     int dw_blocked;               /* Display word blocked itself. */
     int dh_blocked;               /* Display horizontal blocked itself. */
 
-    uint32_t intr_cycle;          /* Cycle of the next interrupt. */
-    uint32_t dv_intr_cycle;       /* Interrupt cycle for display vertical. */
-    uint32_t dh_intr_cycle;       /* Interrupt cycle for display horizontal. */
-    uint32_t dw_intr_cycle;       /* Interrupt cycle for display word. */
+    int32_t intr_cycle;           /* Cycle of the next interrupt. */
+    int32_t dv_intr_cycle;        /* Display vertical interrupt cycle. */
+    int32_t dh_intr_cycle;        /* Display horizontal interrupt cycle. */
+    int32_t dw_intr_cycle;        /* Display word interrupt cycle. */
     uint16_t pending;             /* The task pending mask. */
 };
 

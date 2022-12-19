@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "simulator/display.h"
+#include "simulator/utils.h"
 #include "microcode/microcode.h"
 #include "common/utils.h"
 
@@ -155,23 +156,6 @@ void display_block_task(struct display *displ, uint8_t task)
     displ->pending &= ~(1 << task);
 }
 
-/* Updates the intr_cycle. */
-static
-void update_intr_cycle(struct display *displ)
-{
-    uint32_t tmp, diff;
-
-    diff = 0xFFFFFFFFU;
-    tmp = displ->dv_intr_cycle - displ->intr_cycle;
-    if (diff > tmp && tmp > 0) diff = tmp;
-    tmp = displ->dh_intr_cycle - displ->intr_cycle;
-    if (diff > tmp && tmp > 0) diff = tmp;
-    tmp = displ->dw_intr_cycle - displ->intr_cycle;
-    if (diff > tmp && tmp > 0) diff = tmp;
-
-    displ->intr_cycle += diff;
-}
-
 /* Display vertical interrupt routine. */
 static
 void dv_interrupt(struct display *displ)
@@ -195,9 +179,12 @@ void dv_interrupt(struct display *displ)
                            | (1 << TASK_DISPLAY_WORD)
                            | (1 << TASK_CURSOR));
 
-        displ->dh_intr_cycle = displ->intr_cycle + HBLANK_DURATION;
+        displ->dh_intr_cycle =
+            INTR_CYCLE(displ->intr_cycle + HBLANK_DURATION);
+        displ->dv_intr_cycle = -1; /* Disable this interrupt. */
     } else {
-        displ->dv_intr_cycle =  displ->intr_cycle + SCANLINE_DURATION;
+        displ->dv_intr_cycle =
+            INTR_CYCLE(displ->intr_cycle + SCANLINE_DURATION);
     }
 }
 
@@ -216,7 +203,9 @@ void dh_interrupt(struct display *displ)
         displ->has_cursor_data = FALSE;
     }
 
-    displ->dw_intr_cycle = displ->intr_cycle + 2 * WORD_DURATION;
+    displ->dw_intr_cycle =
+        INTR_CYCLE(displ->intr_cycle + 2 * WORD_DURATION);
+    displ->dh_intr_cycle = -1; /* Disable the interrupt. */
 }
 
 /* Starts a new field. */
@@ -234,7 +223,8 @@ void field_start(struct display *displ)
 
     displ->fifo_start = displ->fifo_end = 0;
 
-    displ->dv_intr_cycle = displ->intr_cycle + VBLANK_DURATION;
+    displ->dv_intr_cycle =
+        INTR_CYCLE(displ->intr_cycle + VBLANK_DURATION);
 }
 
 /* Display word interrupt routine. */
@@ -287,6 +277,7 @@ void dw_interrupt(struct display *displ)
         displ->dw_intr_cycle = displ->intr_cycle;
         displ->dw_intr_cycle += (displ->low_res_latched)
             ? 2 * WORD_DURATION : WORD_DURATION;
+        displ->dw_intr_cycle = INTR_CYCLE(displ->dw_intr_cycle);
         return;
     }
 
@@ -327,7 +318,22 @@ void dw_interrupt(struct display *displ)
         displ->switch_mode = FALSE;
     }
 
-    displ->dh_intr_cycle = displ->intr_cycle + HBLANK_DURATION;
+    displ->dh_intr_cycle =
+        INTR_CYCLE(displ->intr_cycle + HBLANK_DURATION);
+}
+
+/* Updates the intr_cycle. */
+static
+void update_intr_cycle(struct display *displ)
+{
+    int32_t intr_cycles[3];
+
+    intr_cycles[0] = displ->dv_intr_cycle;
+    intr_cycles[1] = displ->dh_intr_cycle;
+    intr_cycles[2] = displ->dw_intr_cycle;
+
+    displ->intr_cycle = compute_intr_cycle(displ->intr_cycle,
+                                           3, intr_cycles);
 }
 
 void display_interrupt(struct display *displ)

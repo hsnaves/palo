@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "simulator/simulator.h"
+#include "simulator/utils.h"
 #include "microcode/microcode.h"
 #include "common/utils.h"
 
@@ -294,6 +295,7 @@ error_eof:
 
 void simulator_reset(struct simulator *sim)
 {
+    int32_t intr_cycles[3];
     uint8_t task;
 
     memset(sim->r, 0, NUM_R_REGISTERS * sizeof(uint16_t));
@@ -342,11 +344,11 @@ void simulator_reset(struct simulator *sim)
     sim->mem_which = 0;
 
     /* Sets the next interrupt cycle. */
-    sim->intr_cycle = sim->dsk.intr_cycle;
-    if (sim->intr_cycle > sim->displ.intr_cycle)
-        sim->intr_cycle = sim->displ.intr_cycle;
-    if (sim->intr_cycle > sim->ether.intr_cycle)
-        sim->intr_cycle = sim->ether.intr_cycle;
+    intr_cycles[0] = sim->dsk.intr_cycle;
+    intr_cycles[1] = sim->displ.intr_cycle;
+    intr_cycles[2] = sim->ether.intr_cycle;
+
+    sim->intr_cycle = compute_intr_cycle(0, 3, intr_cycles);
 }
 
 uint16_t simulator_read(const struct simulator *sim, uint16_t address,
@@ -1367,6 +1369,7 @@ static
 void update_cycles(struct simulator *sim)
 {
     sim->cycle++;
+    sim->cycle &= 0x7FFFFFFF;
 
     /* Updates the memory cycle. */
     if (sim->mem_cycle != 0xFFFF) {
@@ -1430,18 +1433,20 @@ void do_soft_reset(struct simulator *sim)
  * the execution of the last microinstruction.
  */
 static
-void check_for_interrupts(struct simulator *sim, uint32_t prev_cycle)
+void check_for_interrupts(struct simulator *sim, int32_t prev_cycle)
 {
-    uint32_t diff, intr_diff;
-    uint32_t tmp;
+    int32_t intr_cycles[3];
+    int32_t diff, intr_diff;
 
-    diff = sim->cycle - prev_cycle;
-    intr_diff = sim->intr_cycle - prev_cycle;
+    while (TRUE) {
+        if (sim->intr_cycle < 0) return;
 
-    while (diff > intr_diff) {
+        diff = sim->cycle - prev_cycle;
+        intr_diff = sim->intr_cycle - prev_cycle;
+        if (diff <= intr_diff) break;
+
         /* Updates prev_cycle to match the current interrupt time. */
         prev_cycle += intr_diff;
-        diff -= intr_diff;
 
         /* Dispatch the interrupts. */
         if (sim->intr_cycle == sim->dsk.intr_cycle) {
@@ -1455,22 +1460,23 @@ void check_for_interrupts(struct simulator *sim, uint32_t prev_cycle)
         }
 
         /* Computes the next interrupt cycle. */
-        intr_diff = 0xFFFFFFFFU;
-        tmp = sim->dsk.intr_cycle - prev_cycle;
-        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
-        tmp = sim->displ.intr_cycle - prev_cycle;
-        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
-        tmp = sim->ether.intr_cycle - prev_cycle;
-        if (intr_diff > tmp && tmp > 0) intr_diff = tmp;
+        intr_cycles[0] = sim->dsk.intr_cycle;
+        intr_cycles[1] = sim->displ.intr_cycle;
+        intr_cycles[2] = sim->ether.intr_cycle;
 
-        sim->intr_cycle = intr_diff + prev_cycle;
+        sim->intr_cycle = compute_intr_cycle(prev_cycle, 3, intr_cycles);
+        if (sim->intr_cycle == prev_cycle) {
+            report_error("simulator: step: intr_cycle did not advance");
+            sim->error = TRUE;
+            return;
+        }
     }
 }
 
 void simulator_step(struct simulator *sim)
 {
     struct microcode mc;
-    uint32_t prev_cycle;
+    int32_t prev_cycle;
     uint16_t modified_rsel;
     uint16_t bus;
     uint16_t alu;
@@ -1669,7 +1675,7 @@ void simulator_print_registers(struct simulator *sim,
                         pending, sim->rmr);
 
     decode_buffer_print(&out,
-                        "CYCLE: %u",
+                        "CYCLE: %d",
                         sim->cycle);
 
     if (sim->error) {

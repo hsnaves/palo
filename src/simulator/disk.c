@@ -190,7 +190,7 @@ error:
 
 void disk_reset(struct disk *dsk)
 {
-    dsk->intr_cycle = 0xFFFFFFFFU;
+    dsk->intr_cycle = -1;
     dsk->pending = 0;
 }
 
