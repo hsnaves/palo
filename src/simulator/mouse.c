@@ -45,11 +45,17 @@ int mouse_create(struct mouse *mous)
     return TRUE;
 }
 
+void mouse_update_from(struct mouse *mous, struct mouse *other)
+{
+    mous->buttons = other->buttons;
+    mous->dx += other->dx;
+    mous->dy += other->dy;
+}
+
 void mouse_reset(struct mouse *mous)
 {
     mous->buttons = 0;
-    mous->x = mous->y = 0;
-    mous->target_x = mous->target_y = 0;
+    mous->dx = mous->dy = 0;
     mous->dir_x = FALSE;
 }
 
@@ -61,25 +67,28 @@ uint16_t mouse_read(const struct mouse *mous, uint16_t address)
 uint16_t mouse_poll_bits(struct mouse *mous)
 {
     uint16_t bits;
-    int dx, dy;
 
-    dx = mous->target_x - mous->x;
-    dy = mous->target_y - mous->y;
 
     bits = MOVE_NOCHANGE;
-    if (dx == 0 && dy == 0) return bits;
+    if (mous->dx == 0 && mous->dy == 0) return bits;
 
     /* Simulate the mouse movement. */
     if (mous->dir_x) {
-        if (dx > 0)
+        if (mous->dx > 0) {
             bits = MOVE_RIGHT;
-        else if (dx < 0)
+            mous->dx--;
+        } else if (mous->dx < 0) {
             bits = MOVE_LEFT;
+            mous->dx++;
+        }
     } else {
-        if (dy > 0)
+        if (mous->dy > 0) {
             bits = MOVE_UP;
-        else if (dy < 0)
+            mous->dy--;
+        } else if (mous->dy < 0) {
             bits = MOVE_DOWN;
+            mous->dy++;
+        }
     }
 
     mous->dir_x = !(mous->dir_x);
@@ -112,6 +121,6 @@ void mouse_release_button(struct mouse *mous, enum alto_button btn)
 
 void mouse_move(struct mouse *mous, int dx, int dy)
 {
-    mous->target_x += dx;
-    mous->target_y += dy;
+    mous->dx += dx;
+    mous->dy += dy;
 }

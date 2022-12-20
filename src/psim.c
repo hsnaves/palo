@@ -5,18 +5,22 @@
 #include <ctype.h>
 
 #include "simulator/simulator.h"
+#include "gui/gui.h"
 #include "common/utils.h"
 
-/* Print the program usage information. */
-static
-void usage(const char *prog_name)
-{
-    printf("Usage:\n");
-    printf(" %s [options] microcode\n", prog_name);
-    printf("where:\n");
-    printf("  -c constant   Specify the constant rom file\n");
-    printf("  --help        Print this help\n");
-}
+/* Data structures and types. */
+
+/* Internal structure for the user interface. */
+struct psim_internal {
+    struct simulator sim;         /* The simulator. */
+    struct gui ui;                /* The user interface. */
+    const char *const_filename;   /* The name of the constant rom. */
+    const char *mcode_filename;   /* The name of the microcode rom. */
+    const char *disk1_filename;   /* Disk 1 image file. */
+    const char *disk2_filename;   /* Disk 2 image file. */
+};
+
+/* Functions. */
 
 /* Gets a command line from the standard input.
  * The command line is stored in `buffer`, with the words separated by a
@@ -70,14 +74,20 @@ void get_command(char *buffer, size_t buffer_size)
 
 /* To run the debugger. */
 static
-void debug_simulation(struct simulator *sim)
+int debug_simulation(struct psim_internal *pi)
 {
+    struct simulator *sim;
+    struct gui *ui;
     char cmd_buffer[256];
     char out_buffer[4096];
     const char *cmd, *arg, *end;
     unsigned int num;
     uint16_t addr, val;
+    int should_disassemble;
     int running;
+
+    sim = &pi->sim;
+    ui = &pi->ui;
 
     cmd_buffer[0] = '\0';
     cmd_buffer[1] = '\0';
@@ -88,6 +98,7 @@ void debug_simulation(struct simulator *sim)
 
         cmd = (const char *) cmd_buffer;
         arg = &cmd[strlen(cmd) + 1];
+        should_disassemble = FALSE;
 
         if (strcmp(cmd, "n") == 0) {
             if (arg[0] != '\0') {
@@ -103,10 +114,14 @@ void debug_simulation(struct simulator *sim)
             while (num-- > 0)
                 simulator_step(sim);
 
-            goto disassemble;
+            should_disassemble = TRUE;
+            goto next_command;
         }
 
-        if (strcmp(cmd, "r") == 0) goto disassemble;
+        if (strcmp(cmd, "r") == 0) {
+            should_disassemble = TRUE;
+            goto next_command;
+        }
 
         if (strcmp(cmd, "d") == 0) {
             if (arg[0] != '\0') {
@@ -124,7 +139,7 @@ void debug_simulation(struct simulator *sim)
                 val = simulator_read(sim, addr, sim->ctask, FALSE);
                 printf("%06o: %06o\n", addr++, val);
             }
-            continue;
+            goto next_command;
         }
 
         if (strcmp(cmd, "h") == 0 || strcmp(cmd, "help") == 0) {
@@ -134,7 +149,7 @@ void debug_simulation(struct simulator *sim)
             printf("  d [addr]    Dump the memory contents\n");
             printf("  h           Print this help\n");
             printf("  q           Quit the debugger\n");
-            continue;
+            goto next_command;
         }
 
         if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0)
@@ -142,24 +157,104 @@ void debug_simulation(struct simulator *sim)
 
         continue;
 
-    disassemble:
-        simulator_disassemble(sim, out_buffer, sizeof(out_buffer));
-        printf("%s\n", out_buffer);
-        simulator_print_registers(sim, out_buffer, sizeof(out_buffer));
-        printf("%s\n", out_buffer);
+    next_command:
+        if (unlikely(!gui_update(ui, sim->displ.display_data,
+                                 &sim->keyb, &sim->mous))) {
+            report_error("debug_simulation: could not update GUI");
+            return FALSE;
+        }
+
+        if (should_disassemble) {
+            simulator_disassemble(sim, out_buffer, sizeof(out_buffer));
+            printf("%s\n", out_buffer);
+            simulator_print_registers(sim, out_buffer, sizeof(out_buffer));
+            printf("%s\n", out_buffer);
+        }
+
         continue;
     }
+
+    return TRUE;
+}
+
+/* Runs the palo simulator.
+ * Returns TRUE on success.
+ */
+static
+int run_psim(struct psim_internal *pi)
+{
+    if (unlikely(!simulator_create(&pi->sim, ALTO_II_3KRAM))) {
+        report_error("run_psim: could not create simulator");
+        return FALSE;
+    }
+
+    if (unlikely(!simulator_load_constant_rom(&pi->sim,
+                                              pi->const_filename))) {
+        report_error("run_psim: could not load constant rom");
+        return FALSE;
+    }
+
+    if (unlikely(!simulator_load_microcode_rom(&pi->sim,
+                                               pi->mcode_filename, 0))) {
+        report_error("run_psim: could not load microcode rom");
+        return FALSE;
+    }
+
+    if (pi->disk1_filename) {
+        if (unlikely(!disk_load_image(&pi->sim.dsk, 0,
+                                      pi->disk1_filename))) {
+            report_error("run_psim: could not load disk 1");
+            return FALSE;
+        }
+    }
+
+    if (pi->disk2_filename) {
+        if (unlikely(!disk_load_image(&pi->sim.dsk, 1,
+                                      pi->disk2_filename))) {
+            report_error("run_psim: could not load disk 2");
+            return FALSE;
+        }
+    }
+
+    if (unlikely(!gui_create(&pi->ui))) {
+        report_error("run_psim: could not create user interface");
+        return FALSE;
+    }
+
+    if (unlikely(!gui_start(&pi->ui))) {
+        report_error("run_psim: could not start user interface");
+        return FALSE;
+    }
+
+    simulator_reset(&pi->sim);
+    return debug_simulation(pi);
+}
+
+/* Print the program usage information. */
+static
+void usage(const char *prog_name)
+{
+    printf("Usage:\n");
+    printf(" %s [options] microcode\n", prog_name);
+    printf("where:\n");
+    printf("  -c constant   Specify the constant rom file\n");
+    printf("  -m micro      Specify the microcode rom file\n");
+    printf("  -1 disk1      Specify the disk 1 filename\n");
+    printf("  -2 disk2      Specify the disk 2 filename\n");
+    printf("  --help        Print this help\n");
 }
 
 int main(int argc, char **argv)
 {
-    const char *constant_filename;
-    const char *microcode_filename;
-    struct simulator sim;
-    int i, is_last;
+    struct psim_internal pi;
+    int i, is_last, ret;
 
-    constant_filename = NULL;
-    microcode_filename = NULL;
+    simulator_initvar(&pi.sim);
+    gui_initvar(&pi.ui);
+    pi.const_filename = NULL;
+    pi.mcode_filename = NULL;
+    pi.disk1_filename = NULL;
+    pi.disk2_filename = NULL;
 
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);
@@ -168,52 +263,46 @@ int main(int argc, char **argv)
                 report_error("main: please specify the constant rom file");
                 return 1;
             }
-            constant_filename = argv[++i];
+            pi.const_filename = argv[++i];
+        } else if (strcmp("-m", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the microcode rom file");
+                return 1;
+            }
+            pi.mcode_filename = argv[++i];
+        } else if (strcmp("-1", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the disk 1 file");
+                return 1;
+            }
+            pi.disk1_filename = argv[++i];
+        } else if (strcmp("-2", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the disk 2 file");
+                return 1;
+            }
+            pi.disk2_filename = argv[++i];
         } else if (strcmp("--help", argv[i]) == 0
                    || strcmp("-h", argv[i]) == 0) {
             usage(argv[0]);
             return 0;
         } else {
-            microcode_filename = argv[i];
+            pi.disk1_filename = argv[i];
         }
     }
 
-    if (!microcode_filename) {
+    if (!pi.mcode_filename) {
         report_error("main: must specify the microcode rom file name");
         return 1;
     }
 
-    if (!constant_filename) {
+    if (!pi.const_filename) {
         report_error("main: must specify the constant rom file name");
         return 1;
     }
 
-    simulator_initvar(&sim);
-
-    if (unlikely(!simulator_create(&sim, ALTO_II_3KRAM))) {
-        report_error("main: could not create simulator");
-        goto error;
-    }
-
-    if (unlikely(!simulator_load_constant_rom(&sim, constant_filename))) {
-        report_error("main: could not load constant rom");
-        goto error;
-    }
-
-    if (unlikely(
-            !simulator_load_microcode_rom(&sim, microcode_filename, 0))) {
-        report_error("main: could not load microcode rom");
-        goto error;
-    }
-
-    simulator_reset(&sim);
-    debug_simulation(&sim);
-
-    simulator_destroy(&sim);
-    return 0;
-
-error:
-
-    simulator_destroy(&sim);
-    return 1;
+    ret = run_psim(&pi);
+    gui_destroy(&pi.ui);
+    simulator_destroy(&pi.sim);
+    return (ret) ? 0 : 1;
 }

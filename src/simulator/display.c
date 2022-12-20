@@ -8,16 +8,12 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define DISPLAY_WIDTH               606
-#define DISPLAY_HEIGHT              808
-#define DISPLAY_STRIDE              608
 #define FIFO_SIZE                    16
 #define SCANLINE_WORDS               38
 #define VBLANK_DURATION            3911  /*   665 us / 170 ns */
 #define SCANLINE_DURATION           224  /*    38 us / 170 ns */
 #define HBLANK_DURATION              35  /*     6 us / 170 ns */
 #define WORD_DURATION                 5  /* 0.842 us / 170 ns */
-#define DISPLAY_DATA_SIZE (DISPLAY_STRIDE * DISPLAY_HEIGHT)
 
 /* Functions. */
 

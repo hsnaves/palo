@@ -98,6 +98,11 @@ int keyboard_create(struct keyboard *keyb)
     return TRUE;
 }
 
+void keyboard_update_from(struct keyboard *keyb, struct keyboard *other)
+{
+    memcpy(keyb->keys, other->keys, sizeof(keyb->keys));
+}
+
 void keyboard_reset(struct keyboard *keyb)
 {
     memset(keyb->keys, 0, sizeof(keyb->keys));

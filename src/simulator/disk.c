@@ -240,6 +240,20 @@ error:
     return FALSE;
 }
 
+int disk_unload(struct disk *dsk, unsigned int drive_num)
+{
+    struct disk_drive *dd;
+    if (drive_num >= NUM_DISK_DRIVES) {
+        report_error("disk: unload: invalid drive number %u",
+                     drive_num);
+        return FALSE;
+    }
+
+    dd = &dsk->drives[drive_num];
+    dd->loaded = FALSE;
+    return TRUE;
+}
+
 void disk_reset(struct disk *dsk)
 {
     dsk->kstat = 0;

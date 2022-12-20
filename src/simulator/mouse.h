@@ -27,14 +27,7 @@ enum alto_button {
 /* The mouse (and keyset) controller for the simulator. */
 struct mouse {
     uint16_t buttons;             /* The bit mask of pressed buttons. */
-    int x, y;                     /* Current mouse position.
-                                   * This might not correspond to the
-                                   * screen position, because the cursor
-                                   * might have hit the edges of the
-                                   * screen. This is only used to
-                                   * simulate mouse movement.
-                                   */
-    int target_x, target_y;       /* Mouse movement target positions. */
+    int dx, dy;                   /* Mouse movement. */
     int dir_x;                    /* Current movement direction in X axis. */
 };
 
@@ -57,6 +50,9 @@ void mouse_destroy(struct mouse *mous);
  * Returns TRUE on success.
  */
 int mouse_create(struct mouse *mous);
+
+/* Updates the state from other mouse object. */
+void mouse_update_from(struct mouse *mous, struct mouse *other);
 
 /* Resets the state of the mouse. */
 void mouse_reset(struct mouse *mous);

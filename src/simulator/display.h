@@ -4,6 +4,12 @@
 
 #include <stdint.h>
 
+/* Constants. */
+#define DISPLAY_WIDTH               606
+#define DISPLAY_HEIGHT              808
+#define DISPLAY_STRIDE              608
+#define DISPLAY_DATA_SIZE (DISPLAY_STRIDE * DISPLAY_HEIGHT)
+
 /* Data structures and types. */
 
 /* The display controller structure used by the simulator. */

@@ -97,6 +97,11 @@ int disk_load_image(struct disk *dsk, unsigned int drive_num,
 int disk_save_image(const struct disk *dsk, unsigned int drive_num,
                     const char *filename);
 
+/* Unloads the disk.
+ * Returns TRUE on success.
+ */
+int disk_unload(struct disk *dsk, unsigned int drive_num);
+
 /* Resets the disk controller. */
 void disk_reset(struct disk *dsk);
 
