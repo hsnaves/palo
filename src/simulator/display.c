@@ -278,6 +278,7 @@ void dw_interrupt(struct display *displ)
     }
 
     /* We are the end of a scanline. */
+    displ->dw_intr_cycle = -1;
 
     if (displ->cursor_x_latched < DISPLAY_WIDTH) {
         /* Draw cursor. */
@@ -334,14 +335,15 @@ void update_intr_cycle(struct display *displ)
 
 void display_interrupt(struct display *displ)
 {
-    if (displ->intr_cycle == displ->dv_intr_cycle)
-        dv_interrupt(displ);
+    int has_dv, has_dh, has_dw;
 
-    if (displ->intr_cycle == displ->dh_intr_cycle)
-        dh_interrupt(displ);
+    has_dv = (displ->intr_cycle == displ->dv_intr_cycle);
+    has_dh = (displ->intr_cycle == displ->dh_intr_cycle);
+    has_dw = (displ->intr_cycle == displ->dw_intr_cycle);
 
-    if (displ->intr_cycle == displ->dw_intr_cycle)
-        dw_interrupt(displ);
+    if (has_dv) dv_interrupt(displ);
+    if (has_dh) dh_interrupt(displ);
+    if (has_dw) dw_interrupt(displ);
 
     update_intr_cycle(displ);
 }

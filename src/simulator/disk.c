@@ -674,17 +674,17 @@ void update_intr_cycle(struct disk *dsk)
 
 void disk_interrupt(struct disk *dsk)
 {
-    if (dsk->intr_cycle == dsk->ds_intr_cycle)
-        ds_interrupt(dsk);
+    int has_ds, has_dw, has_seek, has_seclate;
 
-    if (dsk->intr_cycle == dsk->dw_intr_cycle)
-        dw_interrupt(dsk);
+    has_ds = (dsk->intr_cycle == dsk->ds_intr_cycle);
+    has_dw = (dsk->intr_cycle == dsk->dw_intr_cycle);
+    has_seek = (dsk->intr_cycle == dsk->seek_intr_cycle);
+    has_seclate = (dsk->intr_cycle == dsk->seclate_intr_cycle);
 
-    if (dsk->intr_cycle == dsk->seek_intr_cycle)
-        seek_interrupt(dsk);
-
-    if (dsk->intr_cycle == dsk->seclate_intr_cycle)
-        seclate_interrupt(dsk);
+    if (has_ds) ds_interrupt(dsk);
+    if (has_dw) dw_interrupt(dsk);
+    if (has_seek) seek_interrupt(dsk);
+    if (has_seclate) seclate_interrupt(dsk);
 
     update_intr_cycle(dsk);
 }
