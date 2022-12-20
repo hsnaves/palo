@@ -2,13 +2,24 @@
 #ifndef __GUI_GUI_H
 #define __GUI_GUI_H
 
-#include "simulator/keyboard.h"
-#include "simulator/mouse.h"
+#include "simulator/simulator.h"
 
 /* Data structures and types. */
+
 /* A structure representing the user interface. */
+
+/* Callback to run as a separate thread in gui_start(). */
+struct gui;
+typedef int (*gui_thread_cb)(struct gui *ui);
+
 struct gui {
+    volatile int running;         /* If the GUI is running. */
+    struct simulator *sim;        /* Reference to the simulator. */
     void *internal;               /* Opaque internal structure. */
+    gui_thread_cb thread_cb;      /* The callback for the thread. */
+    void *arg;                    /* Extra argument passed to used
+                                   * by the thread.
+                                   */
 };
 
 /* Functions. */
@@ -27,9 +38,14 @@ void gui_destroy(struct gui *ui);
 
 /* Creates a new gui object.
  * This obeys the initvar / destroy / create protocol.
+ * The parameter `sim` is a reference to the simulator.
+ * The parameter `thread_cb` is a callback to be run in a separate thread,
+ * and the argument `arg` is an extra argument to be used by this thread
+ * (via ui->arg). If `thread_cb` is NULL, no separate thread is created.
  * Returns TRUE on success.
  */
-int gui_create(struct gui *ui);
+int gui_create(struct gui *ui, struct simulator *sim,
+               gui_thread_cb thread_cb, void *arg);
 
 /* Starts the user interface.
  * Returns TRUE on success.
@@ -39,15 +55,13 @@ int gui_start(struct gui *ui);
 /* Stops the user interface (destroy the main window). */
 void gui_stop(struct gui *ui);
 
+/* Returns TRUE if the user interface is running. */
+int gui_running(struct gui *ui);
+
 /* Updates the user interface.
- * The new pixels are given by the `display_data` array, that should
- * come directly from the simulator display. The `keyb` and `mous`
- * are the keyboard and mouse to updated with the keyboard events and
- * mouse events from the GUI.
  * Returns TRUE on success.
  */
-int gui_update(struct gui *ui, const uint8_t *display_data,
-               struct keyboard *keyb, struct mouse *mous);
+int gui_update(struct gui *ui);
 
 
 #endif /* __GUI_GUI_H */

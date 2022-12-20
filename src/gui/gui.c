@@ -15,12 +15,6 @@
 /* Internal structure for the user interface. */
 struct gui_internal {
     int initialized;              /* If this structure was initialized. */
-    volatile int should_stop;     /* To communicate to the renderer thread
-                                   * that it should stop. We do not use
-                                   * locks here, a simple volatile should
-                                   * suffice, as only the main thread
-                                   * writes to this variable.
-                                   */
 
     uint8_t *display_data;        /* The display pixels. */
     struct keyboard keyb;         /* The (fake) keyboard. */
@@ -29,12 +23,10 @@ struct gui_internal {
                                    * threads of the keyboard, mouse
                                    * and the screen pixels.
                                    */
-    SDL_Thread *thread;           /* The renderer thread. */
 
     SDL_Window *window;           /* The interface window. */
     SDL_Renderer *renderer;       /* The renderer for the window. */
     SDL_Texture *texture;         /* The texture. */
-    int running;                  /* User interface is running. */
     int mouse_captured;           /* Mouse is captured. */
     int skip_next_mouse_move;     /* To skip the next mouse move event. */
 };
@@ -46,146 +38,18 @@ static int gui_ref_count = 0;    /* A counter to keep track of the
                                   * SDL_Quit() is invoked.
                                   */
 
-/* Forward declarations. */
-static int gui_internal_run(struct gui_internal *iui);
-
 /* Functions. */
-
-/* Initializes the gui_internal variable. */
-static
-void gui_internal_initvar(struct gui_internal *iui)
-{
-    iui->initialized = FALSE;
-
-    iui->display_data = NULL;
-    keyboard_initvar(&iui->keyb);
-    mouse_initvar(&iui->mous);
-
-    iui->mutex = NULL;
-    iui->thread = NULL;
-
-    iui->window = NULL;
-    iui->renderer = NULL;
-    iui->texture = NULL;
-}
-
-/* Destroys the gui_internal object and releases its resources. */
-static
-void gui_internal_destroy(struct gui_internal *iui)
-{
-    if (iui->display_data) {
-        free((void *) iui->display_data);
-    }
-    iui->display_data = NULL;
-
-    keyboard_destroy(&iui->keyb);
-    mouse_destroy(&iui->mous);
-
-    iui->should_stop = TRUE;
-    if (iui->thread) {
-        SDL_WaitThread(iui->thread, NULL);
-    }
-    iui->thread = NULL;
-
-    if (iui->mutex) {
-        SDL_DestroyMutex(iui->mutex);
-    }
-    iui->mutex = NULL;
-
-    /* The next 3 attributes should have been cleaned-up
-     * in the thread. Just in case something went wrong, we
-     * clean them up here as well.
-     **/
-    if (iui->texture) {
-        SDL_DestroyTexture(iui->texture);
-    }
-    iui->texture = NULL;
-
-    if (iui->renderer) {
-        SDL_DestroyRenderer(iui->renderer);
-    }
-    iui->renderer = NULL;
-
-    if (iui->window) {
-        SDL_DestroyWindow(iui->window);
-    }
-    iui->window = NULL;
-}
-
-/* Function for the thread. */
-static
-int gui_internal_thread_function(void *arg)
-{
-    struct gui_internal *iui;
-    iui = (struct gui_internal *) arg;
-
-    if (unlikely(!gui_internal_run(iui)))
-        return 1;
-
-    return 0;
-}
-
-/* Creates the main window, main thread, and the
- * other SDL resources needed for the user interface.
- * Returns TRUE on success.
- */
-static
-int gui_internal_create(struct gui_internal *iui)
-{
-    iui->display_data = (uint8_t *)
-        malloc(DISPLAY_DATA_SIZE * sizeof(uint8_t));
-
-    if (unlikely(!iui->display_data)) {
-        report_error("gui: internal: create: "
-                     "memory exhausted");
-        gui_internal_destroy(iui);
-        return FALSE;
-    }
-
-    if (unlikely(!keyboard_create(&iui->keyb))) {
-        report_error("gui: internal: create: "
-                     "could not create keyboard");
-        gui_internal_destroy(iui);
-        return FALSE;
-    }
-
-    if (unlikely(!mouse_create(&iui->mous))) {
-        report_error("gui: internal: create: "
-                     "could not create mouse");
-        gui_internal_destroy(iui);
-        return FALSE;
-    }
-
-    iui->mutex = SDL_CreateMutex();
-    if (unlikely(!iui->mutex)) {
-        report_error("gui: internal: create: "
-                     "could not create mutex (SDL_Error: %s)",
-                     SDL_GetError());
-        gui_internal_destroy(iui);
-        return FALSE;
-    }
-
-    iui->should_stop = FALSE;
-    iui->thread = SDL_CreateThread(&gui_internal_thread_function,
-                                   "gui_internal_thread", iui);
-    if (unlikely(!iui->thread)) {
-        report_error("gui: internal: create: "
-                     "could not create thread (SDL_Error: %s)",
-                     SDL_GetError());
-        gui_internal_destroy(iui);
-        return FALSE;
-    }
-
-    return TRUE;
-}
 
 /* To capture the mouse movements (and keyboard).
  * The `capture` indicates whether we should capture or release
  * the mouse movements.
  */
 static
-void gui_internal_capture_mouse(struct gui_internal *iui, int capture)
+void gui_capture_mouse(struct gui *ui, int capture)
 {
+    struct gui_internal *iui;
+
+    iui = (struct gui_internal *) ui->internal;
     if (capture) {
         SDL_ShowCursor(0);
         SDL_SetWindowGrab(iui->window, SDL_TRUE);
@@ -202,12 +66,14 @@ void gui_internal_capture_mouse(struct gui_internal *iui, int capture)
 
 /* Processes one SDL event. */
 static
-void gui_internal_process_event(struct gui_internal *iui, SDL_Event *e)
+void gui_process_event(struct gui *ui, SDL_Event *e)
 {
+    struct gui_internal *iui;
     enum alto_button btn;
     enum alto_key key;
     int mx, my;
 
+    iui = (struct gui_internal *) ui->internal;
     if (SDL_LockMutex(iui->mutex) != 0) return;
 
     mx = DISPLAY_WIDTH / 2;
@@ -336,10 +202,13 @@ void gui_internal_process_event(struct gui_internal *iui, SDL_Event *e)
 
 /* Processes the SDL events. */
 static
-void gui_internal_process_events(struct gui_internal *iui)
+void gui_process_events(struct gui *ui)
 {
+    struct gui_internal *iui;
     SDL_Event e;
     int mx, my;
+
+    iui = (struct gui_internal *) ui->internal;
 
     mx = DISPLAY_WIDTH / 2;
     my = DISPLAY_HEIGHT / 2;
@@ -347,7 +216,7 @@ void gui_internal_process_events(struct gui_internal *iui)
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_QUIT:
-            iui->running = FALSE;
+            ui->running = FALSE;
             break;
 
         case SDL_MOUSEMOTION:
@@ -359,7 +228,7 @@ void gui_internal_process_events(struct gui_internal *iui)
                 break;
             }
 
-            gui_internal_process_event(iui, &e);
+            gui_process_event(ui, &e);
 
             SDL_WarpMouseInWindow(iui->window, mx, my);
             iui->skip_next_mouse_move = TRUE;
@@ -369,35 +238,35 @@ void gui_internal_process_events(struct gui_internal *iui)
             if (!iui->mouse_captured) {
                 if (e.button.x <= 0 || e.button.y <= 0)
                     break;
-                gui_internal_capture_mouse(iui, TRUE);
+                gui_capture_mouse(ui, TRUE);
             }
 
-            gui_internal_process_event(iui, &e);
+            gui_process_event(ui, &e);
             break;
 
         case SDL_MOUSEBUTTONUP:
             if (!iui->mouse_captured)
                 break;
 
-            gui_internal_process_event(iui, &e);
+            gui_process_event(ui, &e);
             break;
 
         case SDL_KEYDOWN:
             if (!iui->mouse_captured)
                 break;
 
-            gui_internal_process_event(iui, &e);
+            gui_process_event(ui, &e);
             break;
 
         case SDL_KEYUP:
             if (e.key.keysym.sym == SDLK_LALT
                 || e.key.keysym.sym == SDLK_RALT) {
-                gui_internal_capture_mouse(iui, FALSE);
+                gui_capture_mouse(ui, FALSE);
             }
             if (!iui->mouse_captured)
                 break;
 
-            gui_internal_process_event(iui, &e);
+            gui_process_event(ui, &e);
             break;
         }
     }
@@ -407,14 +276,16 @@ void gui_internal_process_events(struct gui_internal *iui)
  * Returns TRUE on success.
  */
 static
-int gui_internal_update_screen(struct gui_internal *iui)
+int gui_update_screen(struct gui *ui)
 {
+    struct gui_internal *iui;
     void *pixels;
     int i, stride, ret;
 
+    iui = (struct gui_internal *) ui->internal;
     ret = SDL_LockTexture(iui->texture, NULL, &pixels, &stride);
     if (unlikely(ret < 0)) {
-        report_error("gui: internal: update_screen: "
+        report_error("gui: update_screen: "
                      "could not lock texture (SDL_Error(%d): %s)",
                      ret, SDL_GetError());
     }
@@ -437,7 +308,7 @@ int gui_internal_update_screen(struct gui_internal *iui)
     ret = SDL_RenderCopy(iui->renderer, iui->texture,
                          NULL, NULL);
     if (unlikely(ret < 0)) {
-        report_error("gui: internal: update_screen: "
+        report_error("gui: update_screen: "
                      "could not copy texture (SDL_Error(%d): %s)",
                      ret, SDL_GetError());
     }
@@ -446,11 +317,30 @@ int gui_internal_update_screen(struct gui_internal *iui)
     return TRUE;
 }
 
+/* Function of the other thread. */
+static
+int other_thread_main(void *arg)
+{
+    struct gui *ui;
+
+    ui = (struct gui *) arg;
+    if (ui->thread_cb) {
+        if (unlikely(!(*ui->thread_cb)(ui)))
+            return 1;
+    }
+    return 0;
+}
+
 /* Runs the user interface. */
 static
-int gui_internal_run(struct gui_internal *iui)
+int gui_run(struct gui *ui)
 {
+    struct gui_internal *iui;
+    SDL_Thread *thread;
     int ret;
+
+    iui = (struct gui_internal *) ui->internal;
+    thread = NULL;
 
     ret = TRUE;
     iui->window = SDL_CreateWindow("PSIM",
@@ -461,7 +351,7 @@ int gui_internal_run(struct gui_internal *iui)
                                    SDL_WINDOW_SHOWN);
 
     if (unlikely(!iui->window)) {
-        report_error("gui: internal: run: "
+        report_error("gui: run: "
                      "could not create window (SDL_Error: %s)",
                      SDL_GetError());
         ret = FALSE;
@@ -476,7 +366,7 @@ int gui_internal_run(struct gui_internal *iui)
     }
 
     if (unlikely(!iui->renderer)) {
-        report_error("gui: internal: run: "
+        report_error("gui: run: "
                      "could not create renderer (SDL_Error: %s)",
                      SDL_GetError());
         ret = FALSE;
@@ -488,36 +378,44 @@ int gui_internal_run(struct gui_internal *iui)
     SDL_SetRenderDrawColor(iui->renderer, 0x00, 0x00, 0x00, 0x00);
 
     iui->texture = SDL_CreateTexture(iui->renderer,
-                                     SDL_PIXELFORMAT_RGBA8888,
+                                     SDL_PIXELFORMAT_RGB332,
                                      SDL_TEXTUREACCESS_STREAMING,
                                      DISPLAY_WIDTH,
                                      DISPLAY_HEIGHT);
 
     if (unlikely(!iui->texture)) {
-        report_error("gui: internal: run: "
+        report_error("gui: run: "
                      "could not create texture (SDL_Error: %s)",
                      SDL_GetError());
         ret = FALSE;
         goto do_exit;
     }
 
-    iui->running = TRUE;
+    thread = SDL_CreateThread(&other_thread_main,
+                              "gui_extra_thread", ui);
+    if (unlikely(!thread)) {
+        report_error("gui: run: "
+                     "could not create thread (SDL_Error: %s)",
+                     SDL_GetError());
+        ret = FALSE;
+        goto do_exit;
+    }
+
+    ui->running = TRUE;
     iui->mouse_captured = FALSE;
     iui->skip_next_mouse_move = FALSE;
 
-    while (iui->running) {
-        gui_internal_process_events(iui);
+    while (ui->running) {
+        gui_process_events(ui);
 
-        if (unlikely(!gui_internal_update_screen(iui))) {
+        if (unlikely(!gui_update_screen(ui))) {
             report_error("gui: internal: run: "
                          "could not update screen");
             ret = FALSE;
-            goto do_exit;
+            ui->running = FALSE;
         }
 
-        if (iui->should_stop) {
-            iui->running = FALSE;
-        }
+        SDL_Delay(16); /* For 60 FPS. */
     }
 
 do_exit:
@@ -536,6 +434,10 @@ do_exit:
     }
     iui->window = NULL;
 
+    if (thread) {
+        SDL_WaitThread(thread, NULL);
+    }
+
     return ret;
 }
 
@@ -547,28 +449,60 @@ void gui_initvar(struct gui *ui)
 void gui_destroy(struct gui *ui)
 {
     struct gui_internal *iui;
+    int initialized;
 
     iui = (struct gui_internal *) ui->internal;
-    if (iui) {
-        gui_internal_destroy(iui);
-        if (iui->initialized) {
-            gui_ref_count--;
-            if (gui_ref_count < 0) {
-                /* Something went wrong. */
-                gui_ref_count = 0;
-                report_error("gui: destroy: "
-                             "gui_ref_count became negative");
-            } else if (gui_ref_count == 0) {
-                SDL_Quit();
-            }
-        }
-        iui->initialized = FALSE;
-        free((void *) iui);
+    if (!iui) return;
+
+    if (iui->texture) {
+        SDL_DestroyTexture(iui->texture);
     }
+    iui->texture = NULL;
+
+    if (iui->renderer) {
+        SDL_DestroyRenderer(iui->renderer);
+    }
+    iui->renderer = NULL;
+
+    if (iui->window) {
+        SDL_DestroyWindow(iui->window);
+    }
+    iui->window = NULL;
+
+    ui->running = FALSE;
+
+    if (iui->mutex) {
+        SDL_DestroyMutex(iui->mutex);
+    }
+    iui->mutex = NULL;
+
+    if (iui->display_data) {
+        free((void *) iui->display_data);
+    }
+    iui->display_data = NULL;
+
+    keyboard_destroy(&iui->keyb);
+    mouse_destroy(&iui->mous);
+
+    initialized = iui->initialized;
+    free((void *) iui);
     ui->internal = NULL;
+
+    if (initialized) {
+        gui_ref_count--;
+        if (gui_ref_count < 0) {
+            /* Something went wrong. */
+            gui_ref_count = 0;
+            report_error("gui: destroy: "
+                         "gui_ref_count became negative");
+        } else if (gui_ref_count == 0) {
+            SDL_Quit();
+        }
+    }
 }
 
-int gui_create(struct gui *ui)
+int gui_create(struct gui *ui, struct simulator *sim,
+               gui_thread_cb thread_cb, void *arg)
 {
     struct gui_internal *iui;
     int ret;
@@ -578,10 +512,47 @@ int gui_create(struct gui *ui)
     iui = (struct gui_internal *) malloc(sizeof(*iui));
     if (unlikely(!iui)) {
         report_error("gui: create: could not allocate memory");
+        gui_destroy(ui);
         return FALSE;
     }
-    gui_internal_initvar(iui);
+
+    iui->initialized = FALSE;
+    iui->display_data = NULL;
+    keyboard_initvar(&iui->keyb);
+    mouse_initvar(&iui->mous);
+    iui->mutex = NULL;
+    iui->window = NULL;
+    iui->renderer = NULL;
+    iui->texture = NULL;
+
+    iui->display_data = (uint8_t *)
+        malloc(DISPLAY_DATA_SIZE * sizeof(uint8_t));
+
+    if (unlikely(!iui->display_data)) {
+        report_error("gui: create: "
+                     "memory exhausted");
+        gui_destroy(ui);
+        return FALSE;
+    }
+
+    if (unlikely(!keyboard_create(&iui->keyb))) {
+        report_error("gui: create: "
+                     "could not create keyboard");
+        gui_destroy(ui);
+        return FALSE;
+    }
+
+    if (unlikely(!mouse_create(&iui->mous))) {
+        report_error("gui: create: "
+                     "could not create mouse");
+        gui_destroy(ui);
+        return FALSE;
+    }
+
+    ui->sim = sim;
+    ui->thread_cb = thread_cb;
     ui->internal = iui;
+    ui->arg = arg;
 
     if (gui_ref_count == 0) {
         ret = SDL_Init(SDL_INIT_VIDEO);
@@ -607,6 +578,15 @@ int gui_create(struct gui *ui)
         return FALSE;
     }
 
+    iui->mutex = SDL_CreateMutex();
+    if (unlikely(!iui->mutex)) {
+        report_error("gui: create: "
+                     "could not create mutex (SDL_Error: %s)",
+                     SDL_GetError());
+        gui_destroy(ui);
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -615,12 +595,12 @@ int gui_start(struct gui *ui)
     struct gui_internal *iui;
 
     iui = (struct gui_internal *) ui->internal;
-    if (unlikely(iui->thread)) {
+    if (unlikely(iui->window)) {
         report_error("gui: start: already started");
         return FALSE;
     }
 
-    if (unlikely(!gui_internal_create(iui))) {
+    if (unlikely(!gui_run(ui))) {
         report_error("gui: start: could not start");
         return FALSE;
     }
@@ -630,16 +610,22 @@ int gui_start(struct gui *ui)
 
 void gui_stop(struct gui *ui)
 {
-    struct gui_internal *iui;
-
-    iui = (struct gui_internal *) ui->internal;
-    gui_internal_destroy(iui);
+    ui->running = FALSE;
 }
 
-int gui_update(struct gui *ui, const uint8_t *display_data,
-               struct keyboard *keyb, struct mouse *mous)
+int gui_running(struct gui *ui)
+{
+    return ui->running;
+}
+
+int gui_update(struct gui *ui)
 {
     struct gui_internal *iui;
+
+    if (unlikely(!ui->sim)) {
+        report_error("gui: update: no simulator object");
+        return FALSE;
+    }
 
     iui = (struct gui_internal *) ui->internal;
     if (unlikely(SDL_LockMutex(iui->mutex) != 0)) {
@@ -647,10 +633,10 @@ int gui_update(struct gui *ui, const uint8_t *display_data,
         return FALSE;
     }
 
-    memcpy(iui->display_data, display_data,
+    memcpy(iui->display_data, ui->sim->displ.display_data,
            DISPLAY_DATA_SIZE * sizeof(uint8_t));
-    keyboard_update_from(keyb, &iui->keyb);
-    mouse_update_from(mous, &iui->mous);
+    keyboard_update_from(&ui->sim->keyb, &iui->keyb);
+    mouse_update_from(&ui->sim->mous, &iui->mous);
 
     SDL_UnlockMutex(iui->mutex);
     return TRUE;

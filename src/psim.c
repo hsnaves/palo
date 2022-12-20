@@ -12,8 +12,6 @@
 
 /* Internal structure for the user interface. */
 struct psim_internal {
-    struct simulator sim;         /* The simulator. */
-    struct gui ui;                /* The user interface. */
     const char *const_filename;   /* The name of the constant rom. */
     const char *mcode_filename;   /* The name of the microcode rom. */
     const char *disk1_filename;   /* Disk 1 image file. */
@@ -74,26 +72,22 @@ void get_command(char *buffer, size_t buffer_size)
 
 /* To run the debugger. */
 static
-int debug_simulation(struct psim_internal *pi)
+int debug_simulation(struct gui *ui)
 {
     struct simulator *sim;
-    struct gui *ui;
     char cmd_buffer[256];
     char out_buffer[4096];
     const char *cmd, *arg, *end;
     unsigned int num;
     uint16_t addr, val;
     int should_disassemble;
-    int running;
 
-    sim = &pi->sim;
-    ui = &pi->ui;
+    sim = ui->sim;
 
     cmd_buffer[0] = '\0';
     cmd_buffer[1] = '\0';
 
-    running = TRUE;
-    while (running) {
+    while (TRUE) {
         get_command(cmd_buffer, sizeof(cmd_buffer));
 
         cmd = (const char *) cmd_buffer;
@@ -152,14 +146,15 @@ int debug_simulation(struct psim_internal *pi)
             goto next_command;
         }
 
-        if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0)
+        if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
+            gui_stop(ui);
             break;
+        }
 
         continue;
 
     next_command:
-        if (unlikely(!gui_update(ui, sim->displ.display_data,
-                                 &sim->keyb, &sim->mous))) {
+        if (unlikely(!gui_update(ui))) {
             report_error("debug_simulation: could not update GUI");
             return FALSE;
         }
@@ -181,27 +176,28 @@ int debug_simulation(struct psim_internal *pi)
  * Returns TRUE on success.
  */
 static
-int run_psim(struct psim_internal *pi)
+int run_psim(struct gui *ui, struct simulator *sim,
+             struct psim_internal *pi)
 {
-    if (unlikely(!simulator_create(&pi->sim, ALTO_II_3KRAM))) {
+    if (unlikely(!simulator_create(sim, ALTO_II_3KRAM))) {
         report_error("run_psim: could not create simulator");
         return FALSE;
     }
 
-    if (unlikely(!simulator_load_constant_rom(&pi->sim,
+    if (unlikely(!simulator_load_constant_rom(sim,
                                               pi->const_filename))) {
         report_error("run_psim: could not load constant rom");
         return FALSE;
     }
 
-    if (unlikely(!simulator_load_microcode_rom(&pi->sim,
+    if (unlikely(!simulator_load_microcode_rom(sim,
                                                pi->mcode_filename, 0))) {
         report_error("run_psim: could not load microcode rom");
         return FALSE;
     }
 
     if (pi->disk1_filename) {
-        if (unlikely(!disk_load_image(&pi->sim.dsk, 0,
+        if (unlikely(!disk_load_image(&sim->dsk, 0,
                                       pi->disk1_filename))) {
             report_error("run_psim: could not load disk 1");
             return FALSE;
@@ -209,25 +205,26 @@ int run_psim(struct psim_internal *pi)
     }
 
     if (pi->disk2_filename) {
-        if (unlikely(!disk_load_image(&pi->sim.dsk, 1,
+        if (unlikely(!disk_load_image(&sim->dsk, 1,
                                       pi->disk2_filename))) {
             report_error("run_psim: could not load disk 2");
             return FALSE;
         }
     }
 
-    if (unlikely(!gui_create(&pi->ui))) {
+    simulator_reset(sim);
+
+    if (unlikely(!gui_create(ui, sim, &debug_simulation, pi))) {
         report_error("run_psim: could not create user interface");
         return FALSE;
     }
 
-    if (unlikely(!gui_start(&pi->ui))) {
+    if (unlikely(!gui_start(ui))) {
         report_error("run_psim: could not start user interface");
         return FALSE;
     }
 
-    simulator_reset(&pi->sim);
-    return debug_simulation(pi);
+    return TRUE;
 }
 
 /* Print the program usage information. */
@@ -247,10 +244,12 @@ void usage(const char *prog_name)
 int main(int argc, char **argv)
 {
     struct psim_internal pi;
+    struct simulator sim;
+    struct gui ui;
     int i, is_last, ret;
 
-    simulator_initvar(&pi.sim);
-    gui_initvar(&pi.ui);
+    simulator_initvar(&sim);
+    gui_initvar(&ui);
     pi.const_filename = NULL;
     pi.mcode_filename = NULL;
     pi.disk1_filename = NULL;
@@ -301,8 +300,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    ret = run_psim(&pi);
-    gui_destroy(&pi.ui);
-    simulator_destroy(&pi.sim);
+    ret = run_psim(&ui, &sim, &pi);
+    gui_destroy(&ui);
+    simulator_destroy(&sim);
     return (ret) ? 0 : 1;
 }
