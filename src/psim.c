@@ -87,7 +87,7 @@ int debug_simulation(struct gui *ui)
     cmd_buffer[0] = '\0';
     cmd_buffer[1] = '\0';
 
-    while (TRUE) {
+    while (gui_running(ui)) {
         get_command(cmd_buffer, sizeof(cmd_buffer));
 
         cmd = (const char *) cmd_buffer;
@@ -99,14 +99,39 @@ int debug_simulation(struct gui *ui)
                 num = strtoul(arg, (char **) &end, 10);
                 if (end[0] != '\0') {
                     printf("invalid number %s\n", arg);
-                    continue;
+                    goto next_command;
                 }
             } else {
                 num = 1;
             }
 
-            while (num-- > 0)
+            while ((num-- > 0) && gui_running(ui))
                 simulator_step(sim);
+
+            should_disassemble = TRUE;
+            goto next_command;
+        }
+
+        if (strcmp(cmd, "nt") == 0) {
+            if (arg[0] != '\0') {
+                num = strtoul(arg, (char **) &end, 10);
+                if (end[0] != '\0') {
+                    printf("invalid number %s\n", arg);
+                    goto next_command;
+                }
+            } else {
+                num = TASK_NUM_TASKS;
+            }
+
+            while (gui_running(ui)) {
+                do {
+                    simulator_step(sim);
+                } while ((sim->ctask == sim->ntask)
+                         && gui_running(ui));
+
+                if (num == sim->ntask) break;
+                if (num >= TASK_NUM_TASKS) break;
+            }
 
             should_disassemble = TRUE;
             goto next_command;
@@ -122,14 +147,14 @@ int debug_simulation(struct gui *ui)
                 addr = (uint16_t) strtoul(arg, (char **) &end, 8);
                 if (end[0] != '\0') {
                     printf("invalid octal number %s\n", arg);
-                    continue;
+                    goto next_command;
                 }
             } else {
                 addr = 0;
             }
 
             num = 8;
-            while (num-- > 0) {
+            while ((num-- > 0) && gui_running(ui)) {
                 val = simulator_read(sim, addr, sim->ctask, FALSE);
                 printf("%06o: %06o\n", addr++, val);
             }
@@ -139,6 +164,7 @@ int debug_simulation(struct gui *ui)
         if (strcmp(cmd, "h") == 0 || strcmp(cmd, "help") == 0) {
             printf("Commands:\n");
             printf("  n [num]     Step through the microcode\n");
+            printf("  nt [task]   Step until switch task\n");
             printf("  r           Print the registers\n");
             printf("  d [addr]    Dump the memory contents\n");
             printf("  h           Print this help\n");
@@ -151,9 +177,10 @@ int debug_simulation(struct gui *ui)
             break;
         }
 
-        continue;
 
     next_command:
+        if (!gui_running(ui)) break;
+
         if (unlikely(!gui_update(ui))) {
             report_error("debug_simulation: could not update GUI");
             return FALSE;
@@ -165,8 +192,6 @@ int debug_simulation(struct gui *ui)
             simulator_print_registers(sim, out_buffer, sizeof(out_buffer));
             printf("%s\n", out_buffer);
         }
-
-        continue;
     }
 
     return TRUE;

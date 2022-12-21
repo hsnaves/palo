@@ -11,10 +11,11 @@
 /* Constants. */
 #define MAX_SECTORS      (406 * 2 * 12)
 
-/* TODO: Change these times. */
-#define SEEK_DURATION                10
-#define SECTOR_DURATION              20
-#define WORD_DURATION                20
+/* TODO: Check. */
+#define SEEK_DURATION              5882 /*     1 ms / 170 ns */
+#define SECTOR_DURATION           20411 /* 3.470 ms / 170 ns */
+#define WORD_DURATION                59 /*    10 us / 170 ns */
+#define SECLATE_DURATION            505 /*    86 us / 170 ns */
 
 /* The bits for address word. */
 #define AW_SECTOR_SHIFT              12
@@ -59,6 +60,18 @@
 #define KADR_BLOCK_MASK          0x0003
 #define KADR_NO_XFER             0x0002
 #define KADR_DISK_MOD            0x0001
+
+/* The layout of the disk sector (in words). */
+#define DS_HEADER                    44
+#define DS_LABEL                     58
+#define DS_DATA                      78
+#define DS_END                      347
+
+/* The possible word types in a sector. */
+#define WT_GAP                        0
+#define WT_DATA                       1
+#define WT_SYNC                       2
+#define WT_CHECKSUM                   3
 
 /* Functions. */
 
@@ -110,6 +123,13 @@ int disk_create(struct disk *dsk)
         dd->length = dd->dg.num_cylinders;
         dd->length *= dd->dg.num_heads;
         dd->length *= dd->dg.num_sectors;
+
+        dd->head = 0;
+        dd->cylinder = 0;
+        dd->target_cylinder = 0;
+        dd->sector = 0;
+        dd->sector_word = 0;
+
         dd->loaded = FALSE;
     }
 
@@ -256,6 +276,9 @@ int disk_unload(struct disk *dsk, unsigned int drive_num)
 
 void disk_reset(struct disk *dsk)
 {
+    struct disk_drive *dd;
+    int i;
+
     dsk->kstat = 0;
     dsk->kdata_read = 0;
     dsk->kdata = 0;
@@ -264,15 +287,22 @@ void disk_reset(struct disk *dsk)
     dsk->kcomm = 0;
 
     dsk->disk = 0;
-    dsk->head = 0;
-    dsk->cylinder = 0;
-    dsk->sector = 0;
-    dsk->sector_word = 0;
+
+    for (i = 0; i < 2; i++) {
+        dd = &dsk->drives[i];
+
+        dd->head = 0;
+        dd->cylinder = 0;
+        dd->target_cylinder = 0;
+        dd->sector = 0;
+        dd->sector_word = 0;
+    }
 
     dsk->rec_no = 0;
     dsk->data_transfer = FALSE;
     dsk->restore = FALSE;
     dsk->sync_word_written = FALSE;
+    dsk->disk_bit_enable = FALSE;
     dsk->wdinit = FALSE;
 
     dsk->intr_cycle = 1;
@@ -388,7 +418,11 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus)
         dsk->wdinit = TRUE;
     }
 
-    /* TODO: Not sure why is thisthe case?
+    if (dsk->kcomm & KCOMM_WFFO) {
+        dsk->disk_bit_enable = TRUE;
+    }
+
+    /* TODO: Not sure why is this the case?
      * This was copied from the ContrAlto source code.
      */
     if (dsk->kcomm & KCOMM_SENDADR) {
@@ -400,6 +434,8 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus)
 
 void disk_load_kadr(struct disk *dsk, uint16_t bus)
 {
+    struct disk_drive *dd;
+
     /* This causes the KADR register to be loaded from BUS[8-14].
      * This register has the format of word C (as follows). In addition,
      * it causes the head address bit to be loaded from KDATA[13].
@@ -439,9 +475,14 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus)
 
     dsk->rec_no = 0;
     dsk->sync_word_written = FALSE;
-    dsk->head = (dsk->kdata >> AW_HEAD_SHIFT) & 1;
 
-    /* No XORing with KADR[15] done here. */
+    dd = &dsk->drives[dsk->disk];
+    dd->head = (dsk->kdata >> AW_HEAD_SHIFT) & 1;
+
+    /* No XORing with KADR[15] done here.
+     * TODO: In the ContrAlto source, the disk is modified AFTER
+     * the head, which is odd. Check this!
+     */
     dsk->disk = (dsk->kdata >> AW_DISK_SHIFT) & 1;
 
     dsk->data_transfer = ((dsk->kadr & KADR_NO_XFER) == 0);
@@ -470,7 +511,7 @@ int disk_strobe(struct disk *dsk, int32_t cycle)
         return TRUE;
     }
 
-    if (cylinder == dsk->cylinder) {
+    if (cylinder == dd->cylinder) {
         dsk->kstat &= ~(KSTAT_SEEKING | KSTAT_SEEK_FAIL);
         return TRUE;
     }
@@ -478,7 +519,7 @@ int disk_strobe(struct disk *dsk, int32_t cycle)
     dsk->kstat &= ~KSTAT_SEEK_FAIL;
     dsk->kstat |= KSTAT_SEEKING;
 
-    dsk->target_cylinder = cylinder;
+    dd->target_cylinder = cylinder;
 
     dsk->seek_intr_cycle = INTR_CYCLE(cycle + SEEK_DURATION);
     return TRUE;
@@ -510,9 +551,25 @@ uint16_t disk_init(struct disk *dsk, uint8_t task)
 uint16_t disk_rwc(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
+    uint16_t oper;
+    int shift;
     next_extra = disk_init(dsk, task);
 
-    /* TODO: Implement this. */
+    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * dsk->rec_no);
+    oper = (dsk->kadr >> shift) & KADR_BLOCK_MASK;
+
+    switch (oper) {
+    case 0: /* READ */
+        break;
+    case 1: /* CHECK */
+        next_extra |= 2;
+        break;
+    case 2:
+    case 3: /* WRITE */
+        next_extra |= 3;
+        break;
+    }
+
     return next_extra;
 }
 
@@ -578,7 +635,6 @@ uint16_t disk_strobon(struct disk *dsk, uint8_t task)
 
 void disk_block_task(struct disk *dsk, uint8_t task)
 {
-    /* TODO: Implement this. */
     dsk->pending &= ~(1 << task);
 }
 
@@ -588,58 +644,280 @@ void ds_interrupt(struct disk *dsk)
 {
     struct disk_drive *dd;
 
-    dsk->sector = dsk->sector + 1;
-    if (dsk->sector == 12) dsk->sector = 0;
+    dd = &dsk->drives[dsk->disk];
+
+    dd->sector = dd->sector + 1;
+    if (dd->sector == 12) dd->sector = 0;
 
     dsk->kstat &= ~(AW_SECTOR_MASK << AW_SECTOR_SHIFT);
-    dsk->kstat |= (dsk->sector << AW_SECTOR_SHIFT);
+    dsk->kstat |= (dd->sector << AW_SECTOR_SHIFT);
 
-    dd = &dsk->drives[dsk->disk];
     if (!dd->loaded) {
         dsk->kstat |= KSTAT_NOT_READY;
     } else {
         dsk->kstat &= ~KSTAT_NOT_READY;
     }
 
-    dsk->sector_word = 0;
+    dd->sector_word = 0;
     dsk->sync_word_written = FALSE;
 
     dsk->kdata_read = 0;
 
-    if (dsk->kstat & KSTAT_SEEKING) {
+
+    if (!(dsk->kstat & KSTAT_SEEKING)) {
         dsk->pending |= (1 << TASK_DISK_SECTOR);
 
-        /* TODO: Program the seclate here. */
+        dsk->seclate_enable = TRUE;
+        dsk->kstat &= ~(KSTAT_LATE);
 
         dsk->dw_intr_cycle =
             INTR_CYCLE(dsk->intr_cycle + WORD_DURATION);
 
         dsk->ds_intr_cycle = -1;
+
+        dsk->seclate_intr_cycle =
+            INTR_CYCLE(dsk->intr_cycle + SECLATE_DURATION);
     } else {
         dsk->ds_intr_cycle =
             INTR_CYCLE(dsk->intr_cycle + SECTOR_DURATION);
     }
 }
 
+/* Computes the checksum of parts of the sector.
+ * The array with the data is given by `data`. This array is of
+ * length `len`.
+ * Returns the checksum.
+ */
+static
+uint16_t compute_checksum(const uint16_t *data, uint16_t len)
+{
+    uint16_t i, output;
+    output = 0x0151;
+    for (i = 0; i < len; i++) {
+        output ^= data[i];
+    }
+    return output;
+}
+
+/* Obtains a word from the sector.
+ * The parameter `ds` contains the sector data (header, label, and data).
+ * The index of the word in the sector is given by `sector_word`.
+ * The `word_type` parameter is to disambiguate between the different
+ * types of words. The parameter `checksum` returns the checksum, when it
+ * is a checksum word.
+ * Returns a pointer to the word within the sector. If NULL, `word_type`
+ * is one of WT_GAP, WT_SYNC, or WT_CHECKSUM
+ */
+static
+uint16_t *get_sector_word(struct disk_sector *ds, uint16_t sector_word,
+                          int *word_type, uint16_t *checksum)
+{
+    /* First gap. */
+    if (sector_word < DS_HEADER) {
+        *word_type = WT_GAP;
+        return NULL;
+    }
+
+    /* The sync word. */
+    if (sector_word <= DS_HEADER) {
+        *word_type = WT_SYNC;
+        return NULL;
+    }
+
+    /* Header part. */
+    if (sector_word <= DS_HEADER + 2) {
+        *word_type = WT_DATA;
+
+        /* Data is in reverse. */
+        return &ds->header[DS_HEADER + 2 - sector_word];
+    }
+
+    /* Checksum of header. */
+    if (sector_word <= DS_HEADER + 3) {
+        *word_type = WT_CHECKSUM;
+        *checksum = compute_checksum(&ds->header[0], 2);
+        return NULL;
+    }
+
+    /* Second gap. */
+    if (sector_word < DS_LABEL) {
+        *word_type = WT_GAP;
+        return NULL;
+    }
+
+    /* The sync word. */
+    if (sector_word <= DS_LABEL) {
+        *word_type = WT_SYNC;
+        return NULL;
+    }
+
+    /* Label part. */
+    if (sector_word <= DS_LABEL + 8) {
+        *word_type = WT_DATA;
+
+        /* Data is in reverse. */
+        return &ds->label[DS_LABEL + 8 - sector_word];
+    }
+
+    /* Checksum of label. */
+    if (sector_word <= DS_LABEL + 9) {
+        *word_type = WT_CHECKSUM;
+        *checksum = compute_checksum(&ds->label[0], 8);
+        return NULL;
+    }
+
+    /* Third gap. */
+    if (sector_word < DS_DATA) {
+        *word_type = WT_GAP;
+        return NULL;
+    }
+
+    /* The sync word. */
+    if (sector_word <= DS_DATA) {
+        *word_type = WT_SYNC;
+        return NULL;
+    }
+
+    /* Data part. */
+    if (sector_word <= DS_DATA + 256) {
+        *word_type = WT_DATA;
+
+        /* Data is in reverse. */
+        return &ds->data[DS_DATA + 256 - sector_word];
+    }
+
+    /* Checksum of label. */
+    if (sector_word <= DS_DATA + 257) {
+        *word_type = WT_CHECKSUM;
+        *checksum = compute_checksum(&ds->data[0], 256);
+        return NULL;
+    }
+
+    /* Last gap. */
+    *word_type = WT_GAP;
+    return NULL;
+}
+
 /* Disk word interrupt routine. */
 static
 void dw_interrupt(struct disk *dsk)
 {
-    /* TODO: Implement this. */
-    dsk->dw_intr_cycle = -1;
+    struct disk_drive *dd;
+    struct disk_sector *ds;
+    uint16_t checksum;
+    uint16_t vda, oper;
+    uint16_t *w, wv;
+    int shift;
+    int bWakeup, seclate;
+    int wdInhib, bClkSource;
+    int wffo, xferOff;
+    int is_write;
+    int word_type;
+
+    dd = &dsk->drives[dsk->disk];
+
+    vda = dd->cylinder;
+    vda *= dd->dg.num_heads;
+    vda += dd->head;
+    vda *= dd->dg.num_sectors;
+    vda += dd->sector;
+
+    ds = &dd->sectors[vda];
+    w = get_sector_word(ds, dd->sector_word, &word_type, &checksum);
+    switch (word_type) {
+    case WT_DATA: wv = *w; break;
+    case WT_SYNC: wv = 1; break;
+    case WT_CHECKSUM: wv = checksum; break;
+    case WT_GAP:
+    default:
+        wv = 0;
+        break;
+    }
+
+    seclate = (dsk->kstat & KSTAT_LATE);
+    wdInhib = (dsk->kcomm & KCOMM_WDINHB);
+    bClkSource = (dsk->kcomm & KCOMM_BCLKSRC);
+    wffo = (dsk->kcomm & KCOMM_WFFO);
+    xferOff = (dsk->kcomm & KCOMM_XFEROFF);
+
+    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * dsk->rec_no);
+    oper = (dsk->kadr >> shift) & KADR_BLOCK_MASK;
+    is_write = (oper >= 2);
+
+    bWakeup = (!seclate && !wdInhib && !bClkSource);
+
+    if (!seclate && (wffo || dsk->disk_bit_enable)) {
+        if (!xferOff) {
+            if (!is_write) {
+                dsk->kdata_read = wv;
+            } else {
+
+                if (dsk->has_kdata) {
+                    dsk->kdata_read = dsk->kdata;
+                    dsk->has_kdata = FALSE;
+                }
+
+                if (dsk->sync_word_written) {
+                    if (w) {
+                        *w = dsk->kdata;
+                    }
+                }
+            }
+        }
+
+        if (!wdInhib) {
+            bWakeup = TRUE;
+        }
+    }
+
+    if (!is_write && !wffo && wv == 1) {
+        dsk->disk_bit_enable = TRUE;
+    } else if (is_write && wffo && (dsk->kdata == 1)
+               && !dsk->sync_word_written) {
+
+        dsk->sync_word_written = TRUE;
+
+        /* Copies the cheat from ContrAlto. */
+        switch (dsk->rec_no) {
+        case 0: dd->sector_word = DS_HEADER; break;
+        case 1: dd->sector_word = DS_LABEL; break;
+        case 2: dd->sector_word = DS_DATA; break;
+        }
+
+    }
+
+    dd->sector_word++;
+
+    if (bWakeup) {
+        dsk->pending |= (1 << TASK_DISK_WORD);
+    }
+
+    if (dd->sector_word < DS_END) {
+        dsk->dw_intr_cycle =
+            INTR_CYCLE(dsk->intr_cycle + WORD_DURATION);
+    } else {
+        dsk->dw_intr_cycle = -1;
+
+        dsk->ds_intr_cycle =
+            INTR_CYCLE(dsk->intr_cycle + SECTOR_DURATION);
+    }
 }
 
 /* Seek interrupt routine. */
 static
 void seek_interrupt(struct disk *dsk)
 {
-    if (dsk->cylinder < dsk->target_cylinder) {
-        dsk->cylinder++;
-    } else if (dsk->cylinder > dsk->target_cylinder) {
-        dsk->cylinder--;
+    struct disk_drive *dd;
+
+    dd = &dsk->drives[dsk->disk];
+
+    if (dd->cylinder < dd->target_cylinder) {
+        dd->cylinder++;
+    } else if (dd->cylinder > dd->target_cylinder) {
+        dd->cylinder--;
     }
 
-    if (dsk->cylinder == dsk->target_cylinder) {
+    if (dd->cylinder == dd->target_cylinder) {
         dsk->kstat &= ~KSTAT_SEEKING;
         dsk->restore = FALSE;
         dsk->seek_intr_cycle = -1;
@@ -653,7 +931,9 @@ void seek_interrupt(struct disk *dsk)
 static
 void seclate_interrupt(struct disk *dsk)
 {
-    /* TODO: Implement this. */
+    if (dsk->seclate_enable) {
+        dsk->kstat |= KSTAT_LATE;
+    }
     dsk->seclate_intr_cycle = -1;
 }
 
@@ -687,4 +967,18 @@ void disk_interrupt(struct disk *dsk)
     if (has_seclate) seclate_interrupt(dsk);
 
     update_intr_cycle(dsk);
+}
+
+void disk_on_switch_task(struct disk *dsk, uint8_t task)
+{
+    /* According to the ContrAlto source:
+     *   Deal with SECLATE semantics:  If the Disk Sector task wakes up
+     *   and runs before the Disk Controller hits the SECLATE trigger time,
+     *   then SECLATE remains false.
+     *   Otherwise, when the trigger time is hit SECLATE is raised until
+     *   the beginning of the next sector.
+     */
+    if (task == TASK_DISK_SECTOR) {
+        dsk->seclate_enable = FALSE;
+    }
 }

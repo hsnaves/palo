@@ -15,6 +15,10 @@
 #define HBLANK_DURATION              35  /*     6 us / 170 ns */
 #define WORD_DURATION                 5  /* 0.842 us / 170 ns */
 
+#define MODE_LOWRES              0x8000
+#define MODE_WOB                 0x4000
+#define FIRST_BIT                0x8000
+
 /* Functions. */
 
 void display_initvar(struct display *displ)
@@ -76,10 +80,10 @@ void display_reset(struct display *displ)
     displ->dw_blocked = TRUE;
     displ->dh_blocked = FALSE;
 
-    displ->intr_cycle = 1;
+    displ->intr_cycle = VBLANK_DURATION;
     displ->dw_intr_cycle = 0xFFFFFFFFU;
     displ->dh_intr_cycle = 0xFFFFFFFFU;
-    displ->dv_intr_cycle = 1;
+    displ->dv_intr_cycle = VBLANK_DURATION;
     displ->pending = 0;
 }
 
@@ -132,10 +136,10 @@ uint16_t display_even_field(struct display *displ)
 
 uint16_t display_set_mode(struct display *displ, uint16_t bus)
 {
-    displ->low_res = ((bus & 0x8000) != 0);
-    displ->wob = ((bus & 0x4000) != 0);
+    displ->low_res = ((bus & MODE_LOWRES) != 0);
+    displ->wob = ((bus & MODE_WOB) != 0);
     displ->switch_mode = TRUE;
-    return (bus & 0x8000) ? 1 : 0;
+    return (bus & MODE_LOWRES) ? 1 : 0;
 }
 
 void display_block_task(struct display *displ, uint8_t task)
@@ -255,7 +259,7 @@ void dw_interrupt(struct display *displ)
     x = x_offset;
     tmp = to_display;
     for (i = 0; i < 16; i++) {
-        data1 = (tmp & 0x8000) ? 0xFF : 0x00;
+        data1 = (tmp & FIRST_BIT) ? 0xFF : 0x00;
         data[x++] = data1;
         if (displ->low_res_latched) {
             data[x++] = data1;
@@ -285,13 +289,14 @@ void dw_interrupt(struct display *displ)
         x = displ->cursor_x_latched;
         tmp = displ->cursor_data_latched;
         for (i = 0; i < 16; i++) {
-            data1 = (tmp & 0x8000) ? 0xFF : 0x00;
+            data1 = (tmp & FIRST_BIT) ? 0xFF : 0x00;
             if (displ->wob_latched) {
                 data[x++] &= data1;
             } else {
                 data[x++] |= data1;
             }
             if (x >= DISPLAY_WIDTH) break;
+            tmp <<= 1;
         }
     }
 
@@ -350,7 +355,9 @@ void display_interrupt(struct display *displ)
 
 void display_on_switch_task(struct display *displ, uint8_t task)
 {
-    if (task != TASK_DISPLAY_HORIZONTAL && task != TASK_DISPLAY_VERTICAL)
+    if (task != TASK_DISPLAY_HORIZONTAL
+        && task != TASK_DISPLAY_VERTICAL
+        && task != TASK_CURSOR)
         return;
 
     /* Automatically blocks task on switch. */

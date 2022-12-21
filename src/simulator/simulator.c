@@ -1365,12 +1365,20 @@ void update_program_counters(struct simulator *sim,
 
     if (sim->ctask == TASK_DISPLAY_WORD
         || sim->ctask == TASK_DISPLAY_HORIZONTAL
-        || sim->ctask == TASK_DISPLAY_VERTICAL) {
+        || sim->ctask == TASK_DISPLAY_VERTICAL
+        || sim->ctask == TASK_CURSOR) {
 
         /* Dispatches the "on switch task" event to the display
          * controller.
          */
         display_on_switch_task(&sim->displ, sim->ctask);
+    } else if (sim->ctask == TASK_DISK_SECTOR
+               || sim->ctask == TASK_DISK_WORD) {
+
+        /* Dispatches the "on switch task" event to the disk
+         * controller.
+         */
+        disk_on_switch_task(&sim->dsk, sim->ctask);
     }
 }
 
@@ -1396,6 +1404,8 @@ static
 void do_swmode(struct simulator *sim)
 {
     /* TODO: Implement this. */
+    report_error("simulator: step: "
+                 "SWMODE not implemented\n");
 }
 
 /* Performs a soft reset. */

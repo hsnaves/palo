@@ -29,6 +29,13 @@ struct disk_drive {
     struct disk_sector *sectors;  /* The disk sectors. */
     uint16_t length;              /* Total length of the disk in sectors. */
     uint16_t size;                /* Total allocated size (in sectors). */
+
+    uint16_t head;                /* Current head. */
+    uint16_t cylinder;            /* Current cylinder. */
+    uint16_t target_cylinder;     /* The target cylinder for seek. */
+    uint16_t sector;              /* Current sector. */
+    uint16_t sector_word;         /* Current word in the sector. */
+
     int loaded;                   /* Disk was loaded. */
 };
 
@@ -43,11 +50,6 @@ struct disk {
     uint16_t kcomm;               /* KCOMM register. */
 
     uint16_t disk;                /* Current disk. */
-    uint16_t head;                /* Current head. */
-    uint16_t cylinder;            /* Current cylinder. */
-    uint16_t target_cylinder;     /* The target cylinder for seek. */
-    uint16_t sector;              /* Current sector. */
-    uint16_t sector_word;         /* Current word in the sector. */
 
     int rec_no;                   /* Record number. */
     int data_transfer;            /* To perform a data transfer (or
@@ -55,7 +57,9 @@ struct disk {
                                    */
     int restore;                  /* Restore operation. */
     int sync_word_written;        /* The sync word was written. */
+    int disk_bit_enable;          /* Disk bit counter enabled. */
     int wdinit;                   /* WDINIT bit used by task. */
+    int seclate_enable;           /* To enable SECLATE. */
 
     int32_t intr_cycle;           /* Cycle of the next interrupt. */
     int32_t ds_intr_cycle;        /* Disk sector interrupt cycle. */
@@ -205,5 +209,10 @@ void disk_block_task(struct disk *dsk, uint8_t task);
 
 /* Processes the disk interrupts. */
 void disk_interrupt(struct disk *dsk);
+
+/* Callback for when the simulation switches to a disk task.
+ * The new task is given by `task`.
+ */
+void disk_on_switch_task(struct disk *dsk, uint8_t task);
 
 #endif /* __SIMULATOR_DISK_H */
