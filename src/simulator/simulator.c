@@ -734,12 +734,16 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
         switch ((sim->ir >> 4) & 3) {
         case 0: /* not affected. */
             carry = sim->carry;
+            break;
         case 1: /* Z */
             carry = 0;
+            break;
         case 2: /* O */
             carry = 1;
+            break;
         case 3: /* C */
             carry = !(sim->carry);
+            break;
         }
 
         switch ((sim->ir >> 8) & 7) {
@@ -758,6 +762,7 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
             }
             break;
         }
+        *nova_carry = carry;
     } else {
         carry = 0;
         *nova_carry = 0;
