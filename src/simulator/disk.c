@@ -13,8 +13,8 @@
 
 /* TODO: Check. */
 #define SEEK_DURATION              5882 /*     1 ms / 170 ns */
-#define SECTOR_DURATION           20411 /* 3.470 ms / 170 ns */
-#define WORD_DURATION                59 /*    10 us / 170 ns */
+#define SECTOR_DURATION           19607 /* 3.333 ms / 170 ns */
+#define WORD_DURATION                56 /*    10 us / 170 ns */
 #define SECLATE_DURATION            505 /*    86 us / 170 ns */
 
 /* The bits for address word. */
@@ -418,9 +418,7 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus)
         dsk->wdinit = TRUE;
     }
 
-    if (dsk->kcomm & KCOMM_WFFO) {
-        dsk->disk_bit_enable = TRUE;
-    }
+    dsk->disk_bit_enable = (dsk->kcomm & KCOMM_WFFO);
 
     /* TODO: Not sure why is this the case?
      * This was copied from the ContrAlto source code.
@@ -600,7 +598,7 @@ uint16_t disk_swrnrdy(struct disk *dsk, uint8_t task)
     next_extra = disk_init(dsk, task);
 
     dd = &dsk->drives[dsk->disk];
-    if (dd->loaded && !(dsk->kstat & KSTAT_SEEKING)) {
+    if (!dd->loaded || (dsk->kstat & KSTAT_SEEKING)) {
         next_extra |= 1;
     }
     return next_extra;
@@ -635,6 +633,9 @@ uint16_t disk_strobon(struct disk *dsk, uint8_t task)
 
 void disk_block_task(struct disk *dsk, uint8_t task)
 {
+    if (task == TASK_DISK_WORD) {
+        dsk->wdinit = FALSE;
+    }
     dsk->pending &= ~(1 << task);
 }
 
@@ -851,7 +852,6 @@ void dw_interrupt(struct disk *dsk)
             if (!is_write) {
                 dsk->kdata_read = wv;
             } else {
-
                 if (dsk->has_kdata) {
                     dsk->kdata_read = dsk->kdata;
                     dsk->has_kdata = FALSE;
@@ -899,7 +899,7 @@ void dw_interrupt(struct disk *dsk)
         dsk->dw_intr_cycle = -1;
 
         dsk->ds_intr_cycle =
-            INTR_CYCLE(dsk->intr_cycle + SECTOR_DURATION);
+            INTR_CYCLE(dsk->intr_cycle + 1);
     }
 }
 
