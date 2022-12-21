@@ -310,6 +310,9 @@ int psim_simulate(struct psim *ps, int max_steps)
             }
 
             if (hit1) {
+                if (num > 0) {
+                    printf("breakpoint %u hit\n", num);
+                }
                 hit = TRUE;
                 break;
             }
