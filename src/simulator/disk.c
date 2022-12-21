@@ -982,3 +982,60 @@ void disk_on_switch_task(struct disk *dsk, uint8_t task)
         dsk->seclate_enable = FALSE;
     }
 }
+
+void disk_print_registers(struct disk *dsk,
+                          struct string_buffer *output)
+{
+    const struct disk_drive *dd;
+
+    string_buffer_print(output,
+                        "KSTAT : %06o    KDATA : %06o    "
+                        "KADR  : %06o    KCOMM : %06o\n",
+                        dsk->kstat, dsk->kdata,
+                        dsk->kadr, dsk->kcomm);
+
+    string_buffer_print(output,
+                        "KDATAR: %06o    HASDAT: %-6o    "
+                        "XFER  : %-6o    RESTOR: %-6o\n",
+                        dsk->kdata_read, dsk->has_kdata ? 1 : 0,
+                        dsk->data_transfer, dsk->restore);
+
+    string_buffer_print(output,
+                        "SYNCW : %-6o    DSKBIT: %-6o    "
+                        "WDINIT: %-6o    SECLAT: %-6o\n",
+                        dsk->sync_word_written ? 1 : 0,
+                        dsk->disk_bit_enable ? 1 : 0,
+                        dsk->wdinit ? 1 : 0,
+                        dsk->seclate_enable ? 1 : 0);
+
+    dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
+
+    string_buffer_print(output,
+                        "DISK  : %-6o    RECNO : %-6o    "
+                        "CYL   : %06o    TCYL  : %06o\n",
+                        dsk->disk, dsk->rec_no,
+                        dd->cylinder, dd->target_cylinder);
+
+    string_buffer_print(output,
+                        "HEAD  : %-6o    SECTOR: %06o    "
+                        "SWORD : %06o\n",
+                        dd->head, dd->sector,
+                        dd->sector_word);
+
+    string_buffer_print(output,
+                        "NHEAD : %06o    NSEC  : %06o    "
+                        "NCYL  : %06o    LOADED: %o\n",
+                        dd->dg.num_heads, dd->dg.num_sectors,
+                        dd->dg.num_cylinders, dd->loaded ? 1 : 0);
+
+    string_buffer_print(output,
+                        "PEND  : %06o    ICYCLE: %-9d "
+                        "DSIC  : %-9d DWIC  : %-9d\n",
+                        dsk->pending, dsk->intr_cycle,
+                        dsk->ds_intr_cycle, dsk->dw_intr_cycle);
+
+    string_buffer_print(output,
+                        "SEEKIC: %-9d SECLIC: %-9d\n",
+                        dsk->seek_intr_cycle, dsk->seclate_intr_cycle);
+
+}

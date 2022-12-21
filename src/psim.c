@@ -5,6 +5,9 @@
 #include <ctype.h>
 
 #include "simulator/simulator.h"
+#include "simulator/disk.h"
+#include "simulator/display.h"
+#include "simulator/ethernet.h"
 #include "gui/gui.h"
 #include "common/utils.h"
 
@@ -74,9 +77,10 @@ void get_command(char *buffer, size_t buffer_size)
 static
 int debug_simulation(struct gui *ui)
 {
-    struct simulator *sim;
     char cmd_buffer[256];
     char out_buffer[4096];
+    struct simulator *sim;
+    struct string_buffer output;
     const char *cmd, *arg, *end;
     unsigned int num;
     uint16_t addr, val;
@@ -87,12 +91,15 @@ int debug_simulation(struct gui *ui)
     cmd_buffer[0] = '\0';
     cmd_buffer[1] = '\0';
 
+    output.buf = out_buffer;
+    output.buf_size = sizeof(out_buffer);
+
     while (gui_running(ui)) {
         get_command(cmd_buffer, sizeof(cmd_buffer));
 
         cmd = (const char *) cmd_buffer;
         arg = &cmd[strlen(cmd) + 1];
-        should_disassemble = FALSE;
+        should_disassemble = 0;
 
         if (strcmp(cmd, "n") == 0) {
             if (arg[0] != '\0') {
@@ -108,7 +115,7 @@ int debug_simulation(struct gui *ui)
             while ((num-- > 0) && gui_running(ui))
                 simulator_step(sim);
 
-            should_disassemble = TRUE;
+            should_disassemble = 1;
             goto next_command;
         }
 
@@ -133,12 +140,38 @@ int debug_simulation(struct gui *ui)
                 if (num >= TASK_NUM_TASKS) break;
             }
 
-            should_disassemble = TRUE;
+            should_disassemble = 1;
             goto next_command;
         }
 
         if (strcmp(cmd, "r") == 0) {
-            should_disassemble = TRUE;
+            should_disassemble = 1;
+            goto next_command;
+        }
+
+        if (strcmp(cmd, "e") == 0) {
+            should_disassemble = 2;
+            goto next_command;
+        }
+
+        if (strcmp(cmd, "dsk") == 0) {
+            string_buffer_reset(&output);
+            disk_print_registers(&sim->dsk, &output);
+            printf("%s\n", out_buffer);
+            goto next_command;
+        }
+
+        if (strcmp(cmd, "displ") == 0) {
+            string_buffer_reset(&output);
+            display_print_registers(&sim->displ, &output);
+            printf("%s\n", out_buffer);
+            goto next_command;
+        }
+
+        if (strcmp(cmd, "ether") == 0) {
+            string_buffer_reset(&output);
+            ethernet_print_registers(&sim->ether, &output);
+            printf("%s\n", out_buffer);
             goto next_command;
         }
 
@@ -166,7 +199,11 @@ int debug_simulation(struct gui *ui)
             printf("  n [num]     Step through the microcode\n");
             printf("  nt [task]   Step until switch task\n");
             printf("  r           Print the registers\n");
+            printf("  e           Print the extra registers\n");
             printf("  d [addr]    Dump the memory contents\n");
+            printf("  dsk         Print the disk registers\n");
+            printf("  displ       Print the display registers\n");
+            printf("  ether       Print the ethernet registers\n");
             printf("  h           Print this help\n");
             printf("  q           Quit the debugger\n");
             goto next_command;
@@ -187,9 +224,16 @@ int debug_simulation(struct gui *ui)
         }
 
         if (should_disassemble) {
-            simulator_disassemble(sim, out_buffer, sizeof(out_buffer));
+            string_buffer_reset(&output);
+            simulator_disassemble(sim, &output);
             printf("%s\n", out_buffer);
-            simulator_print_registers(sim, out_buffer, sizeof(out_buffer));
+
+            string_buffer_reset(&output);
+            if (should_disassemble == 1) {
+                simulator_print_registers(sim, &output);
+            } else {
+                simulator_print_extra_registers(sim, &output);
+            }
             printf("%s\n", out_buffer);
         }
     }

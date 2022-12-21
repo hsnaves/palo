@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "common/utils.h"
+
 /* Constants. */
 #define NUM_DISK_DRIVES           2
 
@@ -214,5 +216,11 @@ void disk_interrupt(struct disk *dsk);
  * The new task is given by `task`.
  */
 void disk_on_switch_task(struct disk *dsk, uint8_t task);
+
+/* Prints the state of the registers.
+ * The output is written to `output`.
+ */
+void disk_print_registers(struct disk *dsk,
+                          struct string_buffer *output);
 
 #endif /* __SIMULATOR_DISK_H */

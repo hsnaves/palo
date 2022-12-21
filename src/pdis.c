@@ -21,6 +21,7 @@ int main(int argc, char **argv)
     const char *constant_filename;
     const char *microcode_filename;
     struct disassembler dis;
+    struct string_buffer output;
     uint16_t address;
     uint8_t task;
     char buffer[512];
@@ -80,6 +81,9 @@ int main(int argc, char **argv)
         goto error;
     }
 
+    output.buf = buffer;
+    output.buf_size = sizeof(buffer);
+
     printf("ADDRESS TASK  MICROCODE    RSEL ALUF BS "
            "F1 F2 T L NEXT   STATEMENT\n");
     for (address = 0; address < 1024; address++) {
@@ -91,7 +95,9 @@ int main(int argc, char **argv)
             if (task_mask == (1 | ((1 << task)))) break;
         }
         if (task == 16) task = 0;
-        disassembler_disassemble(&dis, address, task, buffer, sizeof(buffer));
+
+        string_buffer_reset(&output);
+        disassembler_disassemble(&dis, address, task, &output);
         printf("%s\n", buffer);
     }
 

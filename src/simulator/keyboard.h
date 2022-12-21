@@ -103,7 +103,8 @@ void keyboard_destroy(struct keyboard *keyb);
 int keyboard_create(struct keyboard *keyb);
 
 /* Updates the state from other keyboard object. */
-void keyboard_update_from(struct keyboard *keyb, struct keyboard *other);
+void keyboard_update_from(struct keyboard *keyb,
+                          const struct keyboard *other);
 
 /* Resets the state of the keyboard. */
 void keyboard_reset(struct keyboard *keyb);

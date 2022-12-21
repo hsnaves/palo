@@ -45,7 +45,7 @@ int mouse_create(struct mouse *mous)
     return TRUE;
 }
 
-void mouse_update_from(struct mouse *mous, struct mouse *other)
+void mouse_update_from(struct mouse *mous, const struct mouse *other)
 {
     mous->buttons = other->buttons;
     mous->dx += other->dx;

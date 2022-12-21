@@ -621,6 +621,7 @@ int gui_running(struct gui *ui)
 int gui_update(struct gui *ui)
 {
     struct gui_internal *iui;
+    int ret;
 
     if (unlikely(!ui->sim)) {
         report_error("gui: update: no simulator object");
@@ -633,10 +634,13 @@ int gui_update(struct gui *ui)
         return FALSE;
     }
 
-    memcpy(iui->display_data, ui->sim->displ.display_data,
-           DISPLAY_DATA_SIZE * sizeof(uint8_t));
-    keyboard_update_from(&ui->sim->keyb, &iui->keyb);
-    mouse_update_from(&ui->sim->mous, &iui->mous);
+    ret = simulator_update(ui->sim, &iui->keyb, &iui->mous,
+                           iui->display_data);
+    if (unlikely(!ret)) {
+        report_error("gui: update: could not update state");
+        SDL_UnlockMutex(iui->mutex);
+        return FALSE;
+    }
 
     SDL_UnlockMutex(iui->mutex);
     return TRUE;

@@ -28,29 +28,29 @@ parser/parser.o: parser/parser.c parser/parser.h parser/lexer.h \
 microcode/microcode.o: microcode/microcode.c microcode/microcode.h \
  common/utils.h
 pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
- common/allocator.h common/table.h parser/parser.h common/utils.h
+ common/allocator.h common/table.h common/utils.h
 disassembler/disassembler.o: disassembler/disassembler.c \
- disassembler/disassembler.h microcode/microcode.h common/allocator.h \
- common/utils.h
+ disassembler/disassembler.h microcode/microcode.h common/utils.h \
+ common/allocator.h
 pdis.o: pdis.c disassembler/disassembler.h microcode/microcode.h \
- common/allocator.h common/utils.h
+ common/utils.h common/allocator.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
- microcode/microcode.h simulator/disk.h simulator/display.h \
+ microcode/microcode.h common/utils.h simulator/disk.h simulator/display.h \
  simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
- simulator/utils.h common/utils.h
-simulator/disk.o: simulator/disk.c simulator/disk.h simulator/utils.h \
- microcode/microcode.h common/utils.h
-simulator/display.o: simulator/display.c simulator/display.h \
- simulator/utils.h microcode/microcode.h common/utils.h
+ simulator/utils.h
+simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h \
+ simulator/utils.h microcode/microcode.h
+simulator/display.o: simulator/display.c simulator/display.h common/utils.h \
+ simulator/utils.h microcode/microcode.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
- microcode/microcode.h common/utils.h
+ common/utils.h microcode/microcode.h
 simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
  common/utils.h
 simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h
 simulator/utils.o: simulator/utils.c simulator/utils.h common/utils.h
 gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
+ common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
+ simulator/keyboard.h simulator/mouse.h
+psim.o: psim.c simulator/simulator.h microcode/microcode.h common/utils.h \
  simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h common/utils.h
-psim.o: psim.c simulator/simulator.h microcode/microcode.h \
- simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h gui/gui.h common/utils.h
+ simulator/keyboard.h simulator/mouse.h gui/gui.h

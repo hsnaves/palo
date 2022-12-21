@@ -9,6 +9,7 @@
 #include "simulator/ethernet.h"
 #include "simulator/keyboard.h"
 #include "simulator/mouse.h"
+#include "common/utils.h"
 
 /* Data structures and types. */
 struct simulator {
@@ -27,14 +28,16 @@ struct simulator {
 
     uint8_t ctask;                /* Current task. */
     uint8_t ntask;                /* The next task. */
-    int task_swtch;               /* If a task switch just happened. */
+    int task_switch;              /* If a task switch just happened. */
 
     int aluC0;                    /* Last carry of ALU when loading L. */
     int skip;                     /* Skip flag. */
     int carry;                    /* Carry flag. */
+
     uint16_t rmr;                 /* Reset mode register (for tasks to start
                                    * in either ROM0 or RAM0).
                                    */
+    uint16_t cram_addr;           /* Control RAM address. */
     int rdram;                    /* Previous instruction had RDRAM. */
     int wrtram;                   /* Previous instruction had WRTRAM. */
     int swmode;                   /* Previous instruction had SWMODE. */
@@ -46,8 +49,9 @@ struct simulator {
     uint16_t *task_mpc;           /* Microcode program counter + bank
                                    * select (1 per task).
                                    */
-    uint16_t cram_addr;           /* Control RAM address. */
+
     int32_t cycle;                /* Current cpu cycle. */
+    int32_t *task_cycle;          /* Current task cycles. */
     int32_t intr_cycle;           /* Next cycle when the simulator needs
                                    * to check the controllers for events.
                                    */
@@ -135,18 +139,34 @@ void simulator_write(struct simulator *sim, uint16_t address,
 /* Performs a simulation step. */
 void simulator_step(struct simulator *sim);
 
+/* Updates the input and output state of the simulation.
+ * The keyboard input state is given by `keyb` and the mouse input state
+ * is given by `mous`. The current pixel data from the display will be
+ * copied to `display_data`. If any of these parameter is NULL, the
+ * corresponding state will not be copied.
+ * Returns TRUE on success.
+ */
+int simulator_update(struct simulator *sim,
+                     const struct keyboard *keyb,
+                     const struct mouse *mous,
+                     uint8_t *display_data);
+
 /* Disassembles the current microinstruction.
- * The output is written to `output`, which is a buffer of size
- * `output_size`.
+ * The output is written to `output`.
  */
 void simulator_disassemble(struct simulator *sim,
-                           char *output, size_t output_size);
+                           struct string_buffer *output);
 
 /* Prints the state of the registers.
- * The output is written to `output`, which is a buffer of size
- * `output_size`.
+ * The output is written to `output`.
  */
 void simulator_print_registers(struct simulator *sim,
-                               char *output, size_t output_size);
+                               struct string_buffer *output);
+
+/* Prints the state of the extra registers.
+ * The output is written to `output`.
+ */
+void simulator_print_extra_registers(struct simulator *sim,
+                                     struct string_buffer *output);
 
 #endif /* __SIMULATOR_SIMULATOR_H */

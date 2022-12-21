@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "common/utils.h"
+
 /* Constants. */
 #define CONSTANT_SIZE            256
 #define MICROCODE_SIZE          1024
@@ -205,20 +207,13 @@ struct microcode {
     int ram_task;                 /* If this is a RAM task. */
 };
 
-/* A buffer used by the decoder. */
-struct decode_buffer {
-    char *buf;                    /* The character buffer. */
-    size_t buf_size;              /* The buffer size in bytes. */
-    size_t len;                   /* Total length of the string. */
-};
-
 /* The general decoder callback function type.
  * It is used to decode the constants, the R registers names,
  * and the GOTO destination labels.
  */
 struct decoder;
 typedef void (*decoder_cb)(struct decoder *dec, uint16_t val,
-                           struct decode_buffer *output);
+                           struct string_buffer *output);
 
 /* The microcode decoder. */
 struct decoder {
@@ -262,26 +257,13 @@ uint16_t microcode_guess_tasks(const struct microcode *mc);
  */
 uint32_t microcode_next_mask(const struct microcode *mc);
 
-/* Resets the decode buffer. */
-void decode_buffer_reset(struct decode_buffer *buf);
-
-/* Prints a string (as in printf() function) to the buffer. */
-void decode_buffer_print(struct decode_buffer *buf,
-                         const char *fmt, ...)
-    __attribute__((format (printf, 2, 3)));
-
-/* Rewinds the decode buffer by a few characters.
- * The number of characters to rewind is given in `num_chars`.
- */
-void decode_buffer_rewind(struct decode_buffer *buf, size_t num_chars);
-
 /* Decodes the microinstruction from the decoder `dec` into the
  * output buffer `output`. The details of the microinstruction are
  * given by `mc`.
  */
 void decoder_decode(struct decoder *dec,
                     const struct microcode *mc,
-                    struct decode_buffer *output);
+                    struct string_buffer *output);
 
 
 #endif /* __MICROCODE_MICROCODE_H */

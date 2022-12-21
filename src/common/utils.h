@@ -33,6 +33,15 @@
 #define __aligned__(x) __attribute__((aligned (x)))
 #define __restrict__ __restrict__
 
+/* Data structures and types. */
+
+/* A string buffer. */
+struct string_buffer {
+    char *buf;                    /* The character buffer. */
+    size_t buf_size;              /* The buffer size in bytes. */
+    size_t len;                   /* Total length of the string. */
+};
+
 /* Functions */
 
 /* Reports an error to stderr.
@@ -40,5 +49,18 @@
  */
 void report_error(const char *fmt, ...)
     __attribute__((format (printf, 1, 2)));
+
+/* Resets the string buffer. */
+void string_buffer_reset(struct string_buffer *buf);
+
+/* Prints a string (as in printf() function) to the buffer. */
+void string_buffer_print(struct string_buffer *buf,
+                         const char *fmt, ...)
+    __attribute__((format (printf, 2, 3)));
+
+/* Rewinds the string buffer by a few characters.
+ * The number of characters to rewind is given in `num_chars`.
+ */
+void string_buffer_rewind(struct string_buffer *buf, size_t num_chars);
 
 #endif /* __COMMON_UTILS_H */

@@ -7,6 +7,7 @@
 
 #include "microcode/microcode.h"
 #include "common/allocator.h"
+#include "common/utils.h"
 
 /* Data structures and types. */
 
@@ -96,12 +97,11 @@ int disassembler_find_task_addresses(struct disassembler *dis);
 
 /* Disassembles one microinstruction.
  * The address to disassemble is given by `address`, and the current
- * task is given by `task`. The output is written to `output`,
- * which is a buffer of size `output_size`.
+ * task is given by `task`. The output is written to `output`.
  * Returns TRUE on success.
  */
 int disassembler_disassemble(struct disassembler *dis,
                              uint16_t address, uint8_t task,
-                             char *output, size_t output_size);
+                             struct string_buffer *output);
 
 #endif /* __DISASSEMBLER_DISASSEMBLER_H */

@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "common/utils.h"
+
 /* Data structures and types. */
 
 /* The ethernet controller for the simulator. */
@@ -103,5 +105,12 @@ void ethernet_block_task(struct ethernet *ether, uint8_t task);
 
 /* Processes the ethernet interrupts. */
 void ethernet_interrupt(struct ethernet *ether);
+
+/* Prints the state of the registers.
+ * The output is written to `output`.
+ */
+void ethernet_print_registers(struct ethernet *ether,
+                              struct string_buffer *output);
+
 
 #endif /* __SIMULATOR_ETHERNET_H */

@@ -406,11 +406,11 @@ int disassembler_find_task_addresses(struct disassembler *dis)
  */
 static
 void disasm_constant_cb(struct decoder *dec, uint16_t val,
-                        struct decode_buffer *output)
+                        struct string_buffer *output)
 {
     struct disassembler *dis;
     dis = (struct disassembler *) dec->arg;
-    decode_buffer_print(output, "%o", dis->consts[val]);
+    string_buffer_print(output, "%o", dis->consts[val]);
 }
 
 /* Auxiliary function used by disassembler_disassemble().
@@ -418,12 +418,12 @@ void disasm_constant_cb(struct decoder *dec, uint16_t val,
  */
 static
 void disasm_register_cb(struct decoder *dec, uint16_t val,
-                        struct decode_buffer *output)
+                        struct string_buffer *output)
 {
     if (val <= R_MASK) {
-        decode_buffer_print(output, "R%o", val);
+        string_buffer_print(output, "R%o", val);
     } else {
-        decode_buffer_print(output, "S%o", val & R_MASK);
+        string_buffer_print(output, "S%o", val & R_MASK);
     }
 }
 
@@ -432,24 +432,19 @@ void disasm_register_cb(struct decoder *dec, uint16_t val,
  */
 static
 void disasm_goto_cb(struct decoder *dec, uint16_t val,
-                    struct decode_buffer *output)
+                    struct string_buffer *output)
 {
-    decode_buffer_print(output, ":%05o", val);
+    string_buffer_print(output, ":%05o", val);
 }
 
 int disassembler_disassemble(struct disassembler *dis,
                              uint16_t address, uint8_t task,
-                             char *output, size_t output_size)
+                             struct string_buffer *output)
 {
     struct microcode mc;
     struct decoder dec;
-    struct decode_buffer out;
 
     if (unlikely(address >= MICROCODE_SIZE)) return FALSE;
-
-    out.buf = output;
-    out.buf_size = output_size;
-    decode_buffer_reset(&out);
 
     microcode_predecode(&mc,
                         dis->sys_type,
@@ -457,7 +452,7 @@ int disassembler_disassemble(struct disassembler *dis,
                         dis->microcode[address],
                         task);
 
-    decode_buffer_print(&out,
+    string_buffer_print(output,
                         "%05o   %02o    %011o  %02o   %02o   %o  "
                         "%02o %02o %o %o %04o   ",
                         mc.address, mc.task, mc.mcode, mc.rsel,
@@ -470,7 +465,7 @@ int disassembler_disassemble(struct disassembler *dis,
     dec.reg_cb = &disasm_register_cb;
     dec.goto_cb = &disasm_goto_cb;
 
-    decoder_decode(&dec, &mc, &out);
+    decoder_decode(&dec, &mc, output);
     return TRUE;
 }
 

@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "common/utils.h"
+
 /* Constants. */
 #define DISPLAY_WIDTH               606
 #define DISPLAY_HEIGHT              808
@@ -116,5 +118,11 @@ void display_interrupt(struct display *displ);
  * The new task is given by `task`.
  */
 void display_on_switch_task(struct display *displ, uint8_t task);
+
+/* Prints the state of the registers.
+ * The output is written to `output`.
+ */
+void display_print_registers(struct display *displ,
+                             struct string_buffer *output);
 
 #endif /* __SIMULATOR_DISPLAY_H */

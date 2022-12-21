@@ -98,7 +98,8 @@ int keyboard_create(struct keyboard *keyb)
     return TRUE;
 }
 
-void keyboard_update_from(struct keyboard *keyb, struct keyboard *other)
+void keyboard_update_from(struct keyboard *keyb,
+                          const struct keyboard *other)
 {
     memcpy(keyb->keys, other->keys, sizeof(keyb->keys));
 }

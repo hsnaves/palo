@@ -114,3 +114,10 @@ void ethernet_interrupt(struct ethernet *ether)
 {
     /* TODO: Implement this. */
 }
+
+void ethernet_print_registers(struct ethernet *ether,
+                              struct string_buffer *output)
+{
+    /* TODO: Implement this. */
+    string_buffer_print(output, "<empty>");
+}

@@ -52,7 +52,7 @@ void mouse_destroy(struct mouse *mous);
 int mouse_create(struct mouse *mous);
 
 /* Updates the state from other mouse object. */
-void mouse_update_from(struct mouse *mous, struct mouse *other);
+void mouse_update_from(struct mouse *mous, const struct mouse *other);
 
 /* Resets the state of the mouse. */
 void mouse_reset(struct mouse *mous);

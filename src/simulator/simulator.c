@@ -76,6 +76,7 @@ void simulator_initvar(struct simulator *sim)
     sim->consts = NULL;
     sim->microcode = NULL;
     sim->task_mpc = NULL;
+    sim->task_cycle = NULL;
     sim->mem = NULL;
     sim->xm_banks = NULL;
     sim->sreg_banks = NULL;
@@ -110,6 +111,9 @@ void simulator_destroy(struct simulator *sim)
     if (sim->task_mpc) free((void *) sim->task_mpc);
     sim->task_mpc = NULL;
 
+    if (sim->task_cycle) free((void *) sim->task_cycle);
+    sim->task_cycle = NULL;
+
     if (sim->mem) free((void *) sim->mem);
     sim->mem = NULL;
 
@@ -132,6 +136,8 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
         malloc(NUM_MICROCODE_BANKS * MICROCODE_SIZE * sizeof(uint32_t));
     sim->task_mpc = (uint16_t *)
         malloc(TASK_NUM_TASKS * sizeof(uint16_t));
+    sim->task_cycle = (int32_t *)
+        malloc(TASK_NUM_TASKS * sizeof(int32_t));
     sim->mem = (uint16_t *)
         malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     sim->xm_banks = (uint16_t *)
@@ -140,8 +146,10 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
         malloc(NUM_BANK_SLOTS * sizeof(uint8_t));
 
     if (unlikely(!sim->r || !sim->s
-                 || !sim->consts || !sim->microcode || !sim->task_mpc
-                 || !sim->mem || !sim->xm_banks || !sim->sreg_banks)) {
+                 || !sim->consts || !sim->microcode
+                 || !sim->task_mpc || !sim->task_cycle
+                 || !sim->mem || !sim->xm_banks
+                 || !sim->sreg_banks)) {
         report_error("sim: create: could not allocate memory");
         simulator_destroy(sim);
         return FALSE;
@@ -306,6 +314,7 @@ void simulator_reset(struct simulator *sim)
 
     for (task = 0; task < TASK_NUM_TASKS; task++) {
         sim->task_mpc[task] = (uint16_t) task;
+        sim->task_cycle[task] = 0;
     }
 
     disk_reset(&sim->dsk);
@@ -323,18 +332,22 @@ void simulator_reset(struct simulator *sim)
     sim->ir = 0;
     sim->mir = 0;
     sim->mpc = 0;
+
     sim->ctask = TASK_EMULATOR;
     sim->ntask = TASK_EMULATOR;
-    sim->task_swtch = TRUE;
+    sim->task_switch = TRUE;
+
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
+
     sim->rmr = 0xFFFFU;
+    sim->cram_addr = 0x0;
     sim->rdram = FALSE;
     sim->wrtram = FALSE;
     sim->swmode = FALSE;
     sim->soft_reset = FALSE;
-    sim->cram_addr = 0x0;
+
     sim->cycle = 0;
     sim->mem_cycle = 0;
     sim->mem_task = TASK_EMULATOR;
@@ -881,7 +894,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         return;
     case F1_TASK:
         /* Should we not prevent two consecutive switches? */
-        if (sim->task_swtch) return;
+        if (sim->task_switch) return;
 
         /* Switch tasks. */
         pending = get_pending(sim);
@@ -1336,6 +1349,29 @@ void wb_registers(struct simulator *sim,
     }
 }
 
+/* Updates the simulator and memory cycles. */
+static
+void update_cycles(struct simulator *sim)
+{
+    uint8_t task;
+
+    sim->cycle++;
+    sim->cycle &= 0x7FFFFFFF;
+
+    task = sim->ctask;
+    sim->task_cycle[task]++;
+    sim->task_cycle[task] &= 0x7FFFFFFF;
+
+    /* Updates the memory cycle. */
+    if (sim->mem_cycle != 0xFFFF) {
+        if (sim->mem_cycle >= 10) {
+            sim->mem_cycle = 0xFFFF;
+        } else {
+            sim->mem_cycle += 1;
+        }
+    }
+}
+
 /* Updates the micro program counter and the next task.
  * The bits that are to be modified in the NEXT field of the following
  * instruction are given by `next_extra`. The task following the next
@@ -1350,7 +1386,7 @@ void update_program_counters(struct simulator *sim,
     uint8_t task;
 
     /* Updates the current task. */
-    sim->task_swtch = (sim->ctask != sim->ntask);
+    sim->task_switch = (sim->ctask != sim->ntask);
     sim->ctask = sim->ntask;
 
     /* Updates the MPC and MIR. */
@@ -1366,7 +1402,7 @@ void update_program_counters(struct simulator *sim,
     /* Updates the next task. */
     sim->ntask = nntask;
 
-    if (!sim->task_swtch) return;
+    if (!sim->task_switch) return;
 
     if (sim->ctask == TASK_DISPLAY_WORD
         || sim->ctask == TASK_DISPLAY_HORIZONTAL
@@ -1384,23 +1420,6 @@ void update_program_counters(struct simulator *sim,
          * controller.
          */
         disk_on_switch_task(&sim->dsk, sim->ctask);
-    }
-}
-
-/* Updates the simulator and memory cycles. */
-static
-void update_cycles(struct simulator *sim)
-{
-    sim->cycle++;
-    sim->cycle &= 0x7FFFFFFF;
-
-    /* Updates the memory cycle. */
-    if (sim->mem_cycle != 0xFFFF) {
-        if (sim->mem_cycle >= 10) {
-            sim->mem_cycle = 0xFFFF;
-        } else {
-            sim->mem_cycle += 1;
-        }
     }
 }
 
@@ -1571,11 +1590,11 @@ void simulator_step(struct simulator *sim)
     wb_registers(sim, &mc, modified_rsel, load_r,
                  bus, alu, shifter_output, aluC0);
 
-    /* Update the micro program counter and the next task. */
-    update_program_counters(sim, next_extra, nntask);
-
     /* Updates the cycles. */
     update_cycles(sim);
+
+    /* Update the micro program counter and the next task. */
+    update_program_counters(sim, next_extra, nntask);
 
     /* Perform the SWMODE. */
     if (swmode) do_swmode(sim);
@@ -1586,16 +1605,34 @@ void simulator_step(struct simulator *sim)
     check_for_interrupts(sim, prev_cycle);
 }
 
+int simulator_update(struct simulator *sim,
+                     const struct keyboard *keyb,
+                     const struct mouse *mous,
+                     uint8_t *display_data)
+{
+    if (display_data) {
+        memcpy(display_data, sim->displ.display_data,
+               DISPLAY_DATA_SIZE * sizeof(uint8_t));
+    }
+    if (keyb) {
+        keyboard_update_from(&sim->keyb, keyb);
+    }
+    if (mous) {
+        mouse_update_from(&sim->mous, mous);
+    }
+    return TRUE;
+}
+
 /* Auxiliary function used by simulator_disassemble().
  * Callback to print constants.
  */
 static
 void disasm_constant_cb(struct decoder *dec, uint16_t val,
-                            struct decode_buffer *output)
+                            struct string_buffer *output)
 {
     struct simulator *sim;
     sim = (struct simulator *) dec->arg;
-    decode_buffer_print(output, "%o", sim->consts[val]);
+    string_buffer_print(output, "%o", sim->consts[val]);
 }
 
 /* Auxiliary function used by simulator_disassemble().
@@ -1603,12 +1640,12 @@ void disasm_constant_cb(struct decoder *dec, uint16_t val,
  */
 static
 void disasm_register_cb(struct decoder *dec, uint16_t val,
-                        struct decode_buffer *output)
+                        struct string_buffer *output)
 {
     if (val <= R_MASK) {
-        decode_buffer_print(output, "R%o", val);
+        string_buffer_print(output, "R%o", val);
     } else {
-        decode_buffer_print(output, "S%o", val & R_MASK);
+        string_buffer_print(output, "S%o", val & R_MASK);
     }
 }
 
@@ -1617,21 +1654,16 @@ void disasm_register_cb(struct decoder *dec, uint16_t val,
  */
 static
 void disasm_goto_cb(struct decoder *dec, uint16_t val,
-                    struct decode_buffer *output)
+                    struct string_buffer *output)
 {
-    decode_buffer_print(output, ":%05o", val);
+    string_buffer_print(output, ":%05o", val);
 }
 
 void simulator_disassemble(struct simulator *sim,
-                           char *output, size_t output_size)
+                           struct string_buffer *output)
 {
     struct microcode mc;
     struct decoder dec;
-    struct decode_buffer out;
-
-    out.buf = output;
-    out.buf_size = output_size;
-    decode_buffer_reset(&out);
 
     microcode_predecode(&mc,
                         sim->sys_type,
@@ -1639,7 +1671,7 @@ void simulator_disassemble(struct simulator *sim,
                         sim->mir,
                         sim->ctask);
 
-    decode_buffer_print(&out,
+    string_buffer_print(output,
                         "%02o-%06o %011o --- ",
                         sim->ctask, sim->mpc, sim->mir);
 
@@ -1648,62 +1680,94 @@ void simulator_disassemble(struct simulator *sim,
     dec.reg_cb = &disasm_register_cb;
     dec.goto_cb = &disasm_goto_cb;
 
-    decoder_decode(&dec, &mc, &out);
+    decoder_decode(&dec, &mc, output);
 }
 
 void simulator_print_registers(struct simulator *sim,
-                               char *output, size_t output_size)
+                               struct string_buffer *output)
 {
-    struct decode_buffer out;
     uint16_t pending;
     unsigned int i;
 
-    out.buf = output;
-    out.buf_size = output_size;
-    decode_buffer_reset(&out);
-
-    decode_buffer_print(&out,
-                        "CTASK: %02o       NTASK: %02o       "
-                        "MPC  : %06o   NMPC : %06o\n",
-                        sim->ctask, sim->ntask,
-                        sim->mpc, sim->task_mpc[sim->ctask]);
-
-    decode_buffer_print(&out,
-                        "T    : %06o   L    : %06o   "
-                        "MAR  : %06o   IR   : %06o\n",
+    string_buffer_print(output,
+                        "T     : %06o    L     : %06o    "
+                        "MAR   : %06o    IR    : %06o\n",
                         sim->t, sim->l, sim->mar, sim->ir);
 
     for (i = 0; i < NUM_R_REGISTERS; i++) {
-        decode_buffer_print(&out,
-                            "R%-4o: %06o",
+        string_buffer_print(output,
+                            "R%-5o: %06o",
                             i, sim->r[i]);
         if ((i % 4) == 3) {
-            decode_buffer_print(&out, "\n");
+            string_buffer_print(output, "\n");
         } else {
-            decode_buffer_print(&out, "   ");
+            string_buffer_print(output, "    ");
         }
     }
 
-    decode_buffer_print(&out,
-                        "ALUC0: %-6o   CARRY: %-6o   "
-                        "SKIP : %-6o\n",
+    pending = get_pending(sim);
+    string_buffer_print(output,
+                        "ALUC0 : %-6o    CARRY : %-6o    "
+                        "SKIP  : %-6o    PEND  : %06o\n",
                         sim->aluC0 ? 1 : 0,
                         sim->carry ? 1 : 0,
-                        sim->skip ? 1 : 0);
+                        sim->skip ? 1 : 0,
+                        pending);
 
-    pending = get_pending(sim);
-    decode_buffer_print(&out,
-                        "XM_B : %06o   SR_B : %03o      "
-                        "PEND : %06o   RMR  : %06o\n",
-                        sim->xm_banks[sim->ctask],
-                        sim->sreg_banks[sim->ctask],
-                        pending, sim->rmr);
+    string_buffer_print(output,
+                        "CYCLE : %-9d ICYCLE: %-9d "
+                        "TCYCLE: %-9d MCYCLE: %d\n",
+                        sim->cycle, sim->intr_cycle,
+                        sim->task_cycle[sim->ctask],
+                        sim->mem_cycle);
 
-    decode_buffer_print(&out,
-                        "CYCLE: %d",
-                        sim->cycle);
+    string_buffer_print(output,
+                        "NTASK : %02o        TS    : %-6d    "
+                        "NMPC  : %06o    SYS   : %d\n",
+                        sim->ntask,
+                        sim->task_switch ? 1 : 0,
+                        sim->task_mpc[sim->ctask],
+                        sim->sys_type);
 
     if (sim->error) {
-        decode_buffer_print(&out, "\nsimulator in error state");
+        string_buffer_print(output, "\nsimulator in error state");
     }
 }
+
+void simulator_print_extra_registers(struct simulator *sim,
+                                     struct string_buffer *output)
+{
+    unsigned int i;
+    uint8_t rb;
+
+    rb = sim->sreg_banks[sim->ctask];
+    for (i = 0; i < NUM_R_REGISTERS; i++) {
+        string_buffer_print(output,
+                            "S%-5o: %06o",
+                            i, sim->s[rb * NUM_R_REGISTERS + i]);
+        if ((i % 4) == 3) {
+            string_buffer_print(output, "\n");
+        } else {
+            string_buffer_print(output, "    ");
+        }
+    }
+
+    string_buffer_print(output,
+                        "XM_B  : %06o    SR_B  : %03o       "
+                        "RMR   : %06o    CRAM  : %06o\n",
+                        sim->xm_banks[sim->ctask], rb,
+                        sim->rmr, sim->cram_addr);
+
+    string_buffer_print(output,
+                        "RDRAM : %-6d    WRTRAM: %-6d    "
+                        "SWMODE: %-6d    SRESET: %-6d\n",
+                        sim->rdram ? 1 : 0,
+                        sim->wrtram ? 1 : 0,
+                        sim->swmode ? 1 : 0,
+                        sim->soft_reset ? 1 : 0);
+
+    if (sim->error) {
+        string_buffer_print(output, "\nsimulator in error state");
+    }
+}
+
