@@ -7,6 +7,7 @@
 #include "simulator/simulator.h"
 #include "simulator/utils.h"
 #include "microcode/microcode.h"
+#include "microcode/nova.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -818,7 +819,7 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
  * Returns a bitset of pending tasks.
  */
 static
-uint16_t get_pending(struct simulator *sim)
+uint16_t get_pending(const struct simulator *sim)
 {
     uint16_t pending;
     pending = (1 << TASK_EMULATOR);
@@ -1630,8 +1631,8 @@ static
 void disasm_constant_cb(struct decoder *dec, uint16_t val,
                             struct string_buffer *output)
 {
-    struct simulator *sim;
-    sim = (struct simulator *) dec->arg;
+    const struct simulator *sim;
+    sim = (const struct simulator *) dec->arg;
     string_buffer_print(output, "%o", sim->consts[val]);
 }
 
@@ -1659,7 +1660,7 @@ void disasm_goto_cb(struct decoder *dec, uint16_t val,
     string_buffer_print(output, ":%05o", val);
 }
 
-void simulator_disassemble(struct simulator *sim,
+void simulator_disassemble(const struct simulator *sim,
                            struct string_buffer *output)
 {
     struct microcode mc;
@@ -1675,7 +1676,7 @@ void simulator_disassemble(struct simulator *sim,
                         "%02o-%06o %011o --- ",
                         sim->ctask, sim->mpc, sim->mir);
 
-    dec.arg = sim;
+    dec.arg = (void *) sim;
     dec.const_cb = &disasm_constant_cb;
     dec.reg_cb = &disasm_register_cb;
     dec.goto_cb = &disasm_goto_cb;
@@ -1683,7 +1684,7 @@ void simulator_disassemble(struct simulator *sim,
     decoder_decode(&dec, &mc, output);
 }
 
-void simulator_print_registers(struct simulator *sim,
+void simulator_print_registers(const struct simulator *sim,
                                struct string_buffer *output)
 {
     uint16_t pending;
@@ -1734,7 +1735,7 @@ void simulator_print_registers(struct simulator *sim,
     }
 }
 
-void simulator_print_extra_registers(struct simulator *sim,
+void simulator_print_extra_registers(const struct simulator *sim,
                                      struct string_buffer *output)
 {
     unsigned int i;
@@ -1769,5 +1770,36 @@ void simulator_print_extra_registers(struct simulator *sim,
     if (sim->error) {
         string_buffer_print(output, "\nsimulator in error state");
     }
+}
+
+void simulator_nova_disassemble(const struct simulator *sim,
+                                struct string_buffer *output)
+{
+    struct nova_insn ni;
+    struct nova_decoder ndec;
+    uint16_t address, insn;
+
+    address = sim->r[6];
+    insn = simulator_read(sim, address, TASK_EMULATOR, FALSE);
+    nova_insn_predecode(&ni, address, insn);
+
+    string_buffer_print(output,
+                        "%06o %06o --- ",
+                        ni.address, ni.insn);
+
+    nova_decoder_decode(&ndec, &ni, output);
+}
+
+void simulator_print_nova_registers(const struct simulator *sim,
+                                    struct string_buffer *output)
+{
+    string_buffer_print(output,
+                        "R0   : %06o     R1   : %06o     "
+                        "R2   : %06o     R3   : %06o\n",
+                        sim->r[3], sim->r[2],
+                        sim->r[1], sim->r[0]);
+    string_buffer_print(output,
+                        "IR   : %06o\n",
+                        sim->ir);
 }
 

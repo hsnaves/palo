@@ -154,19 +154,31 @@ int simulator_update(struct simulator *sim,
 /* Disassembles the current microinstruction.
  * The output is written to `output`.
  */
-void simulator_disassemble(struct simulator *sim,
+void simulator_disassemble(const struct simulator *sim,
                            struct string_buffer *output);
 
 /* Prints the state of the registers.
  * The output is written to `output`.
  */
-void simulator_print_registers(struct simulator *sim,
+void simulator_print_registers(const struct simulator *sim,
                                struct string_buffer *output);
 
 /* Prints the state of the extra registers.
  * The output is written to `output`.
  */
-void simulator_print_extra_registers(struct simulator *sim,
+void simulator_print_extra_registers(const struct simulator *sim,
                                      struct string_buffer *output);
+
+/* Disassembles the current NOVA instruction.
+ * The output is written to `output`.
+ */
+void simulator_nova_disassemble(const struct simulator *sim,
+                                struct string_buffer *output);
+
+/* Prints the state of the NOVA registers.
+ * The output is written to `output`.
+ */
+void simulator_print_nova_registers(const struct simulator *sim,
+                                    struct string_buffer *output);
 
 #endif /* __SIMULATOR_SIMULATOR_H */

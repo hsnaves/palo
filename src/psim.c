@@ -344,6 +344,19 @@ void psim_cmd_registers(struct psim *ps, int extra)
     printf("%s\n", ps->out_buf);
 }
 
+/* Prints the nova registers. */
+static
+void psim_cmd_nova_registers(struct psim *ps)
+{
+    string_buffer_reset(&ps->output);
+    simulator_nova_disassemble(&ps->sim, &ps->output);
+    printf("%s\n", ps->out_buf);
+
+    string_buffer_reset(&ps->output);
+    simulator_print_nova_registers(&ps->sim, &ps->output);
+    printf("%s\n", ps->out_buf);
+}
+
 /* Shows the disk registers. */
 static
 void psim_cmd_disk_registers(struct psim *ps)
@@ -492,6 +505,31 @@ int psim_cmd_next_task(struct psim *ps)
     }
 
     psim_cmd_registers(ps, FALSE);
+    return TRUE;
+}
+
+/* Processes the "next nova" command.
+ * Returns TRUE on success.
+ */
+int psim_cmd_next_nova(struct psim *ps)
+{
+    struct breakpoint *bp;
+
+    bp = &ps->bps[0];
+    bp->enable = TRUE;
+    bp->task = TASK_EMULATOR;
+    bp->ntask = 0xFF;
+    bp->mpc = 020;
+    bp->on_task_switch = FALSE;
+    bp->mir_mask = 0;
+    bp->mir_fmt = 0;
+
+    if (unlikely(!psim_simulate(ps, -1))) {
+        report_error("psim: cmd_next_nova: could not simulate");
+        return FALSE;
+    }
+
+    psim_cmd_nova_registers(ps);
     return TRUE;
 }
 
@@ -675,6 +713,11 @@ int psim_debug(struct gui *ui)
             continue;
         }
 
+        if (strcmp(cmd, "nr") == 0) {
+            psim_cmd_nova_registers(ps);
+            continue;
+        }
+
         if (strcmp(cmd, "e") == 0) {
             psim_cmd_registers(ps, TRUE);
             continue;
@@ -718,6 +761,12 @@ int psim_debug(struct gui *ui)
             continue;
         }
 
+        if (strcmp(cmd, "nn") == 0) {
+            if (unlikely(!psim_cmd_next_nova(ps)))
+                return FALSE;
+            continue;
+        }
+
         if (strcmp(cmd, "bp") == 0) {
             psim_cmd_add_breakpoint(ps);
             continue;
@@ -736,6 +785,7 @@ int psim_debug(struct gui *ui)
         if (strcmp(cmd, "h") == 0 || strcmp(cmd, "help") == 0) {
             printf("Commands:\n");
             printf("  r           Print the registers\n");
+            printf("  nr          Print the NOVA registers\n");
             printf("  e           Print the extra registers\n");
             printf("  dsk         Print the disk registers\n");
             printf("  displ       Print the display registers\n");
@@ -744,6 +794,7 @@ int psim_debug(struct gui *ui)
             printf("  c           Continue execution\n");
             printf("  n [num]     Step through the microcode\n");
             printf("  nt [task]   Step until switch task\n");
+            printf("  nn          Executes until next nova insn\n");
             printf("  bp specs    Adds a breakpoint\n");
             printf("  be num      Enables a breakpoint\n");
             printf("  bd num      Disables a breakpoint\n");
