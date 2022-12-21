@@ -1690,40 +1690,40 @@ void simulator_print_registers(struct simulator *sim,
     unsigned int i;
 
     string_buffer_print(output,
-                        "T     : %06o    L     : %06o    "
-                        "MAR   : %06o    IR    : %06o\n",
+                        "T    : %06o     L    : %06o     "
+                        "MAR  : %06o     IR   : %06o\n",
                         sim->t, sim->l, sim->mar, sim->ir);
 
     for (i = 0; i < NUM_R_REGISTERS; i++) {
         string_buffer_print(output,
-                            "R%-5o: %06o",
+                            "R%-4o: %06o",
                             i, sim->r[i]);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
         } else {
-            string_buffer_print(output, "    ");
+            string_buffer_print(output, "     ");
         }
     }
 
     pending = get_pending(sim);
     string_buffer_print(output,
-                        "ALUC0 : %-6o    CARRY : %-6o    "
-                        "SKIP  : %-6o    PEND  : %06o\n",
+                        "ALUC0: %-6o     CARRY: %-6o     "
+                        "SKIP : %-6o     PEND : %06o\n",
                         sim->aluC0 ? 1 : 0,
                         sim->carry ? 1 : 0,
                         sim->skip ? 1 : 0,
                         pending);
 
     string_buffer_print(output,
-                        "CYCLE : %-9d ICYCLE: %-9d "
-                        "TCYCLE: %-9d MCYCLE: %d\n",
+                        "CYC  : %-10d ICYC : %-10d "
+                        "TCYC : %-10d MCYC : %d\n",
                         sim->cycle, sim->intr_cycle,
                         sim->task_cycle[sim->ctask],
                         sim->mem_cycle);
 
     string_buffer_print(output,
-                        "NTASK : %02o        TS    : %-6d    "
-                        "NMPC  : %06o    SYS   : %d\n",
+                        "NTASK: %02o         TS   : %-6d     "
+                        "NMPC : %06o     SYS  : %d\n",
                         sim->ntask,
                         sim->task_switch ? 1 : 0,
                         sim->task_mpc[sim->ctask],
@@ -1743,24 +1743,24 @@ void simulator_print_extra_registers(struct simulator *sim,
     rb = sim->sreg_banks[sim->ctask];
     for (i = 0; i < NUM_R_REGISTERS; i++) {
         string_buffer_print(output,
-                            "S%-5o: %06o",
+                            "S%-4o: %06o",
                             i, sim->s[rb * NUM_R_REGISTERS + i]);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
         } else {
-            string_buffer_print(output, "    ");
+            string_buffer_print(output, "     ");
         }
     }
 
     string_buffer_print(output,
-                        "XM_B  : %06o    SR_B  : %03o       "
-                        "RMR   : %06o    CRAM  : %06o\n",
+                        "XM_B : %06o     SR_B : %03o        "
+                        "RMR  : %06o     CRAM : %06o\n",
                         sim->xm_banks[sim->ctask], rb,
                         sim->rmr, sim->cram_addr);
 
     string_buffer_print(output,
-                        "RDRAM : %-6d    WRTRAM: %-6d    "
-                        "SWMODE: %-6d    SRESET: %-6d\n",
+                        "RDR  : %-6d     WRTR : %-6d    "
+                        "SW   : %-6d     SRES : %-6d\n",
                         sim->rdram ? 1 : 0,
                         sim->wrtram ? 1 : 0,
                         sim->swmode ? 1 : 0,

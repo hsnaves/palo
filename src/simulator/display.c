@@ -368,37 +368,37 @@ void display_print_registers(struct display *displ,
                              struct string_buffer *output)
 {
     string_buffer_print(output,
-                        "SCLINE: %06o    VBLINE: %06o    "
-                        "WORD  : %06o    EFIELD: %o\n",
+                        "SCLIN: %06o     VBLIN: %06o     "
+                        "WORD : %06o     EFILD: %o\n",
                         displ->scanline, displ->vblank_scanline,
                         displ->word, displ->even_field ? 1 : 0);
 
     string_buffer_print(output,
-                        "CX%s   : %06o    CX_L  : %06o    "
-                        "CD%s   : %06o    CD_L  : %06o\n",
+                        "CX%s  : %06o     CX_L : %06o     "
+                        "CD%s  : %06o     CD_L : %06o\n",
                         displ->has_cursor_x ? "*" : " ",
                         displ->cursor_x, displ->cursor_x_latched,
                         displ->has_cursor_data ? "*" : " ",
                         displ->cursor_data, displ->cursor_data_latched);
 
     string_buffer_print(output,
-                        "SWITCH: %-6o    LRES  : %o/%-4o    "
-                        "WOB   : %o/%-4o\n",
+                        "SWT  : %-6o     LRES : %o/%-4o     "
+                        "WOB  : %o/%-4o\n",
                         displ->switch_mode ? 1 : 0,
                         displ->low_res ? 1 : 0, displ->low_res_latched ? 1 : 0,
                         displ->wob ? 1 : 0, displ->wob_latched ? 1 : 0);
 
     string_buffer_print(output,
-                        "DWBL  : %-6o    DHBL  : %-6o    "
-                        "PEND  : %06o    ICYCLE: %-9d\n",
+                        "DWBL : %-6o     DHBL : %-6o     "
+                        "PEND : %06o     ICYC : %-10d\n",
                         displ->dw_blocked ? 1 : 0,
                         displ->dh_blocked ? 1 : 0,
                         displ->pending,
                         displ->intr_cycle);
 
     string_buffer_print(output,
-                        "DVIC  : %-9d DHIC  : %-9d "
-                        "DWIC  : %-9d\n",
+                        "DVIC : %-10d DHIC : %-10d "
+                        "DWIC : %-10d\n",
                         displ->dv_intr_cycle,
                         displ->dh_intr_cycle,
                         displ->dw_intr_cycle);
