@@ -28,6 +28,11 @@ struct breakpoint {
     uint32_t mir_mask;            /* The mask for the micro instruction
                                    * breakpoint.
                                    */
+    int allow_constants;          /* To allow F1 or F2 constants in MIR. */
+    uint16_t rsel;                /* Which R register to watch. */
+    int r_watch;                  /* To watch for R modification. */
+    uint16_t addr;                /* Address watch. */
+    int watch;                    /* To watch an address. */
 };
 
 /* Internal structure for the psim simulator. */
@@ -306,7 +311,26 @@ int psim_simulate(struct psim *ps, int max_steps)
 
             if (bp->mir_mask != 0) {
                 if ((ps->sim.mir & bp->mir_mask) != bp->mir_fmt)
-                    hit1= FALSE;
+                    hit1 = FALSE;
+                if (!bp->allow_constants) {
+                    if ((MICROCODE_F1(ps->sim.mir) == F1_CONSTANT)
+                        || (MICROCODE_F2(ps->sim.mir) == F2_CONSTANT)) {
+                        hit1 = FALSE;
+                    }
+                }
+            }
+
+            if (bp->r_watch) {
+                if (!ps->sim.r_changed)
+                    hit1 = FALSE;
+                if (bp->rsel != ps->sim.modified_rsel)
+                    hit1 = FALSE;
+            }
+
+            if (bp->watch) {
+                if (bp->addr != ps->sim.mar) {
+                    hit1 = FALSE;
+                }
             }
 
             if (hit1) {
@@ -496,8 +520,12 @@ int psim_cmd_next_task(struct psim *ps)
     bp->ntask = 0xFF;
     bp->mpc = 0xFFFF;
     bp->on_task_switch = TRUE;
-    bp->mir_mask = 0;
     bp->mir_fmt = 0;
+    bp->mir_mask = 0;
+    bp->allow_constants = TRUE;
+    bp->addr = 0;
+    bp->r_watch = FALSE;
+    bp->watch = FALSE;
 
     if (unlikely(!psim_simulate(ps, -1))) {
         report_error("psim: cmd_next_task: could not simulate");
@@ -514,6 +542,21 @@ int psim_cmd_next_task(struct psim *ps)
 int psim_cmd_next_nova(struct psim *ps)
 {
     struct breakpoint *bp;
+    const char *arg, *end;
+    int num;
+
+    arg = (const char *) ps->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] != '\0') {
+        num = (int) strtoul(arg, (char **) &end, 10);
+        if (end[0] != '\0' || num < 0) {
+            printf("invalid number %s\n", arg);
+            return TRUE;
+        }
+    } else {
+        num = 1;
+    }
 
     bp = &ps->bps[0];
     bp->enable = TRUE;
@@ -521,12 +564,19 @@ int psim_cmd_next_nova(struct psim *ps)
     bp->ntask = 0xFF;
     bp->mpc = 020;
     bp->on_task_switch = FALSE;
-    bp->mir_mask = 0;
     bp->mir_fmt = 0;
+    bp->mir_mask = 0;
+    bp->allow_constants = TRUE;
+    bp->addr = 0;
+    bp->r_watch = FALSE;
+    bp->watch = FALSE;
 
-    if (unlikely(!psim_simulate(ps, -1))) {
-        report_error("psim: cmd_next_nova: could not simulate");
-        return FALSE;
+    while (num-- > 0) {
+        if (!gui_running(&ps->ui)) break;
+        if (unlikely(!psim_simulate(ps, -1))) {
+            report_error("psim: cmd_next_nova: could not simulate");
+            return FALSE;
+        }
     }
 
     psim_cmd_nova_registers(ps);
@@ -539,6 +589,7 @@ void psim_cmd_add_breakpoint(struct psim *ps)
 {
     const char *arg, *end;
     struct breakpoint *bp;
+    uint32_t mask, val;
     unsigned int num;
 
     for (num = 1; num < ps->max_breakpoints; num++) {
@@ -557,6 +608,10 @@ void psim_cmd_add_breakpoint(struct psim *ps)
     bp->on_task_switch = FALSE;
     bp->mir_fmt = 0;
     bp->mir_mask = 0;
+    bp->allow_constants = TRUE;
+    bp->addr = 0;
+    bp->r_watch = FALSE;
+    bp->watch = FALSE;
 
     arg = (const char *) ps->cmd_buf;
     arg = &arg[strlen(arg) + 1];
@@ -627,6 +682,164 @@ void psim_cmd_add_breakpoint(struct psim *ps)
             continue;
         }
 
+        if (strcmp(arg, "-rsel") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the RSEL value\n");
+                return;
+            }
+            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid RSEL (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_RSEL_M << MC_RSEL_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= val << MC_RSEL_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-aluf") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the ALUF value\n");
+                return;
+            }
+            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid ALUF (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_ALUF_M << MC_ALUF_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= val << MC_ALUF_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-bs") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the BS value\n");
+                return;
+            }
+            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid BS (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_BS_M << MC_BS_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= val << MC_BS_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-f1") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the F1 value\n");
+                return;
+            }
+            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid F1 (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_F1_M << MC_F1_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= val << MC_F1_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-f2") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the F2 value\n");
+                return;
+            }
+            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid F2 (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_F2_M << MC_F2_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= val << MC_F2_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-store") == 0) {
+            arg = &arg[strlen(arg) + 1];
+
+            mask = MC_F2_M << MC_F2_S;
+            bp->mir_mask |= mask;
+            bp->mir_fmt &= ~mask;
+            bp->mir_fmt |= (F2_STORE_MD) << MC_F2_S;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-no_constants") == 0) {
+            arg = &arg[strlen(arg) + 1];
+
+            bp->allow_constants = FALSE;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-r_watch") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the register to watch\n");
+                return;
+            }
+            bp->rsel = (uint16_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid rsel (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+            bp->r_watch = TRUE;
+            bp->enable = TRUE;
+            continue;
+        }
+
+        if (strcmp(arg, "-watch") == 0) {
+            arg = &arg[strlen(arg) + 1];
+            if (arg[0] == '\0') {
+                printf("please specify the watch address\n");
+                return;
+            }
+            bp->addr = (uint16_t) strtoul(arg, (char **) &end, 8);
+            if (end[0] != '\0') {
+                printf("invalid address (octal number) %s\n", arg);
+                return;
+            }
+            arg = &arg[strlen(arg) + 1];
+            bp->watch = TRUE;
+            bp->enable = TRUE;
+            continue;
+        }
+
         bp->mpc = (uint16_t) strtoul(arg, (char **) &end, 8);
         if (end[0] != '\0') {
             printf("invalid MPC (octal number) %s\n", arg);
@@ -645,10 +858,69 @@ void psim_cmd_add_breakpoint(struct psim *ps)
     printf("breakpoint %u created\n", num);
 }
 
+/* Lists the breakpoints. */
+static
+void psim_cmd_breakpoint_list(struct psim *ps)
+{
+    unsigned int num;
+    struct breakpoint *bp;
+
+    printf("NUM  EN  TASK  NTASK MPC     SW  MIR_FMT     "
+           "MIR_MASK    CT  RSEL     ADDR\n");
+    for (num = 1; num < ps->max_breakpoints; num++) {
+        bp = &ps->bps[num];
+        if (bp->available) continue;
+
+        printf("%-4d %o   %03o   %03o   %06o  %o   "
+               "%011o %011o %o   %06o%s  %06o%s\n",
+               num, bp->enable ? 1 : 0,
+               bp->task, bp->ntask, bp->mpc,
+               bp->on_task_switch ? 1 : 0,
+               bp->mir_fmt, bp->mir_mask,
+               bp->allow_constants ? 1 : 0,
+               bp->rsel, bp->r_watch ? "*" : " ",
+               bp->addr, bp->watch ? "*" : " ");
+    }
+}
+
 /* Enables or disables a breakpoint based on the parameter `enable`. */
 static
 void psim_cmd_breakpoint_enable(struct psim *ps, int enable)
 {
+    const char *arg, *end;
+    struct breakpoint *bp;
+    unsigned int num;
+
+    arg = (const char *) ps->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("please specify a breakpoint number\n");
+        return;
+    }
+
+    num = strtoul(arg, (char **) &end, 10);
+    if (end[0] != '\0' || num == 0) {
+        printf("invalid breakpoint number %s\n", arg);
+        return;
+    }
+
+    if (num >= ps->max_breakpoints) {
+        printf("breakpoint number exceeds maximum available\n");
+        return;
+    }
+
+    bp = &ps->bps[num];
+    bp->enable = enable;
+    printf("breakpoint %u %s\n",
+           num, (enable) ? "enabled" : "disabled");
+}
+
+/* Removes a breakpoint. */
+static
+void psim_cmd_breakpoint_remove(struct psim *ps)
+{
+    struct breakpoint *bp;
     const char *arg, *end;
     unsigned int num;
 
@@ -671,10 +943,24 @@ void psim_cmd_breakpoint_enable(struct psim *ps, int enable)
         return;
     }
 
-    ps->bps[num].enable = enable;
-    printf("breakpoint %d %s\n",
-           num, (enable) ? "enabled" : "disabled");
+    bp = &ps->bps[num];
+    if (bp->available) {
+        printf("breakpoint %u is available\n", num);
+    } else {
+        ps->bps[num].available = TRUE;
+        printf("breakpoint %u removed\n", num);
+    }
 }
+
+
+/* Restarts the simulation. */
+static
+void psim_cmd_restart(struct psim *ps)
+{
+    simulator_reset(&ps->sim);
+    psim_cmd_registers(ps, FALSE);
+}
+
 
 /* To run the debugger.
  * The parameter `ui` contains a reference to the gui object, which
@@ -772,6 +1058,11 @@ int psim_debug(struct gui *ui)
             continue;
         }
 
+        if (strcmp(cmd, "bl") == 0) {
+            psim_cmd_breakpoint_list(ps);
+            continue;
+        }
+
         if (strcmp(cmd, "be") == 0) {
             psim_cmd_breakpoint_enable(ps, TRUE);
             continue;
@@ -779,6 +1070,16 @@ int psim_debug(struct gui *ui)
 
         if (strcmp(cmd, "bd") == 0) {
             psim_cmd_breakpoint_enable(ps, FALSE);
+            continue;
+        }
+
+        if (strcmp(cmd, "br") == 0) {
+            psim_cmd_breakpoint_remove(ps);
+            continue;
+        }
+
+        if (strcmp(cmd, "zs") == 0) {
+            psim_cmd_restart(ps);
             continue;
         }
 
@@ -794,12 +1095,32 @@ int psim_debug(struct gui *ui)
             printf("  c           Continue execution\n");
             printf("  n [num]     Step through the microcode\n");
             printf("  nt [task]   Step until switch task\n");
-            printf("  nn          Executes until next nova insn\n");
-            printf("  bp specs    Adds a breakpoint\n");
-            printf("  be num      Enables a breakpoint\n");
-            printf("  bd num      Disables a breakpoint\n");
+            printf("  nn [num]    Execute num nova instructions\n");
+            printf("  bp specs    Add a breakpoint\n");
+            printf("  bl          List breakpoints\n");
+            printf("  be num      Enable a breakpoint\n");
+            printf("  bd num      Disable a breakpoint\n");
+            printf("  br num      Remove a breakpoint\n");
+            printf("  zs          Restart the simulation\n");
             printf("  h           Print this help\n");
             printf("  q           Quit the debugger\n");
+            printf("\n\n");
+            printf("The specifications of the breakpoints are:\n");
+            printf("  bp [options] mpc\n\n");
+            printf("where the options are:\n");
+            printf("  -task <task>     To specify the current task\n");
+            printf("  -ntask <ntask>   To specify the next task\n");
+            printf("  -on_task_switch  When a task switch occurs\n");
+            printf("  -mir fmt mask    To filter based on the MIR\n");
+            printf("  -rsel rsel       To select the RSEL of the MIR\n");
+            printf("  -aluf aluf       To select the ALUF of the MIR\n");
+            printf("  -bs bs           To select the BS of the MIR\n");
+            printf("  -f1 f1           To select the F1 of the MIR\n");
+            printf("  -f2 f2           To select the F2 of the MIR\n");
+            printf("  -store           When F2=F2_STORE_MD\n");
+            printf("  -no_constants    To disable F1 or F2 constants\n");
+            printf("  -r_watch rsel    To watch for R register changes\n");
+            printf("  -watch address   To watch for memory activity\n");
             continue;
         }
 

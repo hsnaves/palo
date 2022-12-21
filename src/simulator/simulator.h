@@ -24,7 +24,7 @@ struct simulator {
     uint16_t mar;                 /* Memory address register. */
     uint16_t ir;                  /* The instruction register. */
     uint32_t mir;                 /* The micro instruction register. */
-    uint16_t mpc;                 /* The MPC corres ponding to the MIR. */
+    uint16_t mpc;                 /* The MPC corresponding to the MIR. */
 
     uint8_t ctask;                /* Current task. */
     uint8_t ntask;                /* The next task. */
@@ -33,6 +33,11 @@ struct simulator {
     int aluC0;                    /* Last carry of ALU when loading L. */
     int skip;                     /* Skip flag. */
     int carry;                    /* Carry flag. */
+
+    int r_changed;                /* A flag indicating that some R register
+                                   * changed.
+                                   */
+    uint16_t modified_rsel;       /* Which register changed. */
 
     uint16_t rmr;                 /* Reset mode register (for tasks to start
                                    * in either ROM0 or RAM0).

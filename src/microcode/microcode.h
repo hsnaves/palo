@@ -155,14 +155,31 @@
 #define NEXT_MASK_CONSTANT   0x40000
 
 /* Decoding the microcode. */
-#define MICROCODE_RSEL(mcode) (((mcode) >> 27) & R_MASK)
-#define MICROCODE_ALUF(mcode) (((mcode) >> 23) & 0x0F)
-#define MICROCODE_BS(mcode) (((mcode) >> 20) & 0x07)
-#define MICROCODE_F1(mcode) (((mcode) >> 16) & 0x0F)
-#define MICROCODE_F2(mcode) (((mcode) >> 12) & 0x0F)
-#define MICROCODE_T(mcode) (((mcode) >> 11) & 0x01)
-#define MICROCODE_L(mcode) (((mcode) >> 10) & 0x01)
-#define MICROCODE_NEXT(mcode) ((mcode) & 0x3FF)
+#define MC_NEXT_S                  0
+#define MC_NEXT_M              0x3FF
+#define MC_L_S                    10
+#define MC_L_M                     1
+#define MC_T_S                    11
+#define MC_T_M                     1
+#define MC_F2_S                   12
+#define MC_F2_M                 0x0F
+#define MC_F1_S                   16
+#define MC_F1_M                 0x0F
+#define MC_BS_S                   20
+#define MC_BS_M                 0x07
+#define MC_ALUF_S                 23
+#define MC_ALUF_M               0x0F
+#define MC_RSEL_S                 27
+#define MC_RSEL_M               0x1F
+
+#define MICROCODE_RSEL(mcode) (((mcode) >> MC_RSEL_S) & MC_RSEL_M)
+#define MICROCODE_ALUF(mcode) (((mcode) >> MC_ALUF_S) & MC_ALUF_M)
+#define MICROCODE_BS(mcode) (((mcode) >> MC_BS_S) & MC_BS_M)
+#define MICROCODE_F1(mcode) (((mcode) >> MC_F1_S) & MC_F1_M)
+#define MICROCODE_F2(mcode) (((mcode) >> MC_F2_S) & MC_F2_M)
+#define MICROCODE_T(mcode) (((mcode) >> MC_T_S) & MC_T_M)
+#define MICROCODE_L(mcode) (((mcode) >> MC_L_S) & MC_L_M)
+#define MICROCODE_NEXT(mcode) (((mcode) >> MC_NEXT_S) & MC_NEXT_M)
 
 /* For constant address. */
 #define CONST_ADDR_RSEL(addr) ((addr) >> 3)

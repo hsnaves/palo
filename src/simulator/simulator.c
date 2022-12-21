@@ -341,6 +341,8 @@ void simulator_reset(struct simulator *sim)
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
+    sim->r_changed = FALSE;
+    sim->modified_rsel = 0;
 
     sim->rmr = 0xFFFFU;
     sim->cram_addr = 0x0;
@@ -739,8 +741,13 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
     int dns, has_magic;
     int carry;
 
-    dns = (mc->f2 == F2_EMU_LOAD_DNS);
-    has_magic = (mc->f2 == F2_EMU_MAGIC);
+    if (mc->task == TASK_EMULATOR) {
+        dns = (mc->f2 == F2_EMU_LOAD_DNS);
+        has_magic = (mc->f2 == F2_EMU_MAGIC);
+    } else {
+        dns = FALSE;
+        has_magic = FALSE;
+    }
 
     if (dns) {
         *load_r = ((sim->ir & 0x0008) == 0);
@@ -1318,6 +1325,8 @@ void wb_registers(struct simulator *sim,
     uint8_t rb;
 
     /* Writes back the R register. */
+    sim->r_changed = load_r;
+    sim->modified_rsel = modified_rsel;
     if (load_r) {
         sim->r[modified_rsel] = shifter_output;
     }
@@ -1799,7 +1808,7 @@ void simulator_print_nova_registers(const struct simulator *sim,
                         sim->r[3], sim->r[2],
                         sim->r[1], sim->r[0]);
     string_buffer_print(output,
-                        "IR   : %06o\n",
-                        sim->ir);
+                        "IR   : %06o     CARRY: %o\n",
+                        sim->ir, sim-> carry ? 1 : 0);
 }
 

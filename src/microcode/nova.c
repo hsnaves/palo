@@ -49,7 +49,7 @@ void decode_mgroup(struct nova_decoder *ndec,
 
     switch (addressing) {
     case 0: /* Page zero. */
-        string_buffer_print(output, "%o", disp);
+        string_buffer_print(output, "%o", disp & 0xFF);
         break;
     case 1: /* PC relative. */
         string_buffer_print(output, ".+%o", disp);
@@ -104,7 +104,7 @@ void decode_jgroup(struct nova_decoder *ndec,
 
     switch (addressing) {
     case 0: /* Page zero. */
-        string_buffer_print(output, "%o", disp);
+        string_buffer_print(output, "%o", disp & 0xFF);
         break;
     case 1: /* PC relative. */
         string_buffer_print(output, ".+%o", disp);
@@ -170,6 +170,7 @@ void decode_agroup(struct nova_decoder *ndec,
 
     switch (carry) {
     case 0:
+        break;
     case 1:
         string_buffer_print(output, "Z");
         break;
@@ -183,6 +184,7 @@ void decode_agroup(struct nova_decoder *ndec,
 
     switch (shift) {
     case 0:
+        break;
     case 1:
         string_buffer_print(output, "L");
         break;
@@ -257,7 +259,7 @@ void decode_sgroup(struct nova_decoder *ndec,
         case 8: string_buffer_print(output, "JMPRAM"); break;
         case 9: string_buffer_print(output, "RDRAM"); break;
         case 10: string_buffer_print(output, "WRTRAM"); break;
-        case 12: string_buffer_print(output, "VERSION"); break;
+        case 12: string_buffer_print(output, "VERS"); break;
         case 13: string_buffer_print(output, "DREAD"); break;
         case 14: string_buffer_print(output, "DWRITE"); break;
         case 15: string_buffer_print(output, "DEXCH"); break;
