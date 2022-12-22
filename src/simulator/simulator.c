@@ -1055,7 +1055,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     case TASK_DISK_WORD:
         switch (mc->f1) {
         case F1_DSK_STROBE:
-            if (!disk_strobe(&sim->dsk, sim->cycle)) {
+            if (!disk_func_strobe(&sim->dsk, sim->cycle)) {
                 report_error("simulator: step: "
                              "error on disk STROBE");
                 sim->error = TRUE;
@@ -1066,7 +1066,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             disk_load_kstat(&sim->dsk, bus);
             break;
         case F1_DSK_INCRECNO:
-            if (!disk_increcno(&sim->dsk)) {
+            if (!disk_func_increcno(&sim->dsk)) {
                 report_error("simulator: step: "
                              "error on disk INCRECNO");
                 sim->error = TRUE;
@@ -1074,7 +1074,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             }
             break;
         case F1_DSK_CLRSTAT:
-            disk_clrstat(&sim->dsk);
+            disk_func_clrstat(&sim->dsk);
             break;
         case F1_DSK_LOAD_KCOMM:
             disk_load_kcomm(&sim->dsk, bus);
@@ -1274,19 +1274,19 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISK_WORD:
         switch (mc->f2) {
         case F2_DSK_INIT:
-            return disk_init(&sim->dsk, mc->task);
+            return disk_func_init(&sim->dsk, mc->task);
         case F2_DSK_RWC:
-            return disk_rwc(&sim->dsk, mc->task);;
+            return disk_func_rwc(&sim->dsk, mc->task);;
         case F2_DSK_RECNO:
-            return disk_recno(&sim->dsk, mc->task);
+            return disk_func_recno(&sim->dsk, mc->task);
         case F2_DSK_XFRDAT:
-            return disk_xfrdat(&sim->dsk, mc->task);
+            return disk_func_xfrdat(&sim->dsk, mc->task);
         case F2_DSK_SWRNRDY:
-            return disk_swrnrdy(&sim->dsk, mc->task);
+            return disk_func_swrnrdy(&sim->dsk, mc->task);
         case F2_DSK_NFER:
-            return disk_nfer(&sim->dsk, mc->task);
+            return disk_func_nfer(&sim->dsk, mc->task);
         case F2_DSK_STROBON:
-            return disk_strobon(&sim->dsk, mc->task);
+            return disk_func_strobon(&sim->dsk, mc->task);
         default:
             report_error("simulator: step: "
                          "invalid F2 function %o for disk tasks",

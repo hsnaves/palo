@@ -299,10 +299,9 @@ void disk_reset(struct disk *dsk)
     }
 
     dsk->rec_no = 0;
-    dsk->data_transfer = FALSE;
     dsk->restore = FALSE;
     dsk->sync_word_written = FALSE;
-    dsk->disk_bit_enable = FALSE;
+    dsk->bitclk_enable = FALSE;
     dsk->wdinit = FALSE;
 
     dsk->intr_cycle = 1;
@@ -418,7 +417,7 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus)
         dsk->wdinit = TRUE;
     }
 
-    dsk->disk_bit_enable = (dsk->kcomm & KCOMM_WFFO);
+    dsk->bitclk_enable = (dsk->kcomm & KCOMM_WFFO);
 
     /* TODO: Not sure why is this the case?
      * This was copied from the ContrAlto source code.
@@ -483,14 +482,12 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus)
      */
     dsk->disk = (dsk->kdata >> AW_DISK_SHIFT) & 1;
 
-    dsk->data_transfer = ((dsk->kadr & KADR_NO_XFER) == 0);
-
     if ((dsk->kdata >> AW_RESTORE_SHIFT) & 1) {
         dsk->restore = TRUE;
     }
 }
 
-int disk_strobe(struct disk *dsk, int32_t cycle)
+int disk_func_strobe(struct disk *dsk, int32_t cycle)
 {
     uint16_t cylinder;
     struct disk_drive *dd;
@@ -523,14 +520,14 @@ int disk_strobe(struct disk *dsk, int32_t cycle)
     return TRUE;
 }
 
-int disk_increcno(struct disk *dsk)
+int disk_func_increcno(struct disk *dsk)
 {
     dsk->rec_no++;
     dsk->sync_word_written = FALSE;
     return (dsk->rec_no <= 3);
 }
 
-void disk_clrstat(struct disk *dsk)
+void disk_func_clrstat(struct disk *dsk)
 {
     /* Clears S[13], S[11], S[10], S[8],
      * that is, checksum error, seclate, disk not ready
@@ -540,18 +537,18 @@ void disk_clrstat(struct disk *dsk)
                     | KSTAT_NOT_READY | KSTAT_SEEK_FAIL);
 }
 
-uint16_t disk_init(struct disk *dsk, uint8_t task)
+uint16_t disk_func_init(struct disk *dsk, uint8_t task)
 {
     if (task != TASK_DISK_WORD) return 0;
     return (dsk->wdinit) ? 0x1F : 0;
 }
 
-uint16_t disk_rwc(struct disk *dsk, uint8_t task)
+uint16_t disk_func_rwc(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     uint16_t oper;
     int shift;
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
     shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * dsk->rec_no);
     oper = (dsk->kadr >> shift) & KADR_BLOCK_MASK;
@@ -571,31 +568,31 @@ uint16_t disk_rwc(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_recno(struct disk *dsk, uint8_t task)
+uint16_t disk_func_recno(struct disk *dsk, uint8_t task)
 {
     static const uint16_t RECNO_MAP[] = { 0, 2, 3, 1 };
     uint16_t next_extra;
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
     next_extra |= RECNO_MAP[dsk->rec_no];
     return next_extra;
 }
 
-uint16_t disk_xfrdat(struct disk *dsk, uint8_t task)
+uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
-    next_extra |= (dsk->data_transfer) ? 1 : 0;
+    next_extra |= ((dsk->kadr & KADR_NO_XFER) == 0) ? 1 : 0;
     return next_extra;
 }
 
-uint16_t disk_swrnrdy(struct disk *dsk, uint8_t task)
+uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     struct disk_drive *dd;
 
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
     dd = &dsk->drives[dsk->disk];
     if (!dd->loaded || (dsk->kstat & KSTAT_SEEKING)) {
@@ -604,12 +601,12 @@ uint16_t disk_swrnrdy(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_nfer(struct disk *dsk, uint8_t task)
+uint16_t disk_func_nfer(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     struct disk_drive *dd;
 
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
     dd = &dsk->drives[dsk->disk];
     if (!dd->loaded || (dsk->kstat & KSTAT_SEEKING))
@@ -622,10 +619,10 @@ uint16_t disk_nfer(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_strobon(struct disk *dsk, uint8_t task)
+uint16_t disk_func_strobon(struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
-    next_extra = disk_init(dsk, task);
+    next_extra = disk_func_init(dsk, task);
 
     next_extra |= (dsk->kstat & KSTAT_SEEKING) ? 1 : 0;
     return next_extra;
@@ -847,7 +844,7 @@ void dw_interrupt(struct disk *dsk)
 
     bWakeup = (!seclate && !wdInhib && !bClkSource);
 
-    if (!seclate && (wffo || dsk->disk_bit_enable)) {
+    if (!seclate && (wffo || dsk->bitclk_enable)) {
         if (!xferOff) {
             if (!is_write) {
                 dsk->kdata_read = wv;
@@ -871,7 +868,7 @@ void dw_interrupt(struct disk *dsk)
     }
 
     if (!is_write && !wffo && wv == 1) {
-        dsk->disk_bit_enable = TRUE;
+        dsk->bitclk_enable = TRUE;
     } else if (is_write && wffo && (dsk->kdata == 1)
                && !dsk->sync_word_written) {
 
@@ -987,26 +984,67 @@ void disk_print_registers(struct disk *dsk,
                           struct string_buffer *output)
 {
     const struct disk_drive *dd;
+    uint16_t sector;
 
     string_buffer_print(output,
                         "KSTAT: %06o     KDATA: %06o     "
                         "KADR : %06o     KCOMM: %06o\n",
-                        dsk->kstat, dsk->kdata,
-                        dsk->kadr, dsk->kcomm);
+                        dsk->kstat,
+                        dsk->kdata,
+                        dsk->kadr,
+                        dsk->kcomm);
 
     string_buffer_print(output,
-                        "KDATR: %06o     HASDT: %-6o     "
-                        "XFER : %-6o     RESTR: %-6o\n",
-                        dsk->kdata_read, dsk->has_kdata ? 1 : 0,
-                        dsk->data_transfer, dsk->restore);
+                        "DATAR: %06o     HASDT: %-6o\n",
+                        dsk->kdata_read, dsk->has_kdata ? 1 : 0);
+
+    sector = (dsk->kstat >> KSTAT_SECTOR_SHIFT) & KSTAT_SECTOR_MASK;
+    string_buffer_print(output,
+                        "SECT : %02o         CSERR: %-6o     "
+                        "COMPL: %02o         SFAIL: %d\n",
+                        sector,
+                        (dsk->kstat & KSTAT_CHECKSUM_ERROR) ? 1 : 0,
+                        (dsk->kstat & KSTAT_COMPLETION_MASK),
+                        (dsk->kstat & KSTAT_SEEK_FAIL) ? 1 : 0);
 
     string_buffer_print(output,
-                        "SYNCW: %-6o     DSKBT: %-6o     "
-                        "WDINT: %-6o     SECLT: %-6o\n",
+                        "SEEK : %-6o     NRDY : %-6o     "
+                        "LATE : %-6o     IDLE : %-6o\n",
+                        (dsk->kstat & KSTAT_SEEKING) ? 1 : 0,
+                        (dsk->kstat & KSTAT_NOT_READY) ? 1 : 0,
+                        (dsk->kstat & KSTAT_LATE) ? 1 : 0,
+                        (dsk->kstat & KSTAT_IDLE) ? 1 : 0);
+
+    string_buffer_print(output,
+                        "NXFER: %-6o     DKXOR: %-6o     "
+                        "HDBLK: %-6o     LBBLK: %-6o\n",
+                        (dsk->kadr & KADR_NO_XFER) ? 1 : 0,
+                        (dsk->kadr & KADR_DISK_MOD) ? 1 : 0,
+                        (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK,
+                        (dsk->kadr >> KADR_LABEL_SHIFT) & KADR_BLOCK_MASK);
+
+    string_buffer_print(output,
+                        "DTBLK: %-6o     XROFF: %-6o     "
+                        "WDINH: %-6o     CKSRC: %-6o\n",
+                        (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK,
+                        (dsk->kcomm & KCOMM_XFEROFF) ? 1 : 0,
+                        (dsk->kcomm & KCOMM_WDINHB) ? 1 : 0,
+                        (dsk->kcomm & KCOMM_BCLKSRC) ? 1 : 0);
+
+    string_buffer_print(output,
+                        "WFFO : %-6o     SDADR: %-6o     "
+                        "SYNC : %-6o     BTCLK: %-6o\n",
+                        (dsk->kcomm & KCOMM_WFFO) ? 1 : 0,
+                        (dsk->kcomm & KCOMM_SENDADR) ? 1 : 0,
                         dsk->sync_word_written ? 1 : 0,
-                        dsk->disk_bit_enable ? 1 : 0,
+                        dsk->bitclk_enable ? 1 : 0);
+
+    string_buffer_print(output,
+                        "WDINT: %-6o     SECLT: %-6o     "
+                        "RESTR: %-6o\n",
                         dsk->wdinit ? 1 : 0,
-                        dsk->seclate_enable ? 1 : 0);
+                        dsk->seclate_enable ? 1 : 0,
+                        dsk->restore ? 1 : 0);
 
     dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
 

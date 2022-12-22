@@ -54,12 +54,9 @@ struct disk {
     uint16_t disk;                /* Current disk. */
 
     int rec_no;                   /* Record number. */
-    int data_transfer;            /* To perform a data transfer (or
-                                   * only seek).
-                                   */
     int restore;                  /* Restore operation. */
     int sync_word_written;        /* The sync word was written. */
-    int disk_bit_enable;          /* Disk bit counter enabled. */
+    int bitclk_enable;            /* Disk bit counter enabled. */
     int wdinit;                   /* WDINIT bit used by task. */
     int seclate_enable;           /* To enable SECLATE. */
 
@@ -145,64 +142,64 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus);
  * The `cycle` parameter specifies the current cycle.
  * Returns TRUE on success.
  */
-int disk_strobe(struct disk *dsk, int32_t cycle);
+int disk_func_strobe(struct disk *dsk, int32_t cycle);
 
 /* Executes a F1_DSK_INCRECNO.
  * Returns TRUE on success.
  */
-int disk_increcno(struct disk *dsk);
+int disk_func_increcno(struct disk *dsk);
 
 /* Executes a F1_DSK_CLRSTAT. */
-void disk_clrstat(struct disk *dsk);
+void disk_func_clrstat(struct disk *dsk);
 
 /* Executes a F2_DSK_INIT.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_init(struct disk *dsk, uint8_t task);
+uint16_t disk_func_init(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RWC.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_rwc(struct disk *dsk, uint8_t task);
+uint16_t disk_func_rwc(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RECNO.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_recno(struct disk *dsk, uint8_t task);
+uint16_t disk_func_recno(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_XFRDAT.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_xfrdat(struct disk *dsk, uint8_t task);
+uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_SWRNRDY.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_swrnrdy(struct disk *dsk, uint8_t task);
+uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task);
 
-/* Executes a F2_DSK_NFER.
+/* Executes a F2_DSK_NFER (not fatal error).
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_nfer(struct disk *dsk, uint8_t task);
+uint16_t disk_func_nfer(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_STROBON.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_strobon(struct disk *dsk, uint8_t task);
+uint16_t disk_func_strobon(struct disk *dsk, uint8_t task);
 
 /* Processes a BLOCK instruction.
  * The task to be blocked is in the parameter `task`.
