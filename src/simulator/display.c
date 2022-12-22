@@ -244,10 +244,10 @@ void dw_interrupt(struct display *displ)
         }
         check_dw_pending(displ);
     } else {
-        to_display = 0xFFFFU;
+        to_display = 0;
     }
 
-    if (displ->wob_latched)
+    if (!displ->wob_latched)
         to_display = ~to_display;
 
     x_offset = displ->word * 16;
@@ -270,7 +270,7 @@ void dw_interrupt(struct display *displ)
     displ->word++;
 
     word_thresh = (displ->low_res_latched)
-        ? SCANLINE_WORDS / 2 : SCANLINE_WORDS;
+        ? (SCANLINE_WORDS / 2) : SCANLINE_WORDS;
 
     if (displ->word < word_thresh) {
         /* More words to process. */
@@ -311,9 +311,9 @@ void dw_interrupt(struct display *displ)
                        | (1 << TASK_MEMORY_REFRESH));
 
     displ->dw_blocked = FALSE;
+    displ->fifo_start = displ->fifo_end = 0;
     check_dw_pending(displ);
 
-    displ->fifo_start = displ->fifo_end = 0;
     if (displ->switch_mode) {
         displ->low_res_latched = displ->low_res;
         displ->wob_latched = displ->wob;

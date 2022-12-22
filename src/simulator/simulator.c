@@ -29,6 +29,10 @@
 /* For fixing the microcode in RAM. */
 #define MC_INVERT_MASK      0x00088400
 
+/* For memory access. */
+#define MA_EXTENDED                  1
+#define MA_HAS_STORE                 2
+
 /* Static tables. */
 
 /* Table used to implement F2_EMU_ACSOURCE and F2_EMU_IDISP. */
@@ -352,12 +356,11 @@ void simulator_reset(struct simulator *sim)
     sim->soft_reset = FALSE;
 
     sim->cycle = 0;
-    sim->mem_cycle = 0;
+    sim->mem_cycle = 0xFFFFU;
     sim->mem_task = TASK_EMULATOR;
     sim->mem_low = 0xFFFFU;
     sim->mem_high = 0xFFFFU;
-    sim->mem_extended = 0;
-    sim->mem_which = 0;
+    sim->mem_status = 0;
 
     /* Sets the next interrupt cycle. */
     intr_cycles[0] = sim->dsk.intr_cycle;
@@ -431,6 +434,29 @@ void simulator_write(struct simulator *sim, uint16_t address,
             : ((sim->xm_banks[task] >> 2) & 0x3);
         base_mem = &sim->mem[bank_number * MEMORY_SIZE];
         base_mem[address] = data;
+    }
+}
+
+/* Updates the simulator and memory cycles. */
+static
+void update_cycles(struct simulator *sim)
+{
+    uint8_t task;
+
+    sim->cycle++;
+    sim->cycle &= 0x7FFFFFFF;
+
+    task = sim->ctask;
+    sim->task_cycle[task]++;
+    sim->task_cycle[task] &= 0x7FFFFFFF;
+
+    /* Updates the memory cycle. */
+    if (sim->mem_cycle != 0xFFFF) {
+        if (sim->mem_cycle >= 10) {
+            sim->mem_cycle = 0xFFFF;
+        } else {
+            sim->mem_cycle += 1;
+        }
     }
 }
 
@@ -601,9 +627,36 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         }
         break;
     case BS_READ_MD:
-        /* TODO: check for delays. */
-        output &= (sim->mem_which) ? sim->mem_high : sim->mem_low;
-        sim->mem_which = (1 ^ sim->mem_which);
+        /* Wait until cycle 5 to perform the read. */
+        while (sim->mem_cycle < 5) {
+            update_cycles(sim);
+        }
+
+        if (sim->sys_type == ALTO_I) {
+            if (sim->mem_cycle == 5) {
+                output &= sim->mem_low;
+            } else if (sim->mem_cycle == 6) {
+                output &= sim->mem_high;
+            } else {
+                report_error("simulator: step: "
+                             "unexpected read memory cycle");
+                sim->error = TRUE;
+                return 0;
+            }
+        } else {
+            /* Alto II. */
+            if (sim->mem_cycle == 5) {
+                if (sim->mem_status & MA_HAS_STORE) {
+                    output &= sim->mem_high;
+                } else {
+                    output &= sim->mem_low;
+                }
+            } if (sim->mem_cycle == 6) {
+                output &= sim->mem_high;
+            } else {
+                output &= sim->mem_low;
+            }
+        }
         break;
     case BS_READ_MOUSE:
         output &= mouse_poll_bits(&sim->mous);
@@ -720,7 +773,7 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
         return 0xDEAD;
     }
 
-    *carry = ((res & 0x10000) != 0);
+    *carry = ((res & 0xFFFF0000) != 0) ? 1 : 0;
     return (uint16_t) res;
 }
 
@@ -857,6 +910,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 {
     uint16_t addr;
     uint16_t pending;
+    uint16_t min_cycles;
     uint8_t tmp;
 
     *nntask = sim->ntask;
@@ -872,29 +926,28 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         /* Already handled. */
         return;
     case F1_LOAD_MAR:
-        /* TODO: Check if this load is not violating any
-         * memory timing requirement.
-         */
+        min_cycles = (sim->sys_type == ALTO_I) ? 7 : 5;
+        while (sim->mem_cycle < min_cycles) {
+            update_cycles(sim);
+        }
         sim->mar = alu;
-        sim->mem_cycle = 0; /* This will be incremented at
-                             * update_cycles() to 1, which
-                             * is the correct value.
-                             */
+        sim->mem_cycle = 1;
         sim->mem_task = mc->task;
         sim->mem_low = 0xFFFFU;
         sim->mem_high = 0xFFFFU;
-        sim->mem_extended = (sim->sys_type != ALTO_I)
-                          ? (mc->f2 == F2_STORE_MD) : FALSE;
-        sim->mem_which = 0;
+        sim->mem_status = 0;
+        if (sim->sys_type != ALTO_I && (mc->f2 == F2_STORE_MD)) {
+            sim->mem_status |= MA_EXTENDED;
+        }
 
         /* Perform the reading now. */
         addr = sim->mar;
         sim->mem_low = simulator_read(sim, addr, sim->mem_task,
-                                      sim->mem_extended);
+                                      sim->mem_status & MA_EXTENDED);
 
-        addr = (sim->sys_type == ALTO_I) ? 1 | addr : 1 ^ addr;
+        addr = (sim->sys_type == ALTO_I) ? (1 | addr) : (1 ^ addr);
         sim->mem_high = simulator_read(sim, addr, sim->mem_task,
-                                       sim->mem_extended);
+                                       sim->mem_status & MA_EXTENDED);
 
         /* TODO: Check that for TASK_MEMORY_REFRESH, loading MAR
          * with RSEL = 037 performs a BLOCK.
@@ -1096,19 +1149,53 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case F2_ALUCY:
         return (sim->aluC0) ? 1 : 0;
     case F2_STORE_MD:
-        /* TODO: Check the cycle times. */
-        if (mc->f1 != F1_LOAD_MAR || sim->sys_type == ALTO_I) {
-            /* TODO: On Alto I MAR<- and <-MD in the same
-             * microinstruction should be illegal.
+        if (mc->f1 == F1_LOAD_MAR && sim->sys_type != ALTO_I) {
+            /* On Alto II MAR<- and <-MD in the same microinstruction
+             * becomes XMAR<-.
              */
-            addr = sim->mar;
-            if (sim->mem_which) {
-                addr = (sim->sys_type == ALTO_I) ? 1 | addr : 1 ^ addr;
-            }
-            simulator_write(sim, addr, bus, sim->mem_task,
-                            sim->mem_extended);
-            sim->mem_which = (1 ^ sim->mem_which);
+            return 0;
         }
+
+        addr = sim->mar;
+        if (sim->sys_type == ALTO_I) {
+            while (sim->mem_cycle < 5) {
+                update_cycles(sim);
+            }
+            if (sim->mem_cycle == 5) {
+                sim->mem_status |= MA_HAS_STORE;
+            } else if (sim->mem_cycle == 6) {
+                if (!(sim->mem_status & MA_HAS_STORE)) {
+                    report_error("simulator: step: "
+                                 "first write on cycle 6");
+                    sim->error = TRUE;
+                    return 0;
+                }
+                addr |= 1;
+            } else {
+                report_error("simulator: step: "
+                             "unexpected write memory cycle");
+                sim->error = TRUE;
+                return 0;
+            }
+        } else {
+            while (sim->mem_cycle < 3) {
+                update_cycles(sim);
+            }
+            if (sim->mem_cycle == 3) {
+                sim->mem_status |= MA_HAS_STORE;
+            } else if (sim->mem_cycle == 4) {
+                if (sim->mem_status & MA_HAS_STORE) {
+                    addr ^= 1;
+                }
+            } else {
+                report_error("simulator: step: "
+                             "unexpected write memory cycle");
+                sim->error = TRUE;
+                return 0;
+            }
+        }
+        simulator_write(sim, addr, bus, sim->mem_task,
+                        sim->mem_status & MA_EXTENDED);
         return 0;
     }
 
@@ -1359,29 +1446,6 @@ void wb_registers(struct simulator *sim,
     }
 }
 
-/* Updates the simulator and memory cycles. */
-static
-void update_cycles(struct simulator *sim)
-{
-    uint8_t task;
-
-    sim->cycle++;
-    sim->cycle &= 0x7FFFFFFF;
-
-    task = sim->ctask;
-    sim->task_cycle[task]++;
-    sim->task_cycle[task] &= 0x7FFFFFFF;
-
-    /* Updates the memory cycle. */
-    if (sim->mem_cycle != 0xFFFF) {
-        if (sim->mem_cycle >= 10) {
-            sim->mem_cycle = 0xFFFF;
-        } else {
-            sim->mem_cycle += 1;
-        }
-    }
-}
-
 /* Updates the micro program counter and the next task.
  * The bits that are to be modified in the NEXT field of the following
  * instruction are given by `next_extra`. The task following the next
@@ -1552,6 +1616,9 @@ void simulator_step(struct simulator *sim)
     /* Copy this to detect interrupts later. */
     prev_cycle = sim->cycle;
 
+    /* Updates the cycles. */
+    update_cycles(sim);
+
     /* Copy the swmode in a local variable. */
     swmode = sim->swmode;
     sim->swmode = FALSE;
@@ -1599,9 +1666,6 @@ void simulator_step(struct simulator *sim)
     /* Write back the registers. */
     wb_registers(sim, &mc, modified_rsel, load_r,
                  bus, alu, shifter_output, aluC0);
-
-    /* Updates the cycles. */
-    update_cycles(sim);
 
     /* Update the micro program counter and the next task. */
     update_program_counters(sim, next_extra, nntask);

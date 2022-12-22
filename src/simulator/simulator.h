@@ -71,10 +71,7 @@ struct simulator {
     uint8_t mem_task;             /* The task accessing memory. */
     uint16_t mem_low;             /* Latched memory value (1st word). */
     uint16_t mem_high;            /* Latched memory value (2nd word). */
-    int mem_extended;             /* Extended memory access. */
-    int mem_which;                /* A boolean flag indicating which
-                                   * memory operation is happening.
-                                   */
+    int mem_status;               /* The status of memory operation. */
 
     struct disk dsk;              /* The disk controller. */
     struct display displ;         /* The display controller. */

@@ -273,6 +273,8 @@ int psim_simulate(struct psim *ps, int max_steps)
         if (max_steps >= 0 && step == max_steps)
             break;
 
+        if (ps->sim.error) break;
+
         simulator_step(&ps->sim);
         step++;
 
@@ -573,6 +575,7 @@ int psim_cmd_next_nova(struct psim *ps)
 
     while (num-- > 0) {
         if (!gui_running(&ps->ui)) break;
+        if (ps->sim.error) break;
         if (unlikely(!psim_simulate(ps, -1))) {
             report_error("psim: cmd_next_nova: could not simulate");
             return FALSE;
@@ -1148,6 +1151,10 @@ void usage(const char *prog_name)
     printf("  -m micro      Specify the microcode rom file\n");
     printf("  -1 disk1      Specify the disk 1 filename\n");
     printf("  -2 disk2      Specify the disk 2 filename\n");
+    printf("  -i            Set system type to Alto I\n");
+    printf("  -ii_1krom     Set system type to Alto II (1K rom)\n");
+    printf("  -ii_2krom     Set system type to Alto II (2K rom)\n");
+    printf("  -ii_3kram     Set system type to Alto II (3K ram)\n");
     printf("  --help        Print this help\n");
 }
 
@@ -1157,6 +1164,7 @@ int main(int argc, char **argv)
     const char *mcode_filename;
     const char *disk1_filename;
     const char *disk2_filename;
+    enum system_type sys_type;
     struct psim ps;
     int i, is_last;
 
@@ -1165,6 +1173,7 @@ int main(int argc, char **argv)
     mcode_filename = NULL;
     disk1_filename = NULL;
     disk2_filename = NULL;
+    sys_type = ALTO_II_3KRAM;
 
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);
@@ -1192,6 +1201,14 @@ int main(int argc, char **argv)
                 return 1;
             }
             disk2_filename = argv[++i];
+        } else if (strcmp("-i", argv[i]) == 0) {
+            sys_type = ALTO_I;
+        } else if (strcmp("-ii_1krom", argv[i]) == 0) {
+            sys_type = ALTO_II_1KROM;
+        } else if (strcmp("-ii_2krom", argv[i]) == 0) {
+            sys_type = ALTO_II_2KROM;
+        } else if (strcmp("-ii_3kram", argv[i]) == 0) {
+            sys_type = ALTO_II_3KRAM;
         } else if (strcmp("--help", argv[i]) == 0
                    || strcmp("-h", argv[i]) == 0) {
             usage(argv[0]);
@@ -1211,7 +1228,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (unlikely(!psim_create(&ps, ALTO_II_3KRAM,
+    if (unlikely(!psim_create(&ps, sys_type,
                               const_filename, mcode_filename,
                               disk1_filename, disk2_filename))) {
         report_error("main: could not create psim object");

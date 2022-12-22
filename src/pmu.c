@@ -15,7 +15,7 @@ void usage(const char *prog_name)
     printf("where:\n");
     printf("  -l listing    Specify the output listing file\n");
     printf("  -c constant   Specify the constant rom file\n");
-    printf("  -o microcode  Specify the microcode rom file\n");
+    printf("  -m microcode  Specify the microcode rom file\n");
     printf("  --help        Print this help\n");
 }
 
@@ -47,7 +47,7 @@ int main(int argc, char **argv)
                 return 1;
             }
             constant_filename = argv[++i];
-        } else if (strcmp("-o", argv[i]) == 0) {
+        } else if (strcmp("-m", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the microcode rom file");
                 return 1;
@@ -74,7 +74,7 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (unlikely(!parser_parse(&as.p, input_filename))) {
+    if (unlikely(parser_parse(&as.p, input_filename) != OK)) {
         report_error("main: could not parse file");
         goto error;
     }

@@ -46,6 +46,10 @@ int parser_create(struct parser *p,
     p->salloc = salloc;
     p->oalloc = oalloc;
 
+    p->tk = NULL;
+    p->num_errors = 0;
+    p->first = p->last = NULL;
+
     return TRUE;
 }
 
