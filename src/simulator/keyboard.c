@@ -84,11 +84,13 @@ static const struct {
 void keyboard_initvar(struct keyboard *keyb)
 {
     /* Nothing to do here. */
+    UNUSED(keyb);
 }
 
 void keyboard_destroy(struct keyboard *keyb)
 {
     /* Nothing to do here. */
+    UNUSED(keyb);
 }
 
 int keyboard_create(struct keyboard *keyb)

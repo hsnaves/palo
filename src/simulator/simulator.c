@@ -1116,16 +1116,14 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 
 /* Performs the F2 function.
  * The current predecoded microcode is in `mc`.
- * The value of the bus is in `bus`, and of the alu in `alu`.
- * The value of the shifter is in `shifter_output`, and the
- * value of the nova style carry is in `nova_carry`.
+ * The value of the bus is in `bus`, the shifter is in `shifter_output`,
+ * and the value of the nova style carry is in `nova_carry`.
  * Retuns the bits that should be modified for the NEXT part of the
  * following instruction.
  */
 static
 uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
-               uint16_t bus, uint16_t alu, uint16_t shifter_output,
-               int nova_carry)
+               uint16_t bus, uint16_t shifter_output, int nova_carry)
 {
     uint16_t next_extra;
     uint16_t addr;
@@ -1502,6 +1500,7 @@ static
 void do_swmode(struct simulator *sim)
 {
     /* TODO: Implement this. */
+    UNUSED(sim);
     report_error("simulator: step: "
                  "SWMODE not implemented\n");
 }
@@ -1659,8 +1658,7 @@ void simulator_step(struct simulator *sim)
     if (sim->error) return;
 
     /* Compute the F2 function. */
-    next_extra = do_f2(sim, &mc, bus, alu,
-                       shifter_output, nova_carry);
+    next_extra = do_f2(sim, &mc, bus, shifter_output, nova_carry);
     if (sim->error) return;
 
     /* Write back the registers. */
@@ -1716,6 +1714,7 @@ static
 void disasm_register_cb(struct decoder *dec, uint16_t val,
                         struct string_buffer *output)
 {
+    UNUSED(dec);
     if (val <= R_MASK) {
         string_buffer_print(output, "R%o", val);
     } else {
@@ -1730,6 +1729,7 @@ static
 void disasm_goto_cb(struct decoder *dec, uint16_t val,
                     struct string_buffer *output)
 {
+    UNUSED(dec);
     string_buffer_print(output, ":%05o", val);
 }
 

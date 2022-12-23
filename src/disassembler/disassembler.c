@@ -244,6 +244,7 @@ int add_call(struct disassembler *dis, uint16_t from, uint16_t to,
     struct instruction *insn;
     int modified, found;
 
+    UNUSED(task);
     insn = &dis->insns[to];
 
     modified = (!(insn->details & (INSN_VISITED | INSN_PENDING)));
@@ -420,6 +421,7 @@ static
 void disasm_register_cb(struct decoder *dec, uint16_t val,
                         struct string_buffer *output)
 {
+    UNUSED(dec);
     if (val <= R_MASK) {
         string_buffer_print(output, "R%o", val);
     } else {
@@ -434,6 +436,7 @@ static
 void disasm_goto_cb(struct decoder *dec, uint16_t val,
                     struct string_buffer *output)
 {
+    UNUSED(dec);
     string_buffer_print(output, ":%05o", val);
 }
 

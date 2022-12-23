@@ -415,8 +415,7 @@ static
 void psim_cmd_dump_memory(struct psim *ps)
 {
     const char *arg, *end;
-    unsigned int num;
-    uint16_t addr, val;
+    uint16_t addr, num, val;
 
     arg = (const char *) ps->cmd_buf;
     arg = &arg[strlen(arg) + 1];
@@ -431,9 +430,9 @@ void psim_cmd_dump_memory(struct psim *ps)
         arg = &arg[strlen(arg) + 1];
 
         if (arg[0] != '\0') {
-            num = strtoul(arg, (char **) &end, 10);
+            num = (uint16_t) strtoul(arg, (char **) &end, 8);
             if (end[0] != '\0') {
-                printf("invalid number %s\n", arg);
+                printf("invalid octal number %s\n", arg);
             }
         }
     } else {
@@ -444,6 +443,41 @@ void psim_cmd_dump_memory(struct psim *ps)
         val = simulator_read(&ps->sim, addr, ps->sim.ctask, FALSE);
         printf("%06o: %06o\n", addr++, val);
     }
+}
+
+/* Writes to memory. */
+static
+void psim_cmd_write_memory(struct psim *ps)
+{
+    const char *arg, *end;
+    uint16_t addr, val;
+
+    arg = (const char *) ps->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("please specify the address and the value\n");
+        return;
+    }
+
+    addr = (uint16_t) strtoul(arg, (char **) &end, 8);
+    if (end[0] != '\0') {
+        printf("invalid address (octal number) %s\n", arg);
+        return;
+    }
+
+    arg = &arg[strlen(arg) + 1];
+    if (arg[0] == '\0') {
+        printf("please specify the value to write\n");
+        return;
+    }
+
+    val = (uint16_t) strtoul(arg, (char **) &end, 8);
+    if (end[0] != '\0') {
+        printf("invalid value (octal number) %s\n", arg);
+    }
+
+    simulator_write(&ps->sim, addr, val, ps->sim.ctask, FALSE);
 }
 
 /* Processes the continue command.
@@ -1032,6 +1066,11 @@ int psim_debug(struct gui *ui)
             continue;
         }
 
+        if (strcmp(cmd, "w") == 0) {
+            psim_cmd_write_memory(ps);
+            continue;
+        }
+
         if (strcmp(cmd, "c") == 0) {
             if (unlikely(!psim_cmd_continue(ps)))
                 return FALSE;
@@ -1088,26 +1127,27 @@ int psim_debug(struct gui *ui)
 
         if (strcmp(cmd, "h") == 0 || strcmp(cmd, "help") == 0) {
             printf("Commands:\n");
-            printf("  r           Print the registers\n");
-            printf("  nr          Print the NOVA registers\n");
-            printf("  e           Print the extra registers\n");
-            printf("  dsk         Print the disk registers\n");
-            printf("  displ       Print the display registers\n");
-            printf("  ether       Print the ethernet registers\n");
-            printf("  d [addr]    Dump the memory contents\n");
-            printf("  c           Continue execution\n");
-            printf("  n [num]     Step through the microcode\n");
-            printf("  nt [task]   Step until switch task\n");
-            printf("  nn [num]    Execute num nova instructions\n");
-            printf("  bp specs    Add a breakpoint\n");
-            printf("  bl          List breakpoints\n");
-            printf("  be num      Enable a breakpoint\n");
-            printf("  bd num      Disable a breakpoint\n");
-            printf("  br num      Remove a breakpoint\n");
-            printf("  zs          Restart the simulation\n");
-            printf("  h           Print this help\n");
-            printf("  q           Quit the debugger\n");
-            printf("\n\n");
+            printf("  r                Print the registers\n");
+            printf("  nr               Print the NOVA registers\n");
+            printf("  e                Print the extra registers\n");
+            printf("  dsk              Print the disk registers\n");
+            printf("  displ            Print the display registers\n");
+            printf("  ether            Print the ethernet registers\n");
+            printf("  d [addr] [num]   Dump the memory contents\n");
+            printf("  w addr val       Writes a word to memory\n");
+            printf("  c                Continue execution\n");
+            printf("  n [num]          Step through the microcode\n");
+            printf("  nt [task]        Step until switch task\n");
+            printf("  nn [num]         Execute nova instructions\n");
+            printf("  bp specs         Add a breakpoint\n");
+            printf("  bl               List breakpoints\n");
+            printf("  be num           Enable a breakpoint\n");
+            printf("  bd num           Disable a breakpoint\n");
+            printf("  br num           Remove a breakpoint\n");
+            printf("  zs               Restart the simulation\n");
+            printf("  h                Print this help\n");
+            printf("  q                Quit the debugger\n");
+            printf("\n");
             printf("The specifications of the breakpoints are:\n");
             printf("  bp [options] mpc\n\n");
             printf("where the options are:\n");

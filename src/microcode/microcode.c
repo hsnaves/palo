@@ -925,6 +925,7 @@ static
 void decode_mreg_rhs(struct decoder *dec,
                      struct string_buffer *output)
 {
+    UNUSED(dec);
     string_buffer_print(output, "M");
 }
 

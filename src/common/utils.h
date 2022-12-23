@@ -18,6 +18,9 @@
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+/* When a parameter is unused. */
+#define UNUSED(x) (void)(x)
+
 /* (Magic) Macro to test conditions in compile time.
  * Copied from the Linux kernel.
  */

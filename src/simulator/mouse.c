@@ -31,11 +31,13 @@ static const uint16_t BUTTON_MAP[] = {
 void mouse_initvar(struct mouse *mous)
 {
     /* Nothing to do here. */
+    UNUSED(mous);
 }
 
 void mouse_destroy(struct mouse *mous)
 {
     /* Nothing to do here. */
+    UNUSED(mous);
 }
 
 int mouse_create(struct mouse *mous)
@@ -61,6 +63,7 @@ void mouse_reset(struct mouse *mous)
 
 uint16_t mouse_read(const struct mouse *mous, uint16_t address)
 {
+    UNUSED(address);
     return mous->buttons;
 }
 

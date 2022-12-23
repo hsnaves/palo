@@ -41,67 +41,81 @@ uint16_t ethernet_rsnf(struct ethernet *ether)
 void ethernet_startf(struct ethernet *ether, uint16_t bus)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
+    UNUSED(bus);
 }
 
 uint16_t ethernet_eilfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 uint16_t ethernet_epfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 uint16_t ethernet_eidfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 void ethernet_ewfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
 }
 
 void ethernet_eodfct(struct ethernet *ether, uint16_t bus)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
+    UNUSED(bus);
 }
 
 void ethernet_eosfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
 }
 
 uint16_t ethernet_erbfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 void ethernet_eefct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
 }
 
 uint16_t ethernet_ebfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 uint16_t ethernet_ecbfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     return 0x0;
 }
 
 void ethernet_eisfct(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
 }
 
 void ethernet_block_task(struct ethernet *ether, uint8_t task)
@@ -113,11 +127,13 @@ void ethernet_block_task(struct ethernet *ether, uint8_t task)
 void ethernet_interrupt(struct ethernet *ether)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
 }
 
 void ethernet_print_registers(struct ethernet *ether,
                               struct string_buffer *output)
 {
     /* TODO: Implement this. */
+    UNUSED(ether);
     string_buffer_print(output, "<empty>");
 }
