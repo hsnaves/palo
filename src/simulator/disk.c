@@ -43,11 +43,13 @@
 #define KSTAT_ILLEGAL_SECTOR     0x0003
 
 /* The bits of KCOMM register. */
+#define KCOMM_SHIFT                  10
 #define KCOMM_XFEROFF              0x10
 #define KCOMM_WDINHB               0x08
 #define KCOMM_BCLKSRC              0x04
 #define KCOMM_WFFO                 0x02
 #define KCOMM_SENDADR              0x01
+#define KCOMM_MASK                 0x1F
 
 /* The bits of KADR register. */
 #define KADR_VALID_SHIFT              8
@@ -411,7 +413,7 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus)
      *                  to disk unit as track address. SENDADR = 0 inhibits
      *                  such transmission.
      */
-    dsk->kcomm = (bus >> 10) & 0x1F;
+    dsk->kcomm = (bus >> KCOMM_SHIFT) & KCOMM_MASK;
 
     if (dsk->kcomm & KCOMM_WDINHB) {
         dsk->wdinit = TRUE;
@@ -433,7 +435,7 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus)
 {
     struct disk_drive *dd;
 
-    /* This causes the KADR register to be loaded from BUS[8-14].
+    /* This causes the KADR register to be loaded from BUS[8-15].
      * This register has the format of word C (as follows). In addition,
      * it causes the head address bit to be loaded from KDATA[13].
      * FIELD     RANGE               SIGNIFICANCE
@@ -1008,64 +1010,65 @@ void disk_print_registers(struct disk *dsk,
                           struct string_buffer *output)
 {
     const struct disk_drive *dd;
-    uint16_t sector;
+    uint16_t valid, sector;
 
+    valid = (KADR_VALID_VALUE << KADR_VALID_SHIFT);
     string_buffer_print(output,
-                        "KSTAT: %06o     KDATA: %06o     "
-                        "KADR : %06o     KCOMM: %06o\n",
-                        dsk->kstat,
+                        "KSTAT: %07o    KDATA: %07o    "
+                        "KADR : %07o    KCOMM: %07o\n",
+                        disk_read_kstat(dsk),
                         dsk->kdata,
-                        dsk->kadr,
-                        dsk->kcomm);
+                        (dsk->kadr | valid),
+                        (dsk->kcomm << KCOMM_SHIFT));
 
     string_buffer_print(output,
-                        "DATAR: %06o     HASDT: %-6o\n",
+                        "DATAR: %07o    HASDT: %o\n",
                         dsk->kdata_read, dsk->has_kdata ? 1 : 0);
 
     sector = (dsk->kstat >> KSTAT_SECTOR_SHIFT) & KSTAT_SECTOR_MASK;
     string_buffer_print(output,
-                        "SECT : %02o         CSERR: %-6o     "
-                        "COMPL: %02o         SFAIL: %d\n",
+                        "SECT : %03o        CSERR: %-7o    "
+                        "COMPL: %03o        SFAIL: %d\n",
                         sector,
                         (dsk->kstat & KSTAT_CHECKSUM_ERROR) ? 1 : 0,
                         (dsk->kstat & KSTAT_COMPLETION_MASK),
                         (dsk->kstat & KSTAT_SEEK_FAIL) ? 1 : 0);
 
     string_buffer_print(output,
-                        "SEEK : %-6o     NRDY : %-6o     "
-                        "LATE : %-6o     IDLE : %-6o\n",
+                        "SEEK : %-7o    NRDY : %-7o    "
+                        "LATE : %-7o    IDLE : %o\n",
                         (dsk->kstat & KSTAT_SEEKING) ? 1 : 0,
                         (dsk->kstat & KSTAT_NOT_READY) ? 1 : 0,
                         (dsk->kstat & KSTAT_LATE) ? 1 : 0,
                         (dsk->kstat & KSTAT_IDLE) ? 1 : 0);
 
     string_buffer_print(output,
-                        "NXFER: %-6o     DKXOR: %-6o     "
-                        "HDBLK: %-6o     LBBLK: %-6o\n",
+                        "NXFER: %-7o    DKXOR: %-7o    "
+                        "HDBLK: %-7o    LBBLK: %o\n",
                         (dsk->kadr & KADR_NO_XFER) ? 1 : 0,
                         (dsk->kadr & KADR_DISK_MOD) ? 1 : 0,
                         (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK,
                         (dsk->kadr >> KADR_LABEL_SHIFT) & KADR_BLOCK_MASK);
 
     string_buffer_print(output,
-                        "DTBLK: %-6o     XROFF: %-6o     "
-                        "WDINH: %-6o     CKSRC: %-6o\n",
+                        "DTBLK: %-7o    XROFF: %-7o    "
+                        "WDINH: %-7o    CKSRC: %o\n",
                         (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK,
                         (dsk->kcomm & KCOMM_XFEROFF) ? 1 : 0,
                         (dsk->kcomm & KCOMM_WDINHB) ? 1 : 0,
                         (dsk->kcomm & KCOMM_BCLKSRC) ? 1 : 0);
 
     string_buffer_print(output,
-                        "WFFO : %-6o     SDADR: %-6o     "
-                        "SYNC : %-6o     BTCLK: %-6o\n",
+                        "WFFO : %-7o    SDADR: %-7o    "
+                        "SYNC : %-7o    BTCLK: %o\n",
                         (dsk->kcomm & KCOMM_WFFO) ? 1 : 0,
                         (dsk->kcomm & KCOMM_SENDADR) ? 1 : 0,
                         dsk->sync_word_written ? 1 : 0,
                         dsk->bitclk_enable ? 1 : 0);
 
     string_buffer_print(output,
-                        "WDINT: %-6o     SECLT: %-6o     "
-                        "RESTR: %-6o\n",
+                        "WDINT: %-7o    SECLT: %-7o    "
+                        "RESTR: %o\n",
                         dsk->wdinit ? 1 : 0,
                         dsk->seclate_enable ? 1 : 0,
                         dsk->restore ? 1 : 0);
@@ -1073,25 +1076,25 @@ void disk_print_registers(struct disk *dsk,
     dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
 
     string_buffer_print(output,
-                        "DISK : %-6o     RECNO: %-6o     "
-                        "CYL  : %06o     TCYL : %06o\n",
+                        "DISK : %-7o    RECNO: %-7o    "
+                        "CYL  : %07o    TCYL : %07o\n",
                         dsk->disk, dsk->rec_no,
                         dd->cylinder, dd->target_cylinder);
 
     string_buffer_print(output,
-                        "HEAD : %-6o     SECT : %06o     "
-                        "WORD : %06o\n",
+                        "HEAD : %-7o    SECT : %07o    "
+                        "WORD : %07o\n",
                         dd->head, dd->sector,
                         dd->sector_word);
 
     string_buffer_print(output,
-                        "NHEAD: %06o     NSEC : %06o     "
-                        "NCYL : %06o     LOAD : %o\n",
+                        "NHEAD: %07o    NSEC : %07o    "
+                        "NCYL : %07o    LOAD : %o\n",
                         dd->dg.num_heads, dd->dg.num_sectors,
                         dd->dg.num_cylinders, dd->loaded ? 1 : 0);
 
     string_buffer_print(output,
-                        "PEND : %06o     ICYC : %-10d "
+                        "PEND : %07o    ICYC : %-10d "
                         "DSIC : %-10d DWIC : %-10d\n",
                         dsk->pending, dsk->intr_cycle,
                         dsk->ds_intr_cycle, dsk->dw_intr_cycle);

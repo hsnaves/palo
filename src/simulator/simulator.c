@@ -767,7 +767,7 @@ uint16_t compute_alu(struct simulator *sim, const struct microcode *mc,
         break;
     default:
         report_error("simulator: step: "
-                     "invalid ALUF = %o", mc->aluf);
+                     "invalid ALUF = %03o", mc->aluf);
         sim->error = TRUE;
         *carry = 0;
         return 0xDEAD;
@@ -889,15 +889,6 @@ uint16_t get_pending(const struct simulator *sim)
     return pending;
 }
 
-/* Performas a BLOCK. */
-static
-void do_block(struct simulator *sim, uint8_t task)
-{
-    disk_block_task(&sim->dsk, task);
-    display_block_task(&sim->displ, task);
-    ethernet_block_task(&sim->ether, task);
-}
-
 /* Performs the F1 function.
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
@@ -972,8 +963,10 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             return;
         }
 
-        /* Prevent the current task from running. */
-        do_block(sim, mc->task);
+        /* This is handled later to avoid race conditions
+         * with F2 functions that check if the current
+         * task is blocked (e.g., disk).
+         */
         return;
     }
 
@@ -986,20 +979,20 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                 sim->error = TRUE;
                 return;
             }
-            break;
+            return;
         case F1_RAM_WRTRAM:
             sim->wrtram = TRUE;
-            break;
+            return;
         case F1_RAM_RDRAM:
             sim->rdram = TRUE;
-            break;
+            return;
         case F1_RAM_LOAD_SRB:
             if (mc->task == TASK_EMULATOR) break;
             tmp = (uint8_t) ((bus >> 1) & 0x7);
             if (sim->sys_type != ALTO_II_3KRAM)
                 tmp = 0;
             sim->sreg_banks[mc->task] = tmp;
-            break;
+            return;
         }
     }
 
@@ -1026,6 +1019,9 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                 sim->soft_reset = TRUE;
             } else {
                 switch (bus) {
+                case 0x00:
+                    /* Nothing to do here. */
+                    break;
                 case 0x01:
                 case 0x02:
                 case 0x03:
@@ -1034,7 +1030,8 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 
                 default:
                     report_error("simulator: step: "
-                                 "invalid STARTF value");
+                                 "invalid STARTF value: %d",
+                                 bus);
                     sim->error = TRUE;
                     return;
                 }
@@ -1042,7 +1039,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             break;
         default:
             report_error("simulator: step: "
-                         "invalid F1 function %o for emulator",
+                         "invalid F1 function %03o for emulator",
                          mc->f1);
             sim->error = TRUE;
             return;
@@ -1085,7 +1082,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             break;
         default:
             report_error("simulator: step: "
-                         "invalid F1 function %o for disk tasks",
+                         "invalid F1 function %03o for disk tasks",
                          mc->f1);
             sim->error = TRUE;
             return;
@@ -1103,7 +1100,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             break;
         default:
             report_error("simulator: step: "
-                         "invalid F1 function %o for ethernet",
+                         "invalid F1 function %03o for ethernet",
                          mc->f1);
             sim->error = TRUE;
             return;
@@ -1259,7 +1256,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return next_extra;
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for emulator",
+                         "invalid F2 function %03o for emulator",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1285,7 +1282,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return disk_func_strobon(&sim->dsk, mc->task);
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for disk tasks",
+                         "invalid F2 function %03o for disk tasks",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1314,7 +1311,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return 0;
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for ethernet",
+                         "invalid F2 function %03o for ethernet",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1328,7 +1325,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return 0;
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for display word",
+                         "invalid F2 function %03o for display word",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1345,7 +1342,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return 0;
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for cursor",
+                         "invalid F2 function %03o for cursor",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1360,7 +1357,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return display_set_mode(&sim->displ, bus);
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for display horizontal",
+                         "invalid F2 function %03o for display horizontal",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1373,7 +1370,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             return display_even_field(&sim->displ);
         default:
             report_error("simulator: step: "
-                         "invalid F2 function %o for display vertical",
+                         "invalid F2 function %03o for display vertical",
                          mc->f2);
             sim->error = TRUE;
             return 0;
@@ -1382,13 +1379,22 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
 
     default:
         report_error("simulator: step: "
-                     "invalid F2 function %o",
+                     "invalid F2 function %03o",
                      mc->f2);
         sim->error = TRUE;
         return 0;
     }
 
     return 0;
+}
+
+/* Performas a BLOCK. */
+static
+void do_block(struct simulator *sim, uint8_t task)
+{
+    disk_block_task(&sim->dsk, task);
+    display_block_task(&sim->displ, task);
+    ethernet_block_task(&sim->ether, task);
 }
 
 /* Writes back the registers.
@@ -1659,6 +1665,9 @@ void simulator_step(struct simulator *sim)
     next_extra = do_f2(sim, &mc, bus, shifter_output, nova_carry);
     if (sim->error) return;
 
+    /* Perform the BLOCK operation. */
+    if (mc.f1 == F1_BLOCK) do_block(sim, mc.task);
+
     /* Write back the registers. */
     wb_registers(sim, &mc, modified_rsel, load_r,
                  bus, alu, shifter_output, aluC0);
@@ -1744,7 +1753,7 @@ void simulator_disassemble(const struct simulator *sim,
                         sim->ctask);
 
     string_buffer_print(output,
-                        "%02o-%06o %011o --- ",
+                        "%03o-%07o %012o --- ",
                         sim->ctask, sim->mpc, sim->mir);
 
     dec.arg = (void *) sim;
@@ -1762,25 +1771,25 @@ void simulator_print_registers(const struct simulator *sim,
     unsigned int i;
 
     string_buffer_print(output,
-                        "T    : %06o     L    : %06o     "
-                        "MAR  : %06o     IR   : %06o\n",
+                        "T    : %07o    L    : %07o    "
+                        "MAR  : %07o    IR   : %07o\n",
                         sim->t, sim->l, sim->mar, sim->ir);
 
     for (i = 0; i < NUM_R_REGISTERS; i++) {
         string_buffer_print(output,
-                            "R%-4o: %06o",
+                            "R%-4o: %07o",
                             i, sim->r[i]);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
         } else {
-            string_buffer_print(output, "     ");
+            string_buffer_print(output, "    ");
         }
     }
 
     pending = get_pending(sim);
     string_buffer_print(output,
-                        "ALUC0: %-6o     CARRY: %-6o     "
-                        "SKIP : %-6o     PEND : %06o\n",
+                        "ALUC0: %-7o    CARRY: %-7o    "
+                        "SKIP : %-7o    PEND : %07o\n",
                         sim->aluC0 ? 1 : 0,
                         sim->carry ? 1 : 0,
                         sim->skip ? 1 : 0,
@@ -1794,8 +1803,8 @@ void simulator_print_registers(const struct simulator *sim,
                         sim->mem_cycle);
 
     string_buffer_print(output,
-                        "NTASK: %02o         TS   : %-6d     "
-                        "NMPC : %06o     SYS  : %d\n",
+                        "NTASK: %03o        TS   : %-7d    "
+                        "NMPC : %07o    SYS  : %d\n",
                         sim->ntask,
                         sim->task_switch ? 1 : 0,
                         sim->task_mpc[sim->ctask],
@@ -1815,24 +1824,24 @@ void simulator_print_extra_registers(const struct simulator *sim,
     rb = sim->sreg_banks[sim->ctask];
     for (i = 0; i < NUM_R_REGISTERS; i++) {
         string_buffer_print(output,
-                            "S%-4o: %06o",
+                            "S%-4o: %07o",
                             i, sim->s[rb * NUM_R_REGISTERS + i]);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
         } else {
-            string_buffer_print(output, "     ");
+            string_buffer_print(output, "    ");
         }
     }
 
     string_buffer_print(output,
-                        "XM_B : %06o     SR_B : %03o        "
-                        "RMR  : %06o     CRAM : %06o\n",
+                        "XM_B : %03o        SR_B : %03o        "
+                        "RMR  : %07o    CRAM : %07o\n",
                         sim->xm_banks[sim->ctask], rb,
                         sim->rmr, sim->cram_addr);
 
     string_buffer_print(output,
-                        "RDR  : %-6d     WRTR : %-6d    "
-                        "SW   : %-6d     SRES : %-6d\n",
+                        "RDR  : %-7d    WRTR : %-7d    "
+                        "SW   : %-7d    SRES : %d\n",
                         sim->rdram ? 1 : 0,
                         sim->wrtram ? 1 : 0,
                         sim->swmode ? 1 : 0,
@@ -1855,7 +1864,7 @@ void simulator_nova_disassemble(const struct simulator *sim,
     nova_insn_predecode(&ni, address, insn);
 
     string_buffer_print(output,
-                        "%06o %06o --- ",
+                        "%07o %07o --- ",
                         ni.address, ni.insn);
 
     nova_decoder_decode(&ndec, &ni, output);
