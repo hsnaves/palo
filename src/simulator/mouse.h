@@ -84,5 +84,8 @@ void mouse_release_button(struct mouse *mous, enum alto_button btn);
  */
 void mouse_move(struct mouse *mous, int dx, int dy);
 
+/* Clears the pending mouse movements. */
+void mouse_clear_movement(struct mouse *mous);
+
 
 #endif /* __SIMULATOR_MOUSE_H */

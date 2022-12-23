@@ -27,9 +27,9 @@ struct display {
     uint8_t fifo_start, fifo_end; /* To control the FIFO. */
 
     int even_field;               /* If this is an even or odd field. */
-    int scanline;                 /* The current scanline. */
-    int vblank_scanline;          /* Scanline in vertical blank period. */
-    int word;                     /* The current word in the scanline. */
+    uint16_t scanline;            /* The current scanline. */
+    uint16_t vblank_scanline;     /* Scanline in vertical blank period. */
+    uint16_t word;                /* The current word in the scanline. */
 
     uint16_t cursor_x;            /* Cursor X position. */
     uint16_t cursor_x_latched;    /* Latched position for scanline. */
@@ -79,8 +79,9 @@ void display_reset(struct display *displ);
 
 /* Loads a word into the data display register.
  * The word from the bus to load is given by `bus`.
+ * Returns TRUE on success.
  */
-void display_load_ddr(struct display *displ, uint16_t bus);
+int display_load_ddr(struct display *displ, uint16_t bus);
 
 /* Loads a word into the cursor X position register.
  * The word from the bus to load is given by `bus`.

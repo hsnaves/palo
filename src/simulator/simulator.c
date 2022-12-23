@@ -1321,7 +1321,12 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_DISPLAY_WORD:
         switch (mc->f2) {
         case F2_DW_LOAD_DDR:
-            display_load_ddr(&sim->displ, bus);
+            if (unlikely(!display_load_ddr(&sim->displ, bus))) {
+                report_error("simulator: step: "
+                             "could not load DDR register");
+                sim->error = TRUE;
+                return 0;
+            }
             return 0;
         default:
             report_error("simulator: step: "

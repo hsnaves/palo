@@ -91,17 +91,17 @@ void display_reset(struct display *displ)
 static
 void check_dw_pending(struct display *displ)
 {
-    int fifo_full;
+    int almost_full;
 
-    fifo_full = (displ->fifo_end >= displ->fifo_start + FIFO_SIZE);
-    if (fifo_full || displ->dh_blocked || displ->dw_blocked) {
+    almost_full = (displ->fifo_end >= displ->fifo_start + FIFO_SIZE - 2);
+    if (almost_full || displ->dh_blocked || displ->dw_blocked) {
         displ->pending &= ~(1 << TASK_DISPLAY_WORD);
     } else {
         displ->pending |= (1 << TASK_DISPLAY_WORD);
     }
 }
 
-void display_load_ddr(struct display *displ, uint16_t bus)
+int display_load_ddr(struct display *displ, uint16_t bus)
 {
     uint8_t pos;
     int fifo_full;
@@ -111,8 +111,12 @@ void display_load_ddr(struct display *displ, uint16_t bus)
         pos = displ->fifo_end++;
         if (pos >= FIFO_SIZE) pos -= FIFO_SIZE;
         displ->fifo[pos] = bus;
+    } else {
+        report_error("display: load_ddr: buffer full");
+        return FALSE;
     }
     check_dw_pending(displ);
+    return TRUE;
 }
 
 void display_load_xpreg(struct display *displ, uint16_t bus)
@@ -218,7 +222,7 @@ void field_start(struct display *displ)
     displ->pending &= ~((1 << TASK_DISPLAY_HORIZONTAL)
                         | (1 << TASK_DISPLAY_WORD));
 
-    displ->scanline = (displ->even_field) ? 1 : 0;
+    displ->scanline = (displ->even_field) ? 0 : 1;
     displ->vblank_scanline = 0;
 
     displ->fifo_start = displ->fifo_end = 0;
@@ -291,9 +295,9 @@ void dw_interrupt(struct display *displ)
         for (i = 0; i < 16; i++) {
             data1 = (tmp & FIRST_BIT) ? 0xFF : 0x00;
             if (displ->wob_latched) {
-                data[x++] &= data1;
-            } else {
                 data[x++] |= data1;
+            } else {
+                data[x++] &= ~data1;
             }
             if (x >= DISPLAY_WIDTH) break;
             tmp <<= 1;

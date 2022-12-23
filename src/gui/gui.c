@@ -216,6 +216,7 @@ void gui_process_events(struct gui *ui)
     mx = DISPLAY_WIDTH / 2;
     my = DISPLAY_HEIGHT / 2;
 
+    mouse_clear_movement(&iui->mous);
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_QUIT:

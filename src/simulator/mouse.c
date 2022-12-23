@@ -127,3 +127,9 @@ void mouse_move(struct mouse *mous, int dx, int dy)
     mous->dx += dx;
     mous->dy += dy;
 }
+
+void mouse_clear_movement(struct mouse *mous)
+{
+    mous->dx = 0;
+    mous->dy = 0;
+}
