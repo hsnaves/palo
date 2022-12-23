@@ -288,7 +288,13 @@ int palos_simulate(struct palos *ps, int max_steps, int max_cycles)
 
         if ((step % 100000) == 0) {
             if (unlikely(!gui_update(&ps->ui))) {
-                report_error("palos: simulate: could not update GUI");
+                report_error("palos: simulate: "
+                             "could not update GUI");
+                return FALSE;
+            }
+            if (unlikely(!gui_wait_frame(&ps->ui))) {
+                report_error("palos: simulate: "
+                             "could not wait for next frame");
                 return FALSE;
             }
         }

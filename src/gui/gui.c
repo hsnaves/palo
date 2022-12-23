@@ -23,6 +23,9 @@ struct gui_internal {
                                    * threads of the keyboard, mouse
                                    * and the screen pixels.
                                    */
+    SDL_cond *frame_cond;         /* A condition that signals
+                                   * that a new frame is being drawn.
+                                   */
 
     SDL_Window *window;           /* The interface window. */
     SDL_Renderer *renderer;       /* The renderer for the window. */
@@ -298,6 +301,10 @@ int gui_update_screen(struct gui *ui)
                    &iui->display_data[DISPLAY_STRIDE * i],
                    DISPLAY_WIDTH * sizeof(uint8_t));
         }
+
+        /* Signal the condition for a new frame. */
+        SDL_CondSignal(iui->frame_cond);
+
         SDL_UnlockMutex(iui->mutex);
     } else {
         memset(pixels, -1, ((size_t) stride) * DISPLAY_HEIGHT);
@@ -476,6 +483,11 @@ void gui_destroy(struct gui *ui)
     }
     iui->mutex = NULL;
 
+    if (iui->frame_cond) {
+        SDL_DestroyCond(iui->frame_cond);
+    }
+    iui->frame_cond = NULL;
+
     if (iui->display_data) {
         free((void *) iui->display_data);
     }
@@ -521,6 +533,7 @@ int gui_create(struct gui *ui, struct simulator *sim,
     keyboard_initvar(&iui->keyb);
     mouse_initvar(&iui->mous);
     iui->mutex = NULL;
+    iui->frame_cond = NULL;
     iui->window = NULL;
     iui->renderer = NULL;
     iui->texture = NULL;
@@ -587,6 +600,15 @@ int gui_create(struct gui *ui, struct simulator *sim,
         return FALSE;
     }
 
+    iui->frame_cond = SDL_CreateCond();
+    if (unlikely(!iui->frame_cond)) {
+        report_error("gui: create: "
+                     "could not create condition (SDL_Error: %s)",
+                     SDL_GetError());
+        gui_destroy(ui);
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -629,8 +651,10 @@ int gui_update(struct gui *ui)
     }
 
     iui = (struct gui_internal *) ui->internal;
-    if (unlikely(SDL_LockMutex(iui->mutex) != 0)) {
-        report_error("gui: update: could no acquire lock");
+    ret = SDL_LockMutex(iui->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("gui: update: could no acquire lock"
+                     "(SDLError(%d): %s)", ret, SDL_GetError());
         return FALSE;
     }
 
@@ -638,6 +662,31 @@ int gui_update(struct gui *ui)
                            iui->display_data);
     if (unlikely(!ret)) {
         report_error("gui: update: could not update state");
+        SDL_UnlockMutex(iui->mutex);
+        return FALSE;
+    }
+
+    SDL_UnlockMutex(iui->mutex);
+    return TRUE;
+}
+
+int gui_wait_frame(struct gui *ui)
+{
+    struct gui_internal *iui;
+    int ret;
+
+    iui = (struct gui_internal *) ui->internal;
+    ret = SDL_LockMutex(iui->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("gui: wait_next_frame: could no acquire lock"
+                     "(SDLError(%d): %s)", ret, SDL_GetError());
+        return FALSE;
+    }
+
+    ret = SDL_CondWait(iui->frame_cond, iui->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("gui: wait_next_frame: could wait condition"
+                     "(SDLError(%d): %s)", ret, SDL_GetError());
         SDL_UnlockMutex(iui->mutex);
         return FALSE;
     }

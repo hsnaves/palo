@@ -63,5 +63,10 @@ int gui_running(struct gui *ui);
  */
 int gui_update(struct gui *ui);
 
+/* Waits until the next frame is drawn.
+ * Returns TRUE on success.
+ */
+int gui_wait_frame(struct gui *ui);
+
 
 #endif /* __GUI_GUI_H */
