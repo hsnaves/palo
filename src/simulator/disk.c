@@ -467,6 +467,22 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus)
      *   Task uCode and not the hardware, but where this is actually
      *   occurring is not obvious. At any rate: The below behavior appears to
      *   work correctly, so I'm sticking with it.
+     *
+     * Indeed, the schematics reading does seem correct, so the hardware
+     * itself does not implement the XOR between A[15] and C[15]. This is
+     * done in software, in the microcode of the Disk sector task:
+     * (KWDCT contains the disk command, MAR contains the address of
+     *  DCB + 11)
+     *
+     *      T<- KWDCT;
+     *      L<- ONE AND T;
+     *      L<- -400 AND T, SH=0;
+     *      T<-MD, SH=0, :INVERT;
+     *
+     *  ;    SH=0 MAPS INVERT TO NOINVERT
+     *  INVERT:    L<-2 XOR T, TASK, :BADCOMM;
+     *  NOINVERT:  L<-T, TASK, :BADCOMM;
+     *
      */
     dsk->kadr = (bus & 0xFF);
 
@@ -478,7 +494,8 @@ void disk_load_kadr(struct disk *dsk, uint16_t bus)
 
     /* No XORing with KADR[15] done here.
      * TODO: In the ContrAlto source, the disk is modified AFTER
-     * the head, which is odd. Check this!
+     * the head, which is odd. We are copying this behavior,
+     * but we think it might be incorrect.
      */
     dsk->disk = (dsk->kdata >> AW_DISK_SHIFT) & 1;
 
@@ -493,6 +510,8 @@ int disk_func_strobe(struct disk *dsk, int32_t cycle)
     struct disk_drive *dd;
 
     if (!(dsk->kcomm & KCOMM_SENDADR)) {
+        report_error("disk: func_strobe: "
+                     "STROBE while SENDADR bit of KCOMM not 1");
         return FALSE;
     }
 
@@ -522,15 +541,20 @@ int disk_func_strobe(struct disk *dsk, int32_t cycle)
 
 int disk_func_increcno(struct disk *dsk)
 {
-    dsk->rec_no++;
+    dsk->rec_no = (dsk->rec_no + 1) & 3;
     dsk->sync_word_written = FALSE;
-    return (dsk->rec_no <= 3);
+    if (dsk->rec_no == 0) {
+        report_error("disk: func_increcno: "
+                     "rec_no overflow");
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void disk_func_clrstat(struct disk *dsk)
 {
     /* Clears S[13], S[11], S[10], S[8],
-     * that is, checksum error, seclate, disk not ready
+     * that is, checksum error, data late, disk not ready
      * and seek failed errors.
      */
     dsk->kstat &= ~(KSTAT_CHECKSUM_ERROR | KSTAT_LATE
@@ -550,7 +574,7 @@ uint16_t disk_func_rwc(struct disk *dsk, uint8_t task)
     int shift;
     next_extra = disk_func_init(dsk, task);
 
-    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * dsk->rec_no);
+    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * (dsk->rec_no & 3));
     oper = (dsk->kadr >> shift) & KADR_BLOCK_MASK;
 
     switch (oper) {
@@ -574,7 +598,7 @@ uint16_t disk_func_recno(struct disk *dsk, uint8_t task)
     uint16_t next_extra;
     next_extra = disk_func_init(dsk, task);
 
-    next_extra |= RECNO_MAP[dsk->rec_no];
+    next_extra |= RECNO_MAP[dsk->rec_no & 3];
     return next_extra;
 }
 
@@ -838,7 +862,7 @@ void dw_interrupt(struct disk *dsk)
     wffo = (dsk->kcomm & KCOMM_WFFO);
     xferOff = (dsk->kcomm & KCOMM_XFEROFF);
 
-    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * dsk->rec_no);
+    shift = KADR_HEADER_SHIFT - (KADR_SINGLE_SHIFT * (dsk->rec_no & 3));
     oper = (dsk->kadr >> shift) & KADR_BLOCK_MASK;
     is_write = (oper >= 2);
 
@@ -875,7 +899,7 @@ void dw_interrupt(struct disk *dsk)
         dsk->sync_word_written = TRUE;
 
         /* Copies the cheat from ContrAlto. */
-        switch (dsk->rec_no) {
+        switch (dsk->rec_no & 3) {
         case 0: dd->sector_word = DS_HEADER; break;
         case 1: dd->sector_word = DS_LABEL; break;
         case 2: dd->sector_word = DS_DATA; break;

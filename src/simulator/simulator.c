@@ -933,8 +933,6 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         sim->mar = alu;
         sim->mem_cycle = 1;
         sim->mem_task = mc->task;
-        sim->mem_low = 0xFFFFU;
-        sim->mem_high = 0xFFFFU;
         sim->mem_status = 0;
         if (sim->sys_type != ALTO_I && (mc->f2 == F2_STORE_MD)) {
             sim->mem_status |= MA_EXTENDED;

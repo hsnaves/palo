@@ -54,6 +54,6 @@ simulator/utils.o: simulator/utils.c simulator/utils.h common/utils.h
 gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
  common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
  simulator/keyboard.h simulator/mouse.h
-palos.o: palos.c simulator/simulator.h microcode/microcode.h common/utils.h \
- simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h gui/gui.h
+palos.o: palos.c simulator/simulator.h microcode/microcode.h \
+ common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
+ simulator/keyboard.h simulator/mouse.h simulator/utils.h gui/gui.h

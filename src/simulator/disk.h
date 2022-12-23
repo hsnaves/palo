@@ -2,6 +2,20 @@
 #ifndef __SIMULATOR_DISK_H
 #define __SIMULATOR_DISK_H
 
+/* Note: the schematics document 216389H_Disk_Control_May78.pdf , which
+ * can be found at http://www.bitsavers.org/pdf/xerox/alto/schematics/
+ * provide a lot of useful information regarding the behavior of the
+ * the disk controller. Another major source of documentation is the
+ * microcode itself, which can be found at:
+ * http://www.bitsavers.org/pdf/xerox/alto/microcode/altoIIcode3.mu.txt
+ * Lastly, sometimes we also refer to the Diablo drive maintenance manual:
+ * 81503-03_Series_30_Disk_Drive_Maintenance_Jul78.pdf ,
+ * and to the product description document:
+ * 81502A_Series_30_Disk_Drives_Product_Description_Sep75.pdf
+ * both of which can be found at:
+ * https://bitsavers.org/pdf/diablo/disk/model_30
+ */
+
 #include <stdint.h>
 
 #include "common/utils.h"
@@ -139,20 +153,29 @@ void disk_load_kcomm(struct disk *dsk, uint16_t bus);
 void disk_load_kadr(struct disk *dsk, uint16_t bus);
 
 /* Executes a F1_DSK_STROBE.
+ * This will initiate a seek operation to move the disk heads
+ * to a specific cylinder (previously specified in KDATA register)
  * The `cycle` parameter specifies the current cycle.
  * Returns TRUE on success.
  */
 int disk_func_strobe(struct disk *dsk, int32_t cycle);
 
 /* Executes a F1_DSK_INCRECNO.
+ * Increases the record number. Each sector has 3 data records:
+ * 1 - header: 2 words with the address of the sector,
+ * 2 - label: 8 words and contains metadata about the sector,
+ * 3 - data: 256 words of data.
  * Returns TRUE on success.
  */
 int disk_func_increcno(struct disk *dsk);
 
-/* Executes a F1_DSK_CLRSTAT. */
+/* Executes a F1_DSK_CLRSTAT.
+ * Clear the error bits in the KSTAT register.
+ */
 void disk_func_clrstat(struct disk *dsk);
 
 /* Executes a F2_DSK_INIT.
+ * Checks for WDINIT bit flag.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
@@ -160,6 +183,8 @@ void disk_func_clrstat(struct disk *dsk);
 uint16_t disk_func_init(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RWC.
+ * Checks type type of the current record operation:
+ * R - READ, W - WRITE, C - CHECK.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
@@ -167,6 +192,12 @@ uint16_t disk_func_init(struct disk *dsk, uint8_t task);
 uint16_t disk_func_rwc(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RECNO.
+ * This will return the record number, but in a strange encoding, due
+ * to the arrangement of the flip-flops on page 10 of DISK CONTROL
+ * schematics. According to the schematics, the right sequence is:
+ * 0 -> 2 -> 3 -> 1 (recall RECNO(0) is the high order bit,
+ *                   per Alto convention).
+ *
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
@@ -174,6 +205,7 @@ uint16_t disk_func_rwc(struct disk *dsk, uint8_t task);
 uint16_t disk_func_recno(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_XFRDAT.
+ * Checks if it is transferring data.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
@@ -181,13 +213,29 @@ uint16_t disk_func_recno(struct disk *dsk, uint8_t task);
 uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_SWRNRDY.
+ * SWRNRDY = Seek / Write / Read not ready.
+ * According to the Diablo product description manual:
+ *
+ *   READY TO SEEK, READ, OR WRITE - (Ready to
+ *   S/R/W). A 0 volt level (LO) on this line indicates that the
+ *   disk drive is in the File Ready condition (see below) and it
+ *   is not in the process of executing a seek operation.
+ *
+ *   FILE READY:
+ *     1. Drive supplied with proper power.
+ *     2. Loaded with a disk cartridge.
+ *     3. LOAD/RUN switch in RUN position.
+ *     4. Disk Start-up cycle is completed.
+ *     5. Write Check flip/flop is reset.
+ *
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
 uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task);
 
-/* Executes a F2_DSK_NFER (not fatal error).
+/* Executes a F2_DSK_NFER.
+ * Checks if a fatal error did NOT happen.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
@@ -195,6 +243,7 @@ uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task);
 uint16_t disk_func_nfer(struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_STROBON.
+ * Checks if the disk is seeking.
  * The current task is in `task` parameter.
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.

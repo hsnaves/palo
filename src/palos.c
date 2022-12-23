@@ -8,6 +8,7 @@
 #include "simulator/disk.h"
 #include "simulator/display.h"
 #include "simulator/ethernet.h"
+#include "simulator/utils.h"
 #include "microcode/microcode.h"
 #include "gui/gui.h"
 #include "common/utils.h"
@@ -249,15 +250,17 @@ void palos_get_command(struct palos *ps)
 
 /* Runs the simulation.
  * The parameter `max_steps` specifies the maximum number of steps
- * to run. If `max_steps` is negative, it runs indefinitely.
+ * to run. If `max_steps` is negative, it runs indefinitely. Similarly,
+ * `max_cycles` specifies the maximum number of cycles to run.
  * Returns TRUE on success.
  */
 static
-int palos_simulate(struct palos *ps, int max_steps)
+int palos_simulate(struct palos *ps, int max_steps, int max_cycles)
 {
     const struct breakpoint *bp;
     unsigned int num, max_breakpoints;
-    int step, hit, hit1;
+    int step, cycle, hit, hit1;
+    uint32_t prev_cycle;
 
     /* Get the effective number of breakpoints. */
     max_breakpoints = 0;
@@ -269,13 +272,18 @@ int palos_simulate(struct palos *ps, int max_steps)
     }
 
     step = 0;
+    cycle = 0;
     while (gui_running(&ps->ui)) {
         if (max_steps >= 0 && step == max_steps)
+            break;
+        if (max_cycles >=0 && cycle >= max_cycles)
             break;
 
         if (ps->sim.error) break;
 
+        prev_cycle = ps->sim.cycle;
         simulator_step(&ps->sim);
+        cycle += (int) (INTR_CYCLE(ps->sim.cycle - prev_cycle));
         step++;
 
         if ((step % 100000) == 0) {
@@ -487,7 +495,7 @@ static
 int palos_cmd_continue(struct palos *ps)
 {
     ps->bps[0].enable = FALSE;
-    if (unlikely(!palos_simulate(ps, -1))) {
+    if (unlikely(!palos_simulate(ps, -1, -1))) {
         report_error("palos: cmd_continue: could not simulate");
         return FALSE;
     }
@@ -519,8 +527,40 @@ int palos_cmd_next(struct palos *ps)
     }
 
     ps->bps[0].enable = FALSE;
-    if (unlikely(!palos_simulate(ps, num))) {
+    if (unlikely(!palos_simulate(ps, num, -1))) {
         report_error("palos: cmd_next: could not simulate");
+        return FALSE;
+    }
+
+    palos_cmd_registers(ps, FALSE);
+    return TRUE;
+}
+
+/* Processes the "step" command.
+ * Returns TRUE on success.
+ */
+static
+int palos_cmd_step(struct palos *ps)
+{
+    const char *arg, *end;
+    int num;
+
+    arg = (const char *) ps->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] != '\0') {
+        num = (int) strtoul(arg, (char **) &end, 10);
+        if (end[0] != '\0' || num < 0) {
+            printf("invalid number %s\n", arg);
+            return TRUE;
+        }
+    } else {
+        num = 1;
+    }
+
+    ps->bps[0].enable = FALSE;
+    if (unlikely(!palos_simulate(ps, -1, num))) {
+        report_error("palos: cmd_step: could not simulate");
         return FALSE;
     }
 
@@ -563,7 +603,7 @@ int palos_cmd_next_task(struct palos *ps)
     bp->r_watch = FALSE;
     bp->watch = FALSE;
 
-    if (unlikely(!palos_simulate(ps, -1))) {
+    if (unlikely(!palos_simulate(ps, -1, -1))) {
         report_error("palos: cmd_next_task: could not simulate");
         return FALSE;
     }
@@ -610,7 +650,7 @@ int palos_cmd_next_nova(struct palos *ps)
     while (num-- > 0) {
         if (!gui_running(&ps->ui)) break;
         if (ps->sim.error) break;
-        if (unlikely(!palos_simulate(ps, -1))) {
+        if (unlikely(!palos_simulate(ps, -1, -1))) {
             report_error("palos: cmd_next_nova: could not simulate");
             return FALSE;
         }
@@ -1083,6 +1123,12 @@ int palos_debug(struct gui *ui)
             continue;
         }
 
+        if (strcmp(cmd, "s") == 0) {
+            if (unlikely(!palos_cmd_step(ps)))
+                return FALSE;
+            continue;
+        }
+
         if (strcmp(cmd, "nt") == 0) {
             if (unlikely(!palos_cmd_next_task(ps)))
                 return FALSE;
@@ -1137,6 +1183,7 @@ int palos_debug(struct gui *ui)
             printf("  w addr val       Writes a word to memory\n");
             printf("  c                Continue execution\n");
             printf("  n [num]          Step through the microcode\n");
+            printf("  s [cycles]       Step through the microcode\n");
             printf("  nt [task]        Step until switch task\n");
             printf("  nn [num]         Execute nova instructions\n");
             printf("  bp specs         Add a breakpoint\n");
