@@ -54,11 +54,11 @@ void gui_capture_mouse(struct gui *ui, int capture)
         SDL_ShowCursor(0);
         SDL_SetWindowGrab(iui->window, SDL_TRUE);
         SDL_SetWindowTitle(iui->window,
-                           "PSIM - Mouse captured. Press 'Alt' to release.");
+                           "PALOS - Mouse captured. Press 'Alt' to release.");
     } else {
         SDL_ShowCursor(1);
         SDL_SetWindowGrab(iui->window, SDL_FALSE);
-        SDL_SetWindowTitle(iui->window, "PSIM");
+        SDL_SetWindowTitle(iui->window, "PALOS");
     }
 
     iui->mouse_captured = capture;
@@ -343,7 +343,7 @@ int gui_run(struct gui *ui)
     thread = NULL;
 
     ret = TRUE;
-    iui->window = SDL_CreateWindow("PSIM",
+    iui->window = SDL_CreateWindow("PALOS",
                                    SDL_WINDOWPOS_UNDEFINED,
                                    SDL_WINDOWPOS_UNDEFINED,
                                    DISPLAY_WIDTH,

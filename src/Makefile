@@ -22,7 +22,7 @@ LDFLAGS := $(shell sdl2-config --libs)
 INCLUDES := -I.
 LIBS :=
 
-TARGET := pmu pdis psim
+TARGET := pmu pdis palos
 
 # Modify the FLAGS based on the options
 
@@ -52,7 +52,7 @@ pmu: $(PMU_OBJS)
 pdis: $(PDIS_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-psim: $(PSIM_OBJS)
+palos: $(PALOS_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 %.o: %.c

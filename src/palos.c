@@ -35,8 +35,8 @@ struct breakpoint {
     int watch;                    /* To watch an address. */
 };
 
-/* Internal structure for the psim simulator. */
-struct psim {
+/* Internal structure for the palos simulator. */
+struct palos {
     const char *const_filename;   /* The name of the constant rom. */
     const char *mcode_filename;   /* The name of the microcode rom. */
     const char *disk1_filename;   /* Disk 1 image file. */
@@ -57,16 +57,16 @@ struct psim {
 };
 
 /* Forward declarations. */
-static int psim_debug(struct gui *ui);
+static int palos_debug(struct gui *ui);
 
 /* Functions. */
 
-/* Initializes the psim variable.
+/* Initializes the palos variable.
  * Note that this does not create the object yet.
  * This obeys the initvar / destroy / create protocol.
  */
 static
-void psim_initvar(struct psim *ps)
+void palos_initvar(struct palos *ps)
 {
     simulator_initvar(&ps->sim);
     gui_initvar(&ps->ui);
@@ -76,12 +76,12 @@ void psim_initvar(struct psim *ps)
     ps->out_buf = NULL;
 }
 
-/* Destroys the psim object
+/* Destroys the palos object
  * (and releases all the used resources).
  * This obeys the initvar / destroy / create protocol.
  */
 static
-void psim_destroy(struct psim *ps)
+void palos_destroy(struct palos *ps)
 {
     if (ps->bps) free((void *) ps->bps);
     ps->bps = NULL;
@@ -96,7 +96,7 @@ void psim_destroy(struct psim *ps)
     simulator_destroy(&ps->sim);
 }
 
-/* Creates a new psim object.
+/* Creates a new palos object.
  * This obeys the initvar / destroy / create protocol.
  * The `sys_type` variable specifies the system type.
  * The name of the several filenames to load related to the constant rom,
@@ -106,14 +106,14 @@ void psim_destroy(struct psim *ps)
  * Returns TRUE on success.
  */
 static
-int psim_create(struct psim *ps,
-                enum system_type sys_type,
-                const char *const_filename,
-                const char *mcode_filename,
-                const char *disk1_filename,
-                const char *disk2_filename)
+int palos_create(struct palos *ps,
+                 enum system_type sys_type,
+                 const char *const_filename,
+                 const char *mcode_filename,
+                 const char *disk1_filename,
+                 const char *disk2_filename)
 {
-    psim_initvar(ps);
+    palos_initvar(ps);
 
     ps->max_breakpoints = 1024;
     ps->cmd_buf_size = 8192;
@@ -125,19 +125,19 @@ int psim_create(struct psim *ps,
     ps->out_buf = (char *) malloc(ps->out_buf_size);
 
     if (unlikely(!ps->bps || !ps->cmd_buf || !ps->out_buf)) {
-        report_error("psim: create: memory exhausted");
-        psim_destroy(ps);
+        report_error("palos: create: memory exhausted");
+        palos_destroy(ps);
         return FALSE;
     }
 
     if (unlikely(!simulator_create(&ps->sim, sys_type))) {
-        report_error("psim: create: could not create simulator");
-        psim_destroy(ps);
+        report_error("palos: create: could not create simulator");
+        palos_destroy(ps);
         return FALSE;
     }
 
-    if (unlikely(!gui_create(&ps->ui, &ps->sim, &psim_debug, ps))) {
-        report_error("psim: create: could not create user interface");
+    if (unlikely(!gui_create(&ps->ui, &ps->sim, &palos_debug, ps))) {
+        report_error("palos: create: could not create user interface");
         return FALSE;
     }
 
@@ -152,30 +152,30 @@ int psim_create(struct psim *ps,
     return TRUE;
 }
 
-/* Runs the PSIM simulator.
+/* Runs the PALOS simulator.
  * Returns TRUE on success.
  */
 static
-int psim_run(struct psim *ps)
+int palos_run(struct palos *ps)
 {
     const char *fn;
 
     fn = ps->const_filename;
     if (unlikely(!simulator_load_constant_rom(&ps->sim, fn))) {
-        report_error("psim: run: could not load constant rom");
+        report_error("palos: run: could not load constant rom");
         return FALSE;
     }
 
     fn = ps->mcode_filename;
     if (unlikely(!simulator_load_microcode_rom(&ps->sim, fn, 0))) {
-        report_error("psim: run: could not load microcode rom");
+        report_error("palos: run: could not load microcode rom");
         return FALSE;
     }
 
     fn = ps->disk1_filename;
     if (fn) {
         if (unlikely(!disk_load_image(&ps->sim.dsk, 0, fn))) {
-            report_error("psim: run: could not load disk 1");
+            report_error("palos: run: could not load disk 1");
             return FALSE;
         }
     }
@@ -183,7 +183,7 @@ int psim_run(struct psim *ps)
     fn = ps->disk2_filename;
     if (fn) {
         if (unlikely(!disk_load_image(&ps->sim.dsk, 1, fn))) {
-            report_error("psim: run: could not load disk 2");
+            report_error("palos: run: could not load disk 2");
             return FALSE;
         }
     }
@@ -191,7 +191,7 @@ int psim_run(struct psim *ps)
     simulator_reset(&ps->sim);
 
     if (unlikely(!gui_start(&ps->ui))) {
-        report_error("psim: run: could not start user interface");
+        report_error("palos: run: could not start user interface");
         return FALSE;
     }
 
@@ -203,7 +203,7 @@ int psim_run(struct psim *ps)
  * NUL character. The last word is ended with two consecutive NUL characters.
  */
 static
-void psim_get_command(struct psim *ps)
+void palos_get_command(struct palos *ps)
 {
     size_t i, len;
     int c, last_is_space;
@@ -253,7 +253,7 @@ void psim_get_command(struct psim *ps)
  * Returns TRUE on success.
  */
 static
-int psim_simulate(struct psim *ps, int max_steps)
+int palos_simulate(struct palos *ps, int max_steps)
 {
     const struct breakpoint *bp;
     unsigned int num, max_breakpoints;
@@ -280,7 +280,7 @@ int psim_simulate(struct psim *ps, int max_steps)
 
         if ((step % 100000) == 0) {
             if (unlikely(!gui_update(&ps->ui))) {
-                report_error("psim: simulate: could not update GUI");
+                report_error("palos: simulate: could not update GUI");
                 return FALSE;
             }
         }
@@ -355,7 +355,7 @@ int psim_simulate(struct psim *ps, int max_steps)
  * registers instead.
  */
 static
-void psim_cmd_registers(struct psim *ps, int extra)
+void palos_cmd_registers(struct palos *ps, int extra)
 {
     string_buffer_reset(&ps->output);
     simulator_disassemble(&ps->sim, &ps->output);
@@ -372,7 +372,7 @@ void psim_cmd_registers(struct psim *ps, int extra)
 
 /* Prints the nova registers. */
 static
-void psim_cmd_nova_registers(struct psim *ps)
+void palos_cmd_nova_registers(struct palos *ps)
 {
     string_buffer_reset(&ps->output);
     simulator_nova_disassemble(&ps->sim, &ps->output);
@@ -385,7 +385,7 @@ void psim_cmd_nova_registers(struct psim *ps)
 
 /* Shows the disk registers. */
 static
-void psim_cmd_disk_registers(struct psim *ps)
+void palos_cmd_disk_registers(struct palos *ps)
 {
     string_buffer_reset(&ps->output);
     disk_print_registers(&ps->sim.dsk, &ps->output);
@@ -394,7 +394,7 @@ void psim_cmd_disk_registers(struct psim *ps)
 
 /* Shows the display registers. */
 static
-void psim_cmd_display_registers(struct psim *ps)
+void palos_cmd_display_registers(struct palos *ps)
 {
     string_buffer_reset(&ps->output);
     display_print_registers(&ps->sim.displ, &ps->output);
@@ -403,7 +403,7 @@ void psim_cmd_display_registers(struct psim *ps)
 
 /* Shows the ethernet registers. */
 static
-void psim_cmd_ethernet_registers(struct psim *ps)
+void palos_cmd_ethernet_registers(struct palos *ps)
 {
     string_buffer_reset(&ps->output);
     ethernet_print_registers(&ps->sim.ether, &ps->output);
@@ -412,7 +412,7 @@ void psim_cmd_ethernet_registers(struct psim *ps)
 
 /* Dumps the contents of memory. */
 static
-void psim_cmd_dump_memory(struct psim *ps)
+void palos_cmd_dump_memory(struct palos *ps)
 {
     const char *arg, *end;
     uint16_t addr, num, val;
@@ -447,7 +447,7 @@ void psim_cmd_dump_memory(struct psim *ps)
 
 /* Writes to memory. */
 static
-void psim_cmd_write_memory(struct psim *ps)
+void palos_cmd_write_memory(struct palos *ps)
 {
     const char *arg, *end;
     uint16_t addr, val;
@@ -484,15 +484,15 @@ void psim_cmd_write_memory(struct psim *ps)
  * Returns TRUE on success.
  */
 static
-int psim_cmd_continue(struct psim *ps)
+int palos_cmd_continue(struct palos *ps)
 {
     ps->bps[0].enable = FALSE;
-    if (unlikely(!psim_simulate(ps, -1))) {
-        report_error("psim: cmd_continue: could not simulate");
+    if (unlikely(!palos_simulate(ps, -1))) {
+        report_error("palos: cmd_continue: could not simulate");
         return FALSE;
     }
 
-    psim_cmd_registers(ps, FALSE);
+    palos_cmd_registers(ps, FALSE);
     return TRUE;
 }
 
@@ -500,7 +500,7 @@ int psim_cmd_continue(struct psim *ps)
  * Returns TRUE on success.
  */
 static
-int psim_cmd_next(struct psim *ps)
+int palos_cmd_next(struct palos *ps)
 {
     const char *arg, *end;
     int num;
@@ -519,19 +519,19 @@ int psim_cmd_next(struct psim *ps)
     }
 
     ps->bps[0].enable = FALSE;
-    if (unlikely(!psim_simulate(ps, num))) {
-        report_error("psim: cmd_next: could not simulate");
+    if (unlikely(!palos_simulate(ps, num))) {
+        report_error("palos: cmd_next: could not simulate");
         return FALSE;
     }
 
-    psim_cmd_registers(ps, FALSE);
+    palos_cmd_registers(ps, FALSE);
     return TRUE;
 }
 
 /* Processes the "next task" command.
  * Returns TRUE on success.
  */
-int psim_cmd_next_task(struct psim *ps)
+int palos_cmd_next_task(struct palos *ps)
 {
     struct breakpoint *bp;
     const char *arg, *end;
@@ -563,19 +563,19 @@ int psim_cmd_next_task(struct psim *ps)
     bp->r_watch = FALSE;
     bp->watch = FALSE;
 
-    if (unlikely(!psim_simulate(ps, -1))) {
-        report_error("psim: cmd_next_task: could not simulate");
+    if (unlikely(!palos_simulate(ps, -1))) {
+        report_error("palos: cmd_next_task: could not simulate");
         return FALSE;
     }
 
-    psim_cmd_registers(ps, FALSE);
+    palos_cmd_registers(ps, FALSE);
     return TRUE;
 }
 
 /* Processes the "next nova" command.
  * Returns TRUE on success.
  */
-int psim_cmd_next_nova(struct psim *ps)
+int palos_cmd_next_nova(struct palos *ps)
 {
     struct breakpoint *bp;
     const char *arg, *end;
@@ -610,19 +610,19 @@ int psim_cmd_next_nova(struct psim *ps)
     while (num-- > 0) {
         if (!gui_running(&ps->ui)) break;
         if (ps->sim.error) break;
-        if (unlikely(!psim_simulate(ps, -1))) {
-            report_error("psim: cmd_next_nova: could not simulate");
+        if (unlikely(!palos_simulate(ps, -1))) {
+            report_error("palos: cmd_next_nova: could not simulate");
             return FALSE;
         }
     }
 
-    psim_cmd_nova_registers(ps);
+    palos_cmd_nova_registers(ps);
     return TRUE;
 }
 
 /* Adds a breakpoint based on the string in the command buffer. */
 static
-void psim_cmd_add_breakpoint(struct psim *ps)
+void palos_cmd_add_breakpoint(struct palos *ps)
 {
     const char *arg, *end;
     struct breakpoint *bp;
@@ -897,7 +897,7 @@ void psim_cmd_add_breakpoint(struct psim *ps)
 
 /* Lists the breakpoints. */
 static
-void psim_cmd_breakpoint_list(struct psim *ps)
+void palos_cmd_breakpoint_list(struct palos *ps)
 {
     unsigned int num;
     struct breakpoint *bp;
@@ -922,7 +922,7 @@ void psim_cmd_breakpoint_list(struct psim *ps)
 
 /* Enables or disables a breakpoint based on the parameter `enable`. */
 static
-void psim_cmd_breakpoint_enable(struct psim *ps, int enable)
+void palos_cmd_breakpoint_enable(struct palos *ps, int enable)
 {
     const char *arg, *end;
     struct breakpoint *bp;
@@ -955,7 +955,7 @@ void psim_cmd_breakpoint_enable(struct psim *ps, int enable)
 
 /* Removes a breakpoint. */
 static
-void psim_cmd_breakpoint_remove(struct psim *ps)
+void palos_cmd_breakpoint_remove(struct palos *ps)
 {
     struct breakpoint *bp;
     const char *arg, *end;
@@ -992,26 +992,26 @@ void psim_cmd_breakpoint_remove(struct psim *ps)
 
 /* Restarts the simulation. */
 static
-void psim_cmd_restart(struct psim *ps)
+void palos_cmd_restart(struct palos *ps)
 {
     simulator_reset(&ps->sim);
-    psim_cmd_registers(ps, FALSE);
+    palos_cmd_registers(ps, FALSE);
 }
 
 
 /* To run the debugger.
  * The parameter `ui` contains a reference to the gui object, which
- * in turn contains a reference to the psim object via `ui->arg`.
+ * in turn contains a reference to the palos object via `ui->arg`.
  * Returns TRUE on success.
  */
 static
-int psim_debug(struct gui *ui)
+int palos_debug(struct gui *ui)
 {
-    struct psim *ps;
+    struct palos *ps;
     unsigned int num;
     const char *cmd;
 
-    ps = (struct psim *) ui->arg;
+    ps = (struct palos *) ui->arg;
 
     for (num = 1; num < ps->max_breakpoints; num++) {
         ps->bps[num].available = TRUE;
@@ -1023,105 +1023,105 @@ int psim_debug(struct gui *ui)
 
     while (gui_running(ui)) {
         if (unlikely(!gui_update(ui))) {
-            report_error("psim: debug: could not update GUI");
+            report_error("palos: debug: could not update GUI");
             return FALSE;
         }
 
-        psim_get_command(ps);
+        palos_get_command(ps);
 
         cmd = (const char *) ps->cmd_buf;
 
         if (strcmp(cmd, "r") == 0) {
-            psim_cmd_registers(ps, FALSE);
+            palos_cmd_registers(ps, FALSE);
             continue;
         }
 
         if (strcmp(cmd, "nr") == 0) {
-            psim_cmd_nova_registers(ps);
+            palos_cmd_nova_registers(ps);
             continue;
         }
 
         if (strcmp(cmd, "e") == 0) {
-            psim_cmd_registers(ps, TRUE);
+            palos_cmd_registers(ps, TRUE);
             continue;
         }
 
         if (strcmp(cmd, "dsk") == 0) {
-            psim_cmd_disk_registers(ps);
+            palos_cmd_disk_registers(ps);
             continue;
         }
 
         if (strcmp(cmd, "displ") == 0) {
-            psim_cmd_display_registers(ps);
+            palos_cmd_display_registers(ps);
             continue;
         }
 
         if (strcmp(cmd, "ether") == 0) {
-            psim_cmd_ethernet_registers(ps);
+            palos_cmd_ethernet_registers(ps);
             continue;
         }
 
         if (strcmp(cmd, "d") == 0) {
-            psim_cmd_dump_memory(ps);
+            palos_cmd_dump_memory(ps);
             continue;
         }
 
         if (strcmp(cmd, "w") == 0) {
-            psim_cmd_write_memory(ps);
+            palos_cmd_write_memory(ps);
             continue;
         }
 
         if (strcmp(cmd, "c") == 0) {
-            if (unlikely(!psim_cmd_continue(ps)))
+            if (unlikely(!palos_cmd_continue(ps)))
                 return FALSE;
             continue;
         }
 
         if (strcmp(cmd, "n") == 0) {
-            if (unlikely(!psim_cmd_next(ps)))
+            if (unlikely(!palos_cmd_next(ps)))
                 return FALSE;
             continue;
         }
 
         if (strcmp(cmd, "nt") == 0) {
-            if (unlikely(!psim_cmd_next_task(ps)))
+            if (unlikely(!palos_cmd_next_task(ps)))
                 return FALSE;
             continue;
         }
 
         if (strcmp(cmd, "nn") == 0) {
-            if (unlikely(!psim_cmd_next_nova(ps)))
+            if (unlikely(!palos_cmd_next_nova(ps)))
                 return FALSE;
             continue;
         }
 
         if (strcmp(cmd, "bp") == 0) {
-            psim_cmd_add_breakpoint(ps);
+            palos_cmd_add_breakpoint(ps);
             continue;
         }
 
         if (strcmp(cmd, "bl") == 0) {
-            psim_cmd_breakpoint_list(ps);
+            palos_cmd_breakpoint_list(ps);
             continue;
         }
 
         if (strcmp(cmd, "be") == 0) {
-            psim_cmd_breakpoint_enable(ps, TRUE);
+            palos_cmd_breakpoint_enable(ps, TRUE);
             continue;
         }
 
         if (strcmp(cmd, "bd") == 0) {
-            psim_cmd_breakpoint_enable(ps, FALSE);
+            palos_cmd_breakpoint_enable(ps, FALSE);
             continue;
         }
 
         if (strcmp(cmd, "br") == 0) {
-            psim_cmd_breakpoint_remove(ps);
+            palos_cmd_breakpoint_remove(ps);
             continue;
         }
 
         if (strcmp(cmd, "zs") == 0) {
-            psim_cmd_restart(ps);
+            palos_cmd_restart(ps);
             continue;
         }
 
@@ -1205,10 +1205,10 @@ int main(int argc, char **argv)
     const char *disk1_filename;
     const char *disk2_filename;
     enum system_type sys_type;
-    struct psim ps;
+    struct palos ps;
     int i, is_last;
 
-    psim_initvar(&ps);
+    palos_initvar(&ps);
     const_filename = NULL;
     mcode_filename = NULL;
     disk1_filename = NULL;
@@ -1268,19 +1268,19 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (unlikely(!psim_create(&ps, sys_type,
-                              const_filename, mcode_filename,
-                              disk1_filename, disk2_filename))) {
-        report_error("main: could not create psim object");
+    if (unlikely(!palos_create(&ps, sys_type,
+                               const_filename, mcode_filename,
+                               disk1_filename, disk2_filename))) {
+        report_error("main: could not create palos object");
         return 1;
     }
 
-    if (unlikely(!psim_run(&ps))) {
+    if (unlikely(!palos_run(&ps))) {
         report_error("main: error while running");
-        psim_destroy(&ps);
+        palos_destroy(&ps);
         return 1;
     }
 
-    psim_destroy(&ps);
+    palos_destroy(&ps);
     return 0;
 }
