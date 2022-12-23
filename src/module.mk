@@ -43,10 +43,10 @@ simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  simulator/utils.h microcode/nova.h
 simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h \
  simulator/utils.h microcode/microcode.h
-simulator/display.o: simulator/display.c simulator/display.h common/utils.h \
- simulator/utils.h microcode/microcode.h
+simulator/display.o: simulator/display.c simulator/display.h \
+ common/utils.h simulator/utils.h microcode/microcode.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
- common/utils.h microcode/microcode.h
+ common/utils.h simulator/utils.h microcode/microcode.h
 simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
  common/utils.h
 simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h

@@ -170,6 +170,8 @@ void dv_interrupt(struct display *displ)
     /* Wakup the memory refresh task. */
     displ->pending |= (1 << TASK_MEMORY_REFRESH);
 
+    /* TODO: Wakeup the Ethernet task. */
+
     vblank_thresh = displ->even_field ? 33 : 34;
 
     if (displ->vblank_scanline > vblank_thresh) {

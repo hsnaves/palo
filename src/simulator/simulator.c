@@ -555,6 +555,7 @@ uint16_t do_rdram(struct simulator *sim)
 
     val = (low_half) ? mcode : (mcode >> 16);
     sim->rdram = FALSE;
+
     return val;
 }
 
@@ -1292,7 +1293,12 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case TASK_ETHERNET:
         switch (mc->f2) {
         case F2_ETH_EODFCT:
-            ethernet_eodfct(&sim->ether, bus);
+            if (unlikely(!ethernet_eodfct(&sim->ether, bus, sim->cycle))) {
+                report_error("simulator: step: "
+                             "could not perform EODFCT");
+                sim->error = TRUE;
+                return 0;
+            }
             return 0;
         case F2_ETH_EOSFCT:
             ethernet_eosfct(&sim->ether);
@@ -1300,14 +1306,14 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         case F2_ETH_ERBFCT:
             return ethernet_erbfct(&sim->ether);
         case F2_ETH_EEFCT:
-            ethernet_eefct(&sim->ether);
+            ethernet_eefct(&sim->ether, sim->cycle);
             return 0;
         case F2_ETH_EBFCT:
             return ethernet_ebfct(&sim->ether);
         case F2_ETH_ECBFCT:
             return ethernet_ecbfct(&sim->ether);
         case F2_ETH_EISFCT:
-            ethernet_eisfct(&sim->ether);
+            ethernet_eisfct(&sim->ether, sim->cycle);
             return 0;
         default:
             report_error("simulator: step: "
@@ -1509,7 +1515,7 @@ static
 void do_swmode(struct simulator *sim)
 {
     /* TODO: Implement this. */
-    UNUSED(sim);
+    sim->error = TRUE;
     report_error("simulator: step: "
                  "SWMODE not implemented\n");
 }
@@ -1552,6 +1558,9 @@ void do_soft_reset(struct simulator *sim)
     sim->rmr = 0xFFFF;
 
     /* TODO: Finish this implementation. */
+    sim->error = TRUE;
+    report_error("simulator: step: "
+                 "soft reset not implemented\n");
 }
 
 /* Checks for interrupts.
