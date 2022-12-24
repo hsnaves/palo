@@ -7,15 +7,15 @@ PDIS_OBJS := common/utils.o common/allocator.o disassembler/disassembler.o \
 
 PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
  simulator/display.o simulator/ethernet.o simulator/keyboard.o \
- simulator/mouse.o simulator/utils.o gui/gui.o debugger/debugger.o \
- microcode/microcode.o microcode/nova.o palos.o
+ simulator/mouse.o simulator/utils.o simulator/rom.o gui/gui.o \
+ debugger/debugger.o microcode/microcode.o microcode/nova.o palos.o
 
 OBJS := common/allocator.o common/table.o common/utils.o \
  assembler/assembler.o parser/lexer.o parser/parser.o microcode/microcode.o \
  pmu.o disassembler/disassembler.o pdis.o simulator/simulator.o \
  simulator/disk.o simulator/display.o simulator/ethernet.o \
- simulator/keyboard.o simulator/mouse.o simulator/utils.o microcode/nova.o \
- gui/gui.o debugger/debugger.o palos.o
+ simulator/keyboard.o simulator/mouse.o simulator/utils.o simulator/rom.o \
+ microcode/nova.o gui/gui.o debugger/debugger.o palos.o
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
@@ -40,7 +40,7 @@ pdis.o: pdis.c disassembler/disassembler.h microcode/microcode.h \
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  microcode/microcode.h common/utils.h simulator/disk.h simulator/display.h \
  simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
- simulator/utils.h microcode/nova.h
+ simulator/utils.h simulator/rom.h microcode/nova.h
 simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h \
  simulator/utils.h microcode/microcode.h
 simulator/display.o: simulator/display.c simulator/display.h \
@@ -51,6 +51,7 @@ simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
  common/utils.h
 simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h
 simulator/utils.o: simulator/utils.c simulator/utils.h common/utils.h
+simulator/rom.o: simulator/rom.c simulator/rom.h
 gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
  common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
  simulator/keyboard.h simulator/mouse.h

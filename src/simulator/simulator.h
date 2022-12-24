@@ -43,6 +43,7 @@ struct simulator {
     int swmode;                   /* Previous instruction had SWMODE. */
     int soft_reset;               /* Previous instruction had soft reset. */
 
+    uint8_t *acs_rom;             /* The contents of the ACSROM. */
     uint16_t *consts;             /* Pointer to the constant rom. */
     uint32_t *microcode;          /* Microcode ROM + RAM. */
 
