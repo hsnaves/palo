@@ -52,6 +52,7 @@ void palos_destroy(struct palos *ps)
 /* Creates a new palos object.
  * This obeys the initvar / destroy / create protocol.
  * The `sys_type` variable specifies the system type.
+ * The `use_debugger` specifies whether or not to use the debugger.
  * The name of the several filenames to load related to the constant rom,
  * microcode rom, and disk images are given by the parameters:
  * `const_filename`, `mcode_filename`, `disk1_filename`, and
@@ -61,6 +62,7 @@ void palos_destroy(struct palos *ps)
 static
 int palos_create(struct palos *ps,
                  enum system_type sys_type,
+                 int use_debugger,
                  const char *const_filename,
                  const char *mcode_filename,
                  const char *disk1_filename,
@@ -81,7 +83,8 @@ int palos_create(struct palos *ps,
         return FALSE;
     }
 
-    if (unlikely(!debugger_create(&ps->dbg, &ps->sim, &ps->ui))) {
+    if (unlikely(!debugger_create(&ps->dbg, use_debugger,
+                                  &ps->sim, &ps->ui))) {
         report_error("palos: create: could not create debugger");
         palos_destroy(ps);
         return FALSE;
@@ -156,6 +159,7 @@ void usage(const char *prog_name)
     printf("  -ii_1krom     Set system type to Alto II (1K rom)\n");
     printf("  -ii_2krom     Set system type to Alto II (2K rom)\n");
     printf("  -ii_3kram     Set system type to Alto II (3K ram)\n");
+    printf("  -debug        To use the debugger\n");
     printf("  --help        Print this help\n");
 }
 
@@ -168,6 +172,7 @@ int main(int argc, char **argv)
     enum system_type sys_type;
     struct palos ps;
     int i, is_last;
+    int use_debugger;
 
     palos_initvar(&ps);
     const_filename = NULL;
@@ -175,6 +180,7 @@ int main(int argc, char **argv)
     disk1_filename = NULL;
     disk2_filename = NULL;
     sys_type = ALTO_II_3KRAM;
+    use_debugger = FALSE;
 
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);
@@ -210,6 +216,8 @@ int main(int argc, char **argv)
             sys_type = ALTO_II_2KROM;
         } else if (strcmp("-ii_3kram", argv[i]) == 0) {
             sys_type = ALTO_II_3KRAM;
+        } else if (strcmp("-debug", argv[i]) == 0) {
+            use_debugger = TRUE;
         } else if (strcmp("--help", argv[i]) == 0
                    || strcmp("-h", argv[i]) == 0) {
             usage(argv[0]);
@@ -229,7 +237,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (unlikely(!palos_create(&ps, sys_type,
+    if (unlikely(!palos_create(&ps, sys_type, use_debugger,
                                const_filename, mcode_filename,
                                disk1_filename, disk2_filename))) {
         report_error("main: could not create palos object");

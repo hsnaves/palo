@@ -43,6 +43,7 @@ struct debugger {
     char *out_buf;                /* Buffer for output. */
     size_t out_buf_size;          /* Size of the output buffer. */
     struct string_buffer output;  /* The string buffer for output. */
+    int use_debugger;             /* To use the debugger. */
 };
 
 /* Functions. */
@@ -61,13 +62,14 @@ void debugger_destroy(struct debugger *dbg);
 
 /* Creates a new debugger object.
  * This obeys the initvar / destroy / create protocol.
+ * The parameter `use_debugger` specifies whether or not to use the
+ * debugger.
  * The parameters `sim` and `ui` have references to a simulator
  * object and a gui object.
  * Returns TRUE on success.
  */
-int debugger_create(struct debugger *ps,
-                    struct simulator *sim,
-                    struct gui *ui);
+int debugger_create(struct debugger *ps, int use_debugger,
+                    struct simulator *sim, struct gui *ui);
 
 /* To run the debugger.
  * The parameter `ui` contains a reference to the gui object, which

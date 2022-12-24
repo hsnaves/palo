@@ -40,9 +40,8 @@ void debugger_destroy(struct debugger *dbg)
     dbg->out_buf = NULL;
 }
 
-int debugger_create(struct debugger *dbg,
-                    struct simulator *sim,
-                    struct gui *ui)
+int debugger_create(struct debugger *dbg, int use_debugger,
+                    struct simulator *sim, struct gui *ui)
 {
     debugger_initvar(dbg);
 
@@ -61,6 +60,7 @@ int debugger_create(struct debugger *dbg,
         return FALSE;
     }
 
+    dbg->use_debugger = use_debugger;
     dbg->sim = sim;
     dbg->ui = ui;
 
@@ -1006,15 +1006,24 @@ int debugger_debug(struct gui *ui)
     unsigned int num;
     const char *cmd;
     int running, stop_sim;
-    int is_eof;
+    int is_eof, ret;
 
     dbg = (struct debugger *) ui->arg;
+    ret = TRUE;
 
     for (num = 1; num < dbg->max_breakpoints; num++) {
         dbg->bps[num].available = TRUE;
     }
-    dbg->bps[0].available = FALSE;
 
+    if (!dbg->use_debugger) {
+        if (unlikely(!simulate(dbg, -1, -1))) {
+            report_error("debugger: debug: could not simulate");
+            ret = FALSE;
+        }
+        goto do_exit;
+    }
+
+    dbg->bps[0].available = FALSE;
     dbg->cmd_buf[0] = '\0';
     dbg->cmd_buf[1] = '\0';
 
@@ -1023,22 +1032,18 @@ int debugger_debug(struct gui *ui)
     while (TRUE) {
         if (unlikely(!gui_update(ui))) {
             report_error("debugger: debug: could not update GUI");
-            return FALSE;
+            ret = FALSE;
+            goto do_exit;
         }
 
         get_command(dbg, &is_eof);
-        if (is_eof) {
-            if (unlikely(!gui_stop(ui))) {
-                report_error("debugger: debug: could not stop GUI");
-                return FALSE;
-            }
-            break;
-        }
+        if (is_eof) break;
 
         if (unlikely(!gui_running(ui, &running, &stop_sim))) {
             report_error("debugger: debug: "
                          "could not determine if GUI is running");
-            return FALSE;
+            ret = FALSE;
+            goto do_exit;
         }
         if (!running) break;
 
@@ -1075,8 +1080,10 @@ int debugger_debug(struct gui *ui)
         }
 
         if (strcmp(cmd, "d") == 0) {
-            if (unlikely(!cmd_dump_memory(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_dump_memory(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
@@ -1086,32 +1093,42 @@ int debugger_debug(struct gui *ui)
         }
 
         if (strcmp(cmd, "c") == 0) {
-            if (unlikely(!cmd_continue(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_continue(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
         if (strcmp(cmd, "n") == 0) {
-            if (unlikely(!cmd_next(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_next(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
         if (strcmp(cmd, "s") == 0) {
-            if (unlikely(!cmd_step(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_step(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
         if (strcmp(cmd, "nt") == 0) {
-            if (unlikely(!cmd_next_task(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_next_task(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
         if (strcmp(cmd, "nn") == 0) {
-            if (unlikely(!cmd_next_nova(dbg)))
-                return FALSE;
+            if (unlikely(!cmd_next_nova(dbg))) {
+                ret = FALSE;
+                goto do_exit;
+            }
             continue;
         }
 
@@ -1150,18 +1167,19 @@ int debugger_debug(struct gui *ui)
             continue;
         }
 
-        if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
-            if (unlikely(!gui_stop(ui))) {
-                report_error("debugger: debug: could not stop GUI");
-                return FALSE;
-            }
+        if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0)
             break;
-        }
 
         printf("invalid command\n");
         dbg->cmd_buf[0] = '\0';
         dbg->cmd_buf[1] = '\0';
     }
 
-    return TRUE;
+do_exit:
+    if (unlikely(!gui_stop(ui))) {
+        report_error("debugger: debug: could not stop GUI");
+        return FALSE;
+    }
+
+    return ret;
 }
