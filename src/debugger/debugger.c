@@ -227,13 +227,6 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
                 }
             }
 
-            if (bp->r_watch) {
-                if (!sim->r_changed)
-                    hit1 = FALSE;
-                if (bp->rsel != sim->modified_rsel)
-                    hit1 = FALSE;
-            }
-
             if (bp->watch) {
                 if (bp->addr != sim->mar) {
                     hit1 = FALSE;
@@ -529,7 +522,6 @@ int cmd_next_task(struct debugger *dbg)
     bp->mir_mask = 0;
     bp->allow_constants = TRUE;
     bp->addr = 0;
-    bp->r_watch = FALSE;
     bp->watch = FALSE;
 
     if (unlikely(!simulate(dbg, -1, -1))) {
@@ -579,7 +571,6 @@ int cmd_next_nova(struct debugger *dbg)
     bp->mir_mask = 0;
     bp->allow_constants = TRUE;
     bp->addr = 0;
-    bp->r_watch = FALSE;
     bp->watch = FALSE;
 
     running = TRUE;
@@ -629,7 +620,6 @@ void cmd_add_breakpoint(struct debugger *dbg)
     bp->mir_mask = 0;
     bp->allow_constants = TRUE;
     bp->addr = 0;
-    bp->r_watch = FALSE;
     bp->watch = FALSE;
 
     arg = (const char *) dbg->cmd_buf;
@@ -825,23 +815,6 @@ void cmd_add_breakpoint(struct debugger *dbg)
             continue;
         }
 
-        if (strcmp(arg, "-r_watch") == 0) {
-            arg = &arg[strlen(arg) + 1];
-            if (arg[0] == '\0') {
-                printf("please specify the register to watch\n");
-                return;
-            }
-            bp->rsel = (uint16_t) strtoul(arg, (char **) &end, 8);
-            if (end[0] != '\0') {
-                printf("invalid rsel (octal number) %s\n", arg);
-                return;
-            }
-            arg = &arg[strlen(arg) + 1];
-            bp->r_watch = TRUE;
-            bp->enable = TRUE;
-            continue;
-        }
-
         if (strcmp(arg, "-watch") == 0) {
             arg = &arg[strlen(arg) + 1];
             if (arg[0] == '\0') {
@@ -885,19 +858,18 @@ void cmd_breakpoint_list(struct debugger *dbg)
     struct breakpoint *bp;
 
     printf("NUM  EN  TASK  NTASK MPC     SW  MIR_FMT     "
-           "MIR_MASK    CT  RSEL     ADDR\n");
+           "MIR_MASK    CT  ADDR\n");
     for (num = 1; num < dbg->max_breakpoints; num++) {
         bp = &dbg->bps[num];
         if (bp->available) continue;
 
         printf("%-4d %o   %03o   %03o   %06o  %o   "
-               "%011o %011o %o   %06o%s  %06o%s\n",
+               "%011o %011o %o   %06o%s\n",
                num, bp->enable ? 1 : 0,
                bp->task, bp->ntask, bp->mpc,
                bp->on_task_switch ? 1 : 0,
                bp->mir_fmt, bp->mir_mask,
                bp->allow_constants ? 1 : 0,
-               bp->rsel, bp->r_watch ? "*" : " ",
                bp->addr, bp->watch ? "*" : " ");
     }
 }
@@ -1025,7 +997,6 @@ void cmd_help(struct debugger *dbg)
     printf("  -f2 f2           To select the F2 of the MIR\n");
     printf("  -store           When F2=F2_STORE_MD\n");
     printf("  -no_constants    To disable F1 or F2 constants\n");
-    printf("  -r_watch rsel    To watch for R register changes\n");
     printf("  -watch address   To watch for memory activity\n");
 }
 

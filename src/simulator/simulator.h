@@ -34,11 +34,6 @@ struct simulator {
     int skip;                     /* Skip flag. */
     int carry;                    /* Carry flag. */
 
-    int r_changed;                /* A flag indicating that some R register
-                                   * changed.
-                                   */
-    uint16_t modified_rsel;       /* Which register changed. */
-
     uint16_t rmr;                 /* Reset mode register (for tasks to start
                                    * in either ROM0 or RAM0).
                                    */

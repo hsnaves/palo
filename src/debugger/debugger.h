@@ -25,8 +25,6 @@ struct breakpoint {
                                    * breakpoint.
                                    */
     int allow_constants;          /* To allow F1 or F2 constants in MIR. */
-    uint16_t rsel;                /* Which R register to watch. */
-    int r_watch;                  /* To watch for R modification. */
     uint16_t addr;                /* Address watch. */
     int watch;                    /* To watch an address. */
 };

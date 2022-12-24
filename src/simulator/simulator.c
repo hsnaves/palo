@@ -345,8 +345,6 @@ void simulator_reset(struct simulator *sim)
     sim->aluC0 = FALSE;
     sim->skip = FALSE;
     sim->carry = FALSE;
-    sim->r_changed = FALSE;
-    sim->modified_rsel = 0;
 
     sim->rmr = 0xFFFFU;
     sim->cram_addr = 0x0;
@@ -1425,8 +1423,6 @@ void wb_registers(struct simulator *sim,
     uint8_t rb;
 
     /* Writes back the R register. */
-    sim->r_changed = load_r;
-    sim->modified_rsel = modified_rsel;
     if (load_r) {
         sim->r[modified_rsel] = shifter_output;
     }
