@@ -158,13 +158,6 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     running = TRUE;
     stop_sim = FALSE;
     while (TRUE) {
-        if (unlikely(!gui_running(ui, &running, &stop_sim))) {
-            report_error("debugger: simulate: "
-                         "could not determine if GUI is running");
-            return FALSE;
-        }
-
-        if (!running || stop_sim) break;
         if (max_steps >= 0 && step == max_steps)
             break;
         if (max_cycles >=0 && cycle >= max_cycles)
@@ -178,6 +171,13 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
         step++;
 
         if ((step % 100000) == 0) {
+            if (unlikely(!gui_running(ui, &running, &stop_sim))) {
+                report_error("debugger: simulate: "
+                             "could not determine if GUI is running");
+                return FALSE;
+            }
+            if (!running || stop_sim) break;
+
             if (unlikely(!gui_update(ui))) {
                 report_error("debugger: simulate: "
                              "could not update GUI");
@@ -189,6 +189,9 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
                 return FALSE;
             }
         }
+
+        /* Small optimization. */
+        if (max_breakpoints == 0) continue;
 
         hit = FALSE;
         for (num = 0; num < max_breakpoints; num++) {
@@ -1035,6 +1038,14 @@ int debugger_debug(struct gui *ui)
             ret = FALSE;
             goto do_exit;
         }
+
+        if (unlikely(!gui_running(ui, &running, NULL))) {
+            report_error("debugger: debug: "
+                         "could not determine if GUI is running");
+            ret = FALSE;
+            goto do_exit;
+        }
+        if (!running) break;
 
         get_command(dbg, &is_eof);
         if (is_eof) break;
