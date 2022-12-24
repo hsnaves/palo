@@ -58,9 +58,12 @@ int gui_stop(struct gui *ui);
 
 /* Checks if the user interface is running.
  * The parameter `running` returns TRUE if the interface is running.
+ * The parameter `stop_sim` returns TRUE if a signal to stop the
+ * simulation was received. If not provided, the stop simulation
+ * signal will not be cleared.
  * Returns TRUE on success.
  */
-int gui_running(struct gui *ui, int *running);
+int gui_running(struct gui *ui, int *running, int *stop_sim);
 
 /* Updates the user interface.
  * Returns TRUE on success.

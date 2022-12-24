@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <SDL.h>
+#include <signal.h>
 
 #include "gui/gui.h"
 #include "simulator/display.h"
@@ -16,6 +17,9 @@
 struct gui_internal {
     int initialized;              /* If this structure was initialized. */
     int running;                  /* If the GUI is running. */
+    int stop_sim;                 /* A request to stop the simulation
+                                   * was issued.
+                                   */
 
     uint8_t *display_data;        /* The display pixels. */
     struct keyboard keyb;         /* The (fake) keyboard. */
@@ -33,6 +37,11 @@ struct gui_internal {
     SDL_Texture *texture;         /* The texture. */
     int mouse_captured;           /* Mouse is captured. */
     int skip_next_mouse_move;     /* To skip the next mouse move event. */
+
+    struct gui_internal *next;    /* To chain the objects together
+                                   * for the signal handler.
+                                   */
+    struct gui_internal *prev;    /* Previous object in the chain. */
 };
 
 /* Global variables. */
@@ -42,7 +51,40 @@ static int gui_ref_count = 0;    /* A counter to keep track of the
                                   * SDL_Quit() is invoked.
                                   */
 
+static struct gui_internal *suil;/* A list of gui_internal objects to notify
+                                  * when a signal is received.
+                                  */
+
 /* Functions. */
+
+/* Signal handler for SIGINT type signals. */
+static
+void handle_signal(int sig)
+{
+    struct gui_internal *iui;
+    int ret, reinstall;
+
+    reinstall = FALSE;
+
+    for (iui = suil; iui; iui = iui->next) {
+        ret = SDL_LockMutex(iui->mutex);
+        if (unlikely(ret != 0)) {
+            report_error("gui: handle_signal: could no acquire lock"
+                         "(SDLError(%d): %s)", ret, SDL_GetError());
+            continue;
+        }
+        if (!iui->stop_sim) reinstall = TRUE;
+        iui->stop_sim = TRUE;
+        SDL_UnlockMutex(iui->mutex);
+    }
+
+    if (reinstall) {
+        /* Reinstall signal handler. */
+        signal(sig, &handle_signal);
+    } else {
+        kill(0, sig);
+    }
+}
 
 /* To capture the mouse movements (and keyboard).
  * The `capture` indicates whether we should capture or release
@@ -406,8 +448,8 @@ int gui_run(struct gui *ui)
         goto do_exit;
     }
 
-    running = TRUE;
     iui->running = TRUE;
+    iui->stop_sim = FALSE;
     iui->mouse_captured = FALSE;
     iui->skip_next_mouse_move = FALSE;
 
@@ -421,8 +463,9 @@ int gui_run(struct gui *ui)
         goto do_exit;
     }
 
+    running = TRUE;
     while (TRUE) {
-        if (unlikely(!gui_running(ui, &running))) {
+        if (unlikely(!gui_running(ui, &running, NULL))) {
             report_error("gui: internal: run: "
                          "could not check if it is running");
             ret = FALSE;
@@ -525,6 +568,16 @@ void gui_destroy(struct gui *ui)
     keyboard_destroy(&iui->keyb);
     mouse_destroy(&iui->mous);
 
+    /* Unchain the objects. */
+    if (iui->prev)
+        iui->prev->next = iui->next;
+
+    if (iui->next)
+        iui->next->prev = iui->prev;
+
+    if (suil == iui)
+        suil = iui->next;
+
     initialized = iui->initialized;
     free((void *) iui);
     ui->internal = NULL;
@@ -566,6 +619,8 @@ int gui_create(struct gui *ui, struct simulator *sim,
     iui->window = NULL;
     iui->renderer = NULL;
     iui->texture = NULL;
+    iui->next = NULL;
+    iui->prev = NULL;
 
     iui->display_data = (uint8_t *)
         malloc(DISPLAY_DATA_SIZE * sizeof(uint8_t));
@@ -597,6 +652,7 @@ int gui_create(struct gui *ui, struct simulator *sim,
     ui->arg = arg;
 
     if (gui_ref_count == 0) {
+        /* Initialize the SDL when it is the first object created. */
         ret = SDL_Init(SDL_INIT_VIDEO);
         if (unlikely(ret < 0)) {
             report_error("gui: create: "
@@ -638,6 +694,17 @@ int gui_create(struct gui *ui, struct simulator *sim,
         return FALSE;
     }
 
+    if (!suil) {
+        /* Install the signal handler. */
+        signal(SIGINT, &handle_signal);
+
+        suil = iui;
+    } else {
+        suil->prev = iui;
+        iui->next = suil;
+        suil = iui;
+    }
+
     return TRUE;
 }
 
@@ -677,7 +744,7 @@ int gui_stop(struct gui *ui)
     return TRUE;
 }
 
-int gui_running(struct gui *ui, int *running)
+int gui_running(struct gui *ui, int *running, int *stop_sim)
 {
     struct gui_internal *iui;
     int ret;
@@ -690,6 +757,10 @@ int gui_running(struct gui *ui, int *running)
         return FALSE;
     }
     *running = iui->running;
+    if (stop_sim) {
+        *stop_sim = iui->stop_sim;
+        iui->stop_sim = FALSE;
+    }
     SDL_UnlockMutex(iui->mutex);
     return TRUE;
 }

@@ -73,20 +73,25 @@ int debugger_create(struct debugger *dbg,
 /* Gets a command line from the standard input.
  * The command line is stored in `dbg->cmd_buf`, with the words separated by a
  * NUL character. The last word is ended with two consecutive NUL characters.
+ * The parameter `is_eof` returns TRUE if it reached the EOF.
  */
 static
-void get_command(struct debugger *dbg)
+void get_command(struct debugger *dbg, int *is_eof)
 {
     size_t i, len;
     int c, last_is_space;
 
+    *is_eof = FALSE;
     printf(">");
 
     i = len = 0;
     last_is_space = TRUE;
     while (TRUE) {
         c = fgetc(stdin);
-        if (c == EOF) break;
+        if (c == EOF) {
+            *is_eof = TRUE;
+            return;
+        }
         if (c == '\n') break;
 
         if (isspace(c)) {
@@ -134,7 +139,7 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     unsigned int num, max_breakpoints;
     uint32_t prev_cycle;
     int step, cycle, hit, hit1;
-    int running;
+    int running, stop_sim;
 
     /* Get the effective number of breakpoints. */
     max_breakpoints = 0;
@@ -150,15 +155,16 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
 
     step = 0;
     cycle = 0;
-    running = FALSE;
+    running = TRUE;
+    stop_sim = FALSE;
     while (TRUE) {
-        if (unlikely(!gui_running(ui, &running))) {
+        if (unlikely(!gui_running(ui, &running, &stop_sim))) {
             report_error("debugger: simulate: "
                          "could not determine if GUI is running");
             return FALSE;
         }
 
-        if (!running) break;
+        if (!running || stop_sim) break;
         if (max_steps >= 0 && step == max_steps)
             break;
         if (max_cycles >=0 && cycle >= max_cycles)
@@ -329,7 +335,7 @@ int cmd_dump_memory(struct debugger *dbg)
     struct gui *ui;
     const char *arg, *end;
     uint16_t addr, num, val;
-    int running;
+    int running, stop_sim;
 
     sim = dbg->sim;
     ui = dbg->ui;
@@ -357,14 +363,15 @@ int cmd_dump_memory(struct debugger *dbg)
         addr = 0;
     }
 
-    running = FALSE;
+    running = TRUE;
+    stop_sim = FALSE;
     while (num-- > 0) {
-        if (unlikely(!gui_running(ui, &running))) {
+        if (unlikely(!gui_running(ui, &running, &stop_sim))) {
             report_error("debugger: cmd_dump_memory: "
                          "could not determine if GUI is running");
             return FALSE;
         }
-        if (!running) break;
+        if (!running || stop_sim) break;
         val = simulator_read(sim, addr, sim->ctask, FALSE);
         printf("%06o: %06o\n", addr++, val);
     }
@@ -543,7 +550,8 @@ int cmd_next_nova(struct debugger *dbg)
     struct gui *ui;
     struct breakpoint *bp;
     const char *arg, *end;
-    int num, running;
+    int running, stop_sim;
+    int num;
 
     sim = dbg->sim;
     ui = dbg->ui;
@@ -574,14 +582,15 @@ int cmd_next_nova(struct debugger *dbg)
     bp->r_watch = FALSE;
     bp->watch = FALSE;
 
-    running = FALSE;
+    running = TRUE;
+    stop_sim = FALSE;
     while (num-- > 0) {
-        if (unlikely(!gui_running(ui, &running))) {
+        if (unlikely(!gui_running(ui, &running, &stop_sim))) {
             report_error("debugger: cmd_next_nova: "
                          "could not determine if GUI is running");
             return FALSE;
         }
-        if (!running) break;
+        if (!running || stop_sim) break;
         if (sim->error) break;
         if (unlikely(!simulate(dbg, -1, -1))) {
             report_error("debugger: cmd_next_nova: could not simulate");
@@ -1025,7 +1034,8 @@ int debugger_debug(struct gui *ui)
     struct debugger *dbg;
     unsigned int num;
     const char *cmd;
-    int running;
+    int running, stop_sim;
+    int is_eof;
 
     dbg = (struct debugger *) ui->arg;
 
@@ -1037,21 +1047,29 @@ int debugger_debug(struct gui *ui)
     dbg->cmd_buf[0] = '\0';
     dbg->cmd_buf[1] = '\0';
 
-    running = FALSE;
+    running = TRUE;
+    stop_sim = FALSE;
     while (TRUE) {
-        if (unlikely(!gui_running(ui, &running))) {
-            report_error("debugger: debug: "
-                         "could not determine if GUI is running");
-            return FALSE;
-        }
-        if (!running) break;
-
         if (unlikely(!gui_update(ui))) {
             report_error("debugger: debug: could not update GUI");
             return FALSE;
         }
 
-        get_command(dbg);
+        get_command(dbg, &is_eof);
+        if (is_eof) {
+            if (unlikely(!gui_stop(ui))) {
+                report_error("debugger: debug: could not stop GUI");
+                return FALSE;
+            }
+            break;
+        }
+
+        if (unlikely(!gui_running(ui, &running, &stop_sim))) {
+            report_error("debugger: debug: "
+                         "could not determine if GUI is running");
+            return FALSE;
+        }
+        if (!running) break;
 
         cmd = (const char *) dbg->cmd_buf;
 
