@@ -1012,6 +1012,11 @@ void disk_print_registers(struct disk *dsk,
     const struct disk_drive *dd;
     uint16_t valid, sector;
 
+    string_buffer_print(output,
+                        "DATA : %07o[%s]\n",
+                        dsk->kdata_read,
+                        dsk->has_kdata ? "*" : " ");
+
     valid = (KADR_VALID_VALUE << KADR_VALID_SHIFT);
     string_buffer_print(output,
                         "KSTAT: %07o    KDATA: %07o    "
@@ -1022,63 +1027,34 @@ void disk_print_registers(struct disk *dsk,
                         (dsk->kcomm << KCOMM_SHIFT));
 
     string_buffer_print(output,
-                        "DATAR: %07o    HASDT: %o\n",
-                        dsk->kdata_read, dsk->has_kdata ? 1 : 0);
-
-    sector = (dsk->kstat >> KSTAT_SECTOR_SHIFT) & KSTAT_SECTOR_MASK;
-    string_buffer_print(output,
-                        "SECT : %03o        CSERR: %-7o    "
-                        "COMPL: %03o        SFAIL: %d\n",
-                        sector,
-                        (dsk->kstat & KSTAT_CHECKSUM_ERROR) ? 1 : 0,
-                        (dsk->kstat & KSTAT_COMPLETION_MASK),
-                        (dsk->kstat & KSTAT_SEEK_FAIL) ? 1 : 0);
-
-    string_buffer_print(output,
-                        "SEEK : %-7o    NRDY : %-7o    "
-                        "LATE : %-7o    IDLE : %o\n",
-                        (dsk->kstat & KSTAT_SEEKING) ? 1 : 0,
-                        (dsk->kstat & KSTAT_NOT_READY) ? 1 : 0,
-                        (dsk->kstat & KSTAT_LATE) ? 1 : 0,
-                        (dsk->kstat & KSTAT_IDLE) ? 1 : 0);
-
-    string_buffer_print(output,
-                        "NXFER: %-7o    DKXOR: %-7o    "
-                        "HDBLK: %-7o    LBBLK: %o\n",
-                        (dsk->kadr & KADR_NO_XFER) ? 1 : 0,
-                        (dsk->kadr & KADR_DISK_MOD) ? 1 : 0,
-                        (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK,
-                        (dsk->kadr >> KADR_LABEL_SHIFT) & KADR_BLOCK_MASK);
-
-    string_buffer_print(output,
-                        "DTBLK: %-7o    XROFF: %-7o    "
-                        "WDINH: %-7o    CKSRC: %o\n",
-                        (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK,
-                        (dsk->kcomm & KCOMM_XFEROFF) ? 1 : 0,
-                        (dsk->kcomm & KCOMM_WDINHB) ? 1 : 0,
-                        (dsk->kcomm & KCOMM_BCLKSRC) ? 1 : 0);
-
-    string_buffer_print(output,
-                        "WFFO : %-7o    SDADR: %-7o    "
-                        "SYNC : %-7o    BTCLK: %o\n",
-                        (dsk->kcomm & KCOMM_WFFO) ? 1 : 0,
-                        (dsk->kcomm & KCOMM_SENDADR) ? 1 : 0,
+                        "SYNC : %-7o    BTCLK: %-7o    "
+                        "WDINT: %-7o    LT_EN: %o\n",
                         dsk->sync_word_written ? 1 : 0,
-                        dsk->bitclk_enable ? 1 : 0);
+                        dsk->bitclk_enable ? 1 : 0,
+                        dsk->wdinit ? 1 : 0,
+                        dsk->seclate_enable ? 1 : 0);
 
     string_buffer_print(output,
-                        "WDINT: %-7o    SECLT: %-7o    "
-                        "RESTR: %o\n",
-                        dsk->wdinit ? 1 : 0,
-                        dsk->seclate_enable ? 1 : 0,
-                        dsk->restore ? 1 : 0);
+                        "RESTR: %-7o    DISK : %-7o    "
+                        "RECNO: %o\n",
+                        dsk->restore ? 1 : 0,
+                        dsk->disk, dsk->rec_no);
+
+    string_buffer_print(output,
+                        "PEND : %07o    ICYC : %-10d "
+                        "DSIC : %-10d DWIC : %-10d\n",
+                        dsk->pending, dsk->intr_cycle,
+                        dsk->ds_intr_cycle, dsk->dw_intr_cycle);
+
+    string_buffer_print(output,
+                        "SKIC : %-10d SLIC : %-10d\n",
+                        dsk->seek_intr_cycle, dsk->seclate_intr_cycle);
 
     dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
+    string_buffer_print(output, "\n=======   Disk %u    =======\n", dsk->disk);
 
     string_buffer_print(output,
-                        "DISK : %-7o    RECNO: %-7o    "
                         "CYL  : %07o    TCYL : %07o\n",
-                        dsk->disk, dsk->rec_no,
                         dd->cylinder, dd->target_cylinder);
 
     string_buffer_print(output,
@@ -1093,14 +1069,47 @@ void disk_print_registers(struct disk *dsk,
                         dd->dg.num_heads, dd->dg.num_sectors,
                         dd->dg.num_cylinders, dd->loaded ? 1 : 0);
 
+    sector = (dsk->kstat >> KSTAT_SECTOR_SHIFT) & KSTAT_SECTOR_MASK;
+    string_buffer_print(output, "\n======= KSTAT parts =======\n");
     string_buffer_print(output,
-                        "PEND : %07o    ICYC : %-10d "
-                        "DSIC : %-10d DWIC : %-10d\n",
-                        dsk->pending, dsk->intr_cycle,
-                        dsk->ds_intr_cycle, dsk->dw_intr_cycle);
+                        "  SECTOR: %03o   CHKSERR: %o  "
+                        "COMPLETION: %03o  SEEK_FAIL: %o\n",
+                        sector,
+                        (dsk->kstat & KSTAT_CHECKSUM_ERROR) ? 1 : 0,
+                        (dsk->kstat & KSTAT_COMPLETION_MASK),
+                        (dsk->kstat & KSTAT_SEEK_FAIL) ? 1 : 0);
 
     string_buffer_print(output,
-                        "SKIC : %-10d SLIC : %-10d\n",
-                        dsk->seek_intr_cycle, dsk->seclate_intr_cycle);
+                        "  SEEK  : %o     NOTRDY : %o  "
+                        "DATALATE  : %o    IDLE     : %o\n",
+                        (dsk->kstat & KSTAT_SEEKING) ? 1 : 0,
+                        (dsk->kstat & KSTAT_NOT_READY) ? 1 : 0,
+                        (dsk->kstat & KSTAT_LATE) ? 1 : 0,
+                        (dsk->kstat & KSTAT_IDLE) ? 1 : 0);
 
+    string_buffer_print(output, "======= KADR parts  =======\n");
+    string_buffer_print(output,
+                        "  NXFER : %o     DISKMOD: %o  "
+                        "HEADER_CMD: %o    LABEL_CMD: %o\n",
+                        (dsk->kadr & KADR_NO_XFER) ? 1 : 0,
+                        (dsk->kadr & KADR_DISK_MOD) ? 1 : 0,
+                        (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK,
+                        (dsk->kadr >> KADR_LABEL_SHIFT) & KADR_BLOCK_MASK);
+
+    string_buffer_print(output,
+                        "                            DATA_CMD  : %o\n",
+                        (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK);
+
+    string_buffer_print(output, "======= KCOMM parts =======\n");
+    string_buffer_print(output,
+                        "  XROFF : %o     WDINHIB: %o  "
+                        "BCLKSRC   : %o     SENDADR  : %o\n",
+                        (dsk->kcomm & KCOMM_XFEROFF) ? 1 : 0,
+                        (dsk->kcomm & KCOMM_WDINHB) ? 1 : 0,
+                        (dsk->kcomm & KCOMM_BCLKSRC) ? 1 : 0,
+                        (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK);
+
+    string_buffer_print(output,
+                        "  WFFO  : %o",
+                        (dsk->kcomm & KCOMM_WFFO) ? 1 : 0);
 }
