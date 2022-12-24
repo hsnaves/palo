@@ -13,7 +13,6 @@ struct gui;
 typedef int (*gui_thread_cb)(struct gui *ui);
 
 struct gui {
-    volatile int running;         /* If the GUI is running. */
     struct simulator *sim;        /* Reference to the simulator. */
     void *internal;               /* Opaque internal structure. */
     gui_thread_cb thread_cb;      /* The callback for the thread. */
@@ -52,11 +51,16 @@ int gui_create(struct gui *ui, struct simulator *sim,
  */
 int gui_start(struct gui *ui);
 
-/* Stops the user interface (destroy the main window). */
-void gui_stop(struct gui *ui);
+/* Stops the user interface (destroys the main window).
+ * Returns TRUE on success.
+ */
+int gui_stop(struct gui *ui);
 
-/* Returns TRUE if the user interface is running. */
-int gui_running(struct gui *ui);
+/* Checks if the user interface is running.
+ * The parameter `running` returns TRUE if the interface is running.
+ * Returns TRUE on success.
+ */
+int gui_running(struct gui *ui, int *running);
 
 /* Updates the user interface.
  * Returns TRUE on success.

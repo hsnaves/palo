@@ -132,8 +132,9 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     struct gui *ui;
     struct simulator *sim;
     unsigned int num, max_breakpoints;
-    int step, cycle, hit, hit1;
     uint32_t prev_cycle;
+    int step, cycle, hit, hit1;
+    int running;
 
     /* Get the effective number of breakpoints. */
     max_breakpoints = 0;
@@ -149,7 +150,15 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
 
     step = 0;
     cycle = 0;
-    while (gui_running(ui)) {
+    running = FALSE;
+    while (TRUE) {
+        if (unlikely(!gui_running(ui, &running))) {
+            report_error("debugger: simulate: "
+                         "could not determine if GUI is running");
+            return FALSE;
+        }
+
+        if (!running) break;
         if (max_steps >= 0 && step == max_steps)
             break;
         if (max_cycles >=0 && cycle >= max_cycles)
@@ -310,14 +319,17 @@ void cmd_ethernet_registers(struct debugger *dbg)
     printf("%s\n", dbg->out_buf);
 }
 
-/* Dumps the contents of memory. */
+/* Dumps the contents of memory.
+ * Returns TRUE on success.
+ */
 static
-void cmd_dump_memory(struct debugger *dbg)
+int cmd_dump_memory(struct debugger *dbg)
 {
     struct simulator *sim;
     struct gui *ui;
     const char *arg, *end;
     uint16_t addr, num, val;
+    int running;
 
     sim = dbg->sim;
     ui = dbg->ui;
@@ -330,7 +342,7 @@ void cmd_dump_memory(struct debugger *dbg)
         addr = (uint16_t) strtoul(arg, (char **) &end, 8);
         if (end[0] != '\0') {
             printf("invalid address (octal number) %s\n", arg);
-            return;
+            return TRUE;
         }
         arg = &arg[strlen(arg) + 1];
 
@@ -338,16 +350,26 @@ void cmd_dump_memory(struct debugger *dbg)
             num = (uint16_t) strtoul(arg, (char **) &end, 8);
             if (end[0] != '\0') {
                 printf("invalid octal number %s\n", arg);
+                return TRUE;
             }
         }
     } else {
         addr = 0;
     }
 
-    while ((num-- > 0) && gui_running(ui)) {
+    running = FALSE;
+    while (num-- > 0) {
+        if (unlikely(!gui_running(ui, &running))) {
+            report_error("debugger: cmd_dump_memory: "
+                         "could not determine if GUI is running");
+            return FALSE;
+        }
+        if (!running) break;
         val = simulator_read(sim, addr, sim->ctask, FALSE);
         printf("%06o: %06o\n", addr++, val);
     }
+
+    return TRUE;
 }
 
 /* Writes to memory. */
@@ -521,7 +543,7 @@ int cmd_next_nova(struct debugger *dbg)
     struct gui *ui;
     struct breakpoint *bp;
     const char *arg, *end;
-    int num;
+    int num, running;
 
     sim = dbg->sim;
     ui = dbg->ui;
@@ -552,8 +574,14 @@ int cmd_next_nova(struct debugger *dbg)
     bp->r_watch = FALSE;
     bp->watch = FALSE;
 
+    running = FALSE;
     while (num-- > 0) {
-        if (!gui_running(ui)) break;
+        if (unlikely(!gui_running(ui, &running))) {
+            report_error("debugger: cmd_next_nova: "
+                         "could not determine if GUI is running");
+            return FALSE;
+        }
+        if (!running) break;
         if (sim->error) break;
         if (unlikely(!simulate(dbg, -1, -1))) {
             report_error("debugger: cmd_next_nova: could not simulate");
@@ -997,6 +1025,7 @@ int debugger_debug(struct gui *ui)
     struct debugger *dbg;
     unsigned int num;
     const char *cmd;
+    int running;
 
     dbg = (struct debugger *) ui->arg;
 
@@ -1008,7 +1037,15 @@ int debugger_debug(struct gui *ui)
     dbg->cmd_buf[0] = '\0';
     dbg->cmd_buf[1] = '\0';
 
-    while (gui_running(ui)) {
+    running = FALSE;
+    while (TRUE) {
+        if (unlikely(!gui_running(ui, &running))) {
+            report_error("debugger: debug: "
+                         "could not determine if GUI is running");
+            return FALSE;
+        }
+        if (!running) break;
+
         if (unlikely(!gui_update(ui))) {
             report_error("debugger: debug: could not update GUI");
             return FALSE;
@@ -1049,7 +1086,8 @@ int debugger_debug(struct gui *ui)
         }
 
         if (strcmp(cmd, "d") == 0) {
-            cmd_dump_memory(dbg);
+            if (unlikely(!cmd_dump_memory(dbg)))
+                return FALSE;
             continue;
         }
 
@@ -1124,7 +1162,10 @@ int debugger_debug(struct gui *ui)
         }
 
         if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
-            gui_stop(ui);
+            if (unlikely(!gui_stop(ui))) {
+                report_error("debugger: debug: could not stop GUI");
+                return FALSE;
+            }
             break;
         }
 

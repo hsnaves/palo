@@ -15,6 +15,7 @@
 /* Internal structure for the user interface. */
 struct gui_internal {
     int initialized;              /* If this structure was initialized. */
+    int running;                  /* If the GUI is running. */
 
     uint8_t *display_data;        /* The display pixels. */
     struct keyboard keyb;         /* The (fake) keyboard. */
@@ -203,9 +204,11 @@ void gui_process_event(struct gui *ui, SDL_Event *e)
     SDL_UnlockMutex(iui->mutex);
 }
 
-/* Processes the SDL events. */
+/* Processes the SDL events.
+ * Returns TRUE on success.
+ */
 static
-void gui_process_events(struct gui *ui)
+int gui_process_events(struct gui *ui)
 {
     struct gui_internal *iui;
     SDL_Event e;
@@ -220,7 +223,9 @@ void gui_process_events(struct gui *ui)
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_QUIT:
-            ui->running = FALSE;
+            if (unlikely(!gui_stop(ui))) {
+                return FALSE;
+            }
             break;
 
         case SDL_MOUSEMOTION:
@@ -274,6 +279,8 @@ void gui_process_events(struct gui *ui)
             break;
         }
     }
+
+    return TRUE;
 }
 
 /* Updates the gui state and screen.
@@ -345,7 +352,7 @@ int gui_run(struct gui *ui)
 {
     struct gui_internal *iui;
     SDL_Thread *thread;
-    int ret;
+    int ret, running;
 
     iui = (struct gui_internal *) ui->internal;
     thread = NULL;
@@ -399,6 +406,11 @@ int gui_run(struct gui *ui)
         goto do_exit;
     }
 
+    running = TRUE;
+    iui->running = TRUE;
+    iui->mouse_captured = FALSE;
+    iui->skip_next_mouse_move = FALSE;
+
     thread = SDL_CreateThread(&other_thread_main,
                               "gui_extra_thread", ui);
     if (unlikely(!thread)) {
@@ -409,24 +421,40 @@ int gui_run(struct gui *ui)
         goto do_exit;
     }
 
-    ui->running = TRUE;
-    iui->mouse_captured = FALSE;
-    iui->skip_next_mouse_move = FALSE;
+    while (TRUE) {
+        if (unlikely(!gui_running(ui, &running))) {
+            report_error("gui: internal: run: "
+                         "could not check if it is running");
+            ret = FALSE;
+            break;
+        }
 
-    while (ui->running) {
-        gui_process_events(ui);
+        if (!running) break;
+
+        if (unlikely(!gui_process_events(ui))) {
+            report_error("gui: internal: run: "
+                         "could not process events");
+            ret = FALSE;
+            break;
+        }
 
         if (unlikely(!gui_update_screen(ui))) {
             report_error("gui: internal: run: "
                          "could not update screen");
             ret = FALSE;
-            ui->running = FALSE;
+            break;
         }
 
         SDL_Delay(16); /* For 60 FPS. */
     }
 
 do_exit:
+    if (unlikely(!gui_stop(ui))) {
+        report_error("gui: internal: run: "
+                     "could not stop");
+        ret = FALSE;
+    }
+
     if (iui->texture) {
         SDL_DestroyTexture(iui->texture);
     }
@@ -477,7 +505,7 @@ void gui_destroy(struct gui *ui)
     }
     iui->window = NULL;
 
-    ui->running = FALSE;
+    iui->running = FALSE;
 
     if (iui->mutex) {
         SDL_DestroyMutex(iui->mutex);
@@ -631,14 +659,39 @@ int gui_start(struct gui *ui)
     return TRUE;
 }
 
-void gui_stop(struct gui *ui)
+int gui_stop(struct gui *ui)
 {
-    ui->running = FALSE;
+    struct gui_internal *iui;
+    int ret;
+
+    iui = (struct gui_internal *) ui->internal;
+    ret = SDL_LockMutex(iui->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("gui: stop: could no acquire lock"
+                     "(SDLError(%d): %s)", ret, SDL_GetError());
+        return FALSE;
+    }
+
+    iui->running = FALSE;
+    SDL_UnlockMutex(iui->mutex);
+    return TRUE;
 }
 
-int gui_running(struct gui *ui)
+int gui_running(struct gui *ui, int *running)
 {
-    return ui->running;
+    struct gui_internal *iui;
+    int ret;
+
+    iui = (struct gui_internal *) ui->internal;
+    ret = SDL_LockMutex(iui->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("gui: running: could no acquire lock"
+                     "(SDLError(%d): %s)", ret, SDL_GetError());
+        return FALSE;
+    }
+    *running = iui->running;
+    SDL_UnlockMutex(iui->mutex);
+    return TRUE;
 }
 
 int gui_update(struct gui *ui)
