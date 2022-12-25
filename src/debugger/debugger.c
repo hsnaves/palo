@@ -946,6 +946,51 @@ void cmd_breakpoint_remove(struct debugger *dbg)
     }
 }
 
+/* Loads or saves a disk image.
+ * The parameter `save` is set to TRUE for when saving the image.
+ */
+static
+void cmd_load_or_save_image(struct debugger *dbg, int save)
+{
+    struct simulator *sim;
+    const char *arg, *end;
+    const char *filename;
+    unsigned int drive_num;
+
+    sim = dbg->sim;
+
+    arg = (const char *) dbg->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("please specify a drive number and a filename\n");
+        return;
+    }
+
+    drive_num = strtoul(arg, (char **) &end, 10);
+    if (end[0] != '\0') {
+        printf("invalid drive number %s\n", arg);
+        return;
+    }
+
+    if (drive_num >= NUM_DISK_DRIVES) {
+        printf("drive number too large\n");
+        return;
+    }
+
+    arg = &arg[strlen(arg) + 1];
+    if (arg[0] == '\0') {
+        printf("please specify a filename\n");
+        return;
+    }
+    filename = arg;
+
+    if (save) {
+        disk_save_image(&sim->dsk, drive_num, filename);
+    } else {
+        disk_load_image(&sim->dsk, drive_num, filename);
+    }
+}
 
 /* Restarts the simulation. */
 static
@@ -982,6 +1027,8 @@ void cmd_help(struct debugger *dbg)
     printf("  be num           Enable a breakpoint\n");
     printf("  bd num           Disable a breakpoint\n");
     printf("  br num           Remove a breakpoint\n");
+    printf("  li num file      Load a disk drive image\n");
+    printf("  si num file      Save a disk drive image\n");
     printf("  zs               Restart the simulation\n");
     printf("  h                Print this help\n");
     printf("  q                Quit the debugger\n");
@@ -1165,6 +1212,16 @@ int debugger_debug(struct gui *ui)
 
         if (strcmp(cmd, "br") == 0) {
             cmd_breakpoint_remove(dbg);
+            continue;
+        }
+
+        if (strcmp(cmd, "li") == 0) {
+            cmd_load_or_save_image(dbg, FALSE);
+            continue;
+        }
+
+        if (strcmp(cmd, "si") == 0) {
+            cmd_load_or_save_image(dbg, TRUE);
             continue;
         }
 

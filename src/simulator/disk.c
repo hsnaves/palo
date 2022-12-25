@@ -73,7 +73,6 @@
 #define WT_GAP                        0
 #define WT_DATA                       1
 #define WT_SYNC                       2
-#define WT_CHECKSUM                   3
 
 /* Functions. */
 
@@ -139,17 +138,36 @@ int disk_create(struct disk *dsk)
     return TRUE;
 }
 
+/* Computes the checksum of parts of the sector.
+ * The array with the data is given by `data`. This array is of
+ * length `len`.
+ * Returns the checksum.
+ */
+static
+uint16_t compute_checksum(const uint16_t *data, uint16_t len)
+{
+    uint16_t i, output;
+    output = 0x0151;
+    for (i = 0; i < len; i++) {
+        output ^= data[i];
+    }
+    return output;
+}
+
 int disk_load_image(struct disk *dsk, unsigned int drive_num,
                     const char *filename)
 {
-    FILE *fp;
     struct disk_drive *dd;
-    uint16_t *ds;
-    uint16_t i, j, max_j;
+    struct disk_sector *ds;
+    uint16_t *wptrs[3];
+    uint16_t max_js[3];
+    uint16_t *wptr;
+    uint16_t i, j, max_j, k;
     uint16_t w;
+    FILE *fp;
     int c;
 
-    if (drive_num >= NUM_DISK_DRIVES) {
+    if (unlikely(drive_num >= NUM_DISK_DRIVES)) {
         report_error("disk: load_image: invalid drive number %u",
                      drive_num);
         return FALSE;
@@ -158,35 +176,46 @@ int disk_load_image(struct disk *dsk, unsigned int drive_num,
     dd = &dsk->drives[drive_num];
 
     fp = fopen(filename, "rb");
-    if (!fp) {
+    if (unlikely(!fp)) {
         report_error("disk: load_image: could not open `%s`",
                      filename);
         return FALSE;
     }
 
-    max_j = sizeof(struct disk_sector) / sizeof(uint16_t);
+    max_js[0] = (uint16_t) DS_HEADER_DSIZE;
+    max_js[1] = (uint16_t) DS_LABEL_DSIZE;
+    max_js[2] = (uint16_t) DS_DATA_DSIZE;
     for (i = 0; i < dd->length; i++) {
-        ds = &dd->sectors[i].header[0];
-
+        /* Discard the first word. */
         c = fgetc(fp);
         if (c == EOF) goto error;
 
         c = fgetc(fp);
         if (c == EOF) goto error;
 
-        /* Discard the first word and use the loop index instead. */
+        ds = &dd->sectors[i];
+        wptrs[0] = &ds->header[0];
+        wptrs[1] = &ds->label[0];
+        wptrs[2] = &ds->data[0];
 
-        for (j = 0; j < max_j; j++) {
-            /* Process data in little endian format. */
-            c = fgetc(fp);
-            if (c == EOF) goto error;
-            w = (uint16_t) (c & 0xFF);
+        for (k = 0; k < 3; k++) {
+            wptr = wptrs[k];
+            max_j = max_js[k];
+            /* Read in reverse order to match the Diablo disk format. */
+            for (j = max_j - 1; j-- > 1;) {
+                /* Process data in little endian format. */
+                c = fgetc(fp);
+                if (c == EOF) goto error;
+                w = (uint16_t) (c & 0xFF);
 
-            c = fgetc(fp);
-            if (c == EOF) goto error;
-            w |= (uint16_t) ((c & 0xFF) << 8);
+                c = fgetc(fp);
+                if (c == EOF) goto error;
+                w |= (uint16_t) ((c & 0xFF) << 8);
 
-            ds[j] = w;
+                wptr[j] = w;
+            }
+            wptr[0] = (uint16_t) 1; /* sync word. */
+            wptr[max_j - 1] = compute_checksum(&wptr[1], max_j - 2);
         }
     }
 
@@ -207,14 +236,17 @@ error:
 int disk_save_image(const struct disk *dsk, unsigned int drive_num,
                     const char *filename)
 {
-    FILE *fp;
     const struct disk_drive *dd;
-    const uint16_t *ds;
-    uint16_t i, j, max_j;
+    const struct disk_sector *ds;
+    const uint16_t *wptrs[3];
+    uint16_t max_js[3];
+    const uint16_t *wptr;
+    uint16_t i, j, max_j, k;
     uint16_t w;
+    FILE *fp;
     int c;
 
-    if (drive_num >= NUM_DISK_DRIVES) {
+    if (unlikely(drive_num >= NUM_DISK_DRIVES)) {
         report_error("disk: save_image: invalid drive number %u",
                      drive_num);
         return FALSE;
@@ -223,32 +255,42 @@ int disk_save_image(const struct disk *dsk, unsigned int drive_num,
     dd = &dsk->drives[drive_num];
 
     fp = fopen(filename, "wb");
-    if (!fp) {
+    if (unlikely(!fp)) {
         report_error("disk: save_image: could not open `%s`"
                      "for writing", filename);
         return FALSE;
     }
 
-    max_j = sizeof(struct disk_sector) / sizeof(uint16_t);
+    max_js[0] = (uint16_t) DS_HEADER_DSIZE;
+    max_js[1] = (uint16_t) DS_LABEL_DSIZE;
+    max_js[2] = (uint16_t) DS_DATA_DSIZE;
     for (i = 0; i < dd->length; i++) {
-        ds = (const uint16_t *) &dd->sectors[i].header[0];
-
-        /* Discard the first word. */
+        /* Write the index as the first word. */
         c = fputc((int) (i & 0xFF), fp);
         if (c == EOF) goto error;
 
         c = fputc((int) ((i >> 8) & 0xFF), fp);
         if (c == EOF) goto error;
 
-        for (j = 0; j < max_j; j++) {
-            w = ds[j];
+        ds = &dd->sectors[i];
+        wptrs[0] = &ds->header[0];
+        wptrs[1] = &ds->label[0];
+        wptrs[2] = &ds->data[0];
 
-            /* Process data in little endian format. */
-            c = fputc((int) (w & 0xFF), fp);
-            if (c == EOF) goto error;
+        for (k = 0; k < 3; k++) {
+            wptr = wptrs[k];
+            max_j = max_js[k];
+            /* Write in reverse order to match the Diablo disk format. */
+            for (j = max_j - 1; j-- > 1;) {
+                w = wptr[j];
 
-            c = fputc((int) ((w >> 8) & 0xFF), fp);
-            if (c == EOF) goto error;
+                /* Process data in little endian format. */
+                c = fputc((int) (w & 0xFF), fp);
+                if (c == EOF) goto error;
+
+                c = fputc((int) ((w >> 8) & 0xFF), fp);
+                if (c == EOF) goto error;
+            }
         }
     }
 
@@ -707,60 +749,34 @@ void ds_interrupt(struct disk *dsk)
     }
 }
 
-/* Computes the checksum of parts of the sector.
- * The array with the data is given by `data`. This array is of
- * length `len`.
- * Returns the checksum.
- */
-static
-uint16_t compute_checksum(const uint16_t *data, uint16_t len)
-{
-    uint16_t i, output;
-    output = 0x0151;
-    for (i = 0; i < len; i++) {
-        output ^= data[i];
-    }
-    return output;
-}
-
 /* Obtains a word from the sector.
  * The parameter `ds` contains the sector data (header, label, and data).
  * The index of the word in the sector is given by `sector_word`.
  * The `word_type` parameter is to disambiguate between the different
- * types of words. The parameter `checksum` returns the checksum, when it
- * is a checksum word.
+ * types of words.
  * Returns a pointer to the word within the sector. If NULL, `word_type`
- * is one of WT_GAP, WT_SYNC, or WT_CHECKSUM
+ * must be WT_GAP.
  */
 static
-uint16_t *get_sector_word(struct disk_sector *ds, uint16_t sector_word,
-                          int *word_type, uint16_t *checksum)
+uint16_t *get_sector_word(struct disk_sector *ds,
+                          uint16_t sector_word, int *word_type)
 {
+    uint16_t i;
+
     /* First gap. */
     if (sector_word < DS_HEADER) {
         *word_type = WT_GAP;
         return NULL;
     }
 
-    /* The sync word. */
-    if (sector_word <= DS_HEADER) {
-        *word_type = WT_SYNC;
-        return NULL;
-    }
-
     /* Header part. */
-    if (sector_word <= DS_HEADER + 2) {
-        *word_type = WT_DATA;
-
-        /* Data is in reverse. */
-        return &ds->header[DS_HEADER + 2 - sector_word];
-    }
-
-    /* Checksum of header. */
-    if (sector_word <= DS_HEADER + 3) {
-        *word_type = WT_CHECKSUM;
-        *checksum = compute_checksum(&ds->header[0], 2);
-        return NULL;
+    if (sector_word < DS_HEADER + DS_HEADER_DSIZE) {
+        i = sector_word - DS_HEADER;
+        if (i == 0)
+            *word_type = WT_SYNC;
+        else
+            *word_type = WT_DATA;
+        return &ds->header[i];
     }
 
     /* Second gap. */
@@ -769,25 +785,14 @@ uint16_t *get_sector_word(struct disk_sector *ds, uint16_t sector_word,
         return NULL;
     }
 
-    /* The sync word. */
-    if (sector_word <= DS_LABEL) {
-        *word_type = WT_SYNC;
-        return NULL;
-    }
-
     /* Label part. */
-    if (sector_word <= DS_LABEL + 8) {
-        *word_type = WT_DATA;
-
-        /* Data is in reverse. */
-        return &ds->label[DS_LABEL + 8 - sector_word];
-    }
-
-    /* Checksum of label. */
-    if (sector_word <= DS_LABEL + 9) {
-        *word_type = WT_CHECKSUM;
-        *checksum = compute_checksum(&ds->label[0], 8);
-        return NULL;
+    if (sector_word < DS_LABEL + DS_LABEL_DSIZE) {
+        i = sector_word - DS_LABEL;
+        if (i == 0)
+            *word_type = WT_SYNC;
+        else
+            *word_type = WT_DATA;
+        return &ds->label[i];
     }
 
     /* Third gap. */
@@ -796,25 +801,14 @@ uint16_t *get_sector_word(struct disk_sector *ds, uint16_t sector_word,
         return NULL;
     }
 
-    /* The sync word. */
-    if (sector_word <= DS_DATA) {
-        *word_type = WT_SYNC;
-        return NULL;
-    }
-
     /* Data part. */
-    if (sector_word <= DS_DATA + 256) {
-        *word_type = WT_DATA;
-
-        /* Data is in reverse. */
-        return &ds->data[DS_DATA + 256 - sector_word];
-    }
-
-    /* Checksum of label. */
-    if (sector_word <= DS_DATA + 257) {
-        *word_type = WT_CHECKSUM;
-        *checksum = compute_checksum(&ds->data[0], 256);
-        return NULL;
+    if (sector_word < DS_DATA + DS_DATA_DSIZE) {
+        i = sector_word - DS_DATA;
+        if (i == 0)
+            *word_type = WT_SYNC;
+        else
+            *word_type = WT_DATA;
+        return &ds->data[i];
     }
 
     /* Last gap. */
@@ -828,7 +822,6 @@ void dw_interrupt(struct disk *dsk)
 {
     struct disk_drive *dd;
     struct disk_sector *ds;
-    uint16_t checksum;
     uint16_t vda, oper;
     uint16_t *w, wv;
     int shift;
@@ -847,16 +840,8 @@ void dw_interrupt(struct disk *dsk)
     vda += dd->sector;
 
     ds = &dd->sectors[vda];
-    w = get_sector_word(ds, dd->sector_word, &word_type, &checksum);
-    switch (word_type) {
-    case WT_DATA: wv = *w; break;
-    case WT_SYNC: wv = 1; break;
-    case WT_CHECKSUM: wv = checksum; break;
-    case WT_GAP:
-    default:
-        wv = 0;
-        break;
-    }
+    w = get_sector_word(ds, dd->sector_word, &word_type);
+    wv = (word_type == WT_GAP) ? 0 : w[0];
 
     seclate = (dsk->kstat & KSTAT_LATE);
     wdInhib = (dsk->kcomm & KCOMM_WDINHB);

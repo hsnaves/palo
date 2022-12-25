@@ -21,7 +21,10 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define NUM_DISK_DRIVES           2
+#define NUM_DISK_DRIVES               2
+#define DS_HEADER_DSIZE               4 /* Sync word + header + checksum. */
+#define DS_LABEL_DSIZE               10 /* Sync word + label + checksum. */
+#define DS_DATA_DSIZE               258 /* Sync word + data + checksum. */
 
 /* Data structures and types. */
 
@@ -32,11 +35,13 @@ struct disk_geometry {
     uint16_t num_sectors;         /* Number of sectors per head. */
 };
 
-/* Structure representing a disk sector. */
+/* Structure representing a disk sector.
+ * The words are stored in reverse to match the Diable disk format.
+ */
 struct disk_sector {
-    uint16_t header[2];           /* Sector header. */
-    uint16_t label[8];            /* The sector label. */
-    uint16_t data[256];           /* Sector data. */
+    uint16_t header[DS_HEADER_DSIZE];
+    uint16_t label[DS_LABEL_DSIZE];
+    uint16_t data[DS_DATA_DSIZE];
 };
 
 /* A single disk driver structure. */
@@ -57,7 +62,7 @@ struct disk_drive {
 
 /* Structure representing the disk controller for the simulator. */
 struct disk {
-    struct disk_drive drives[2];  /* The two disk drives. */
+    struct disk_drive drives[NUM_DISK_DRIVES]; /* The two disk drives. */
     uint16_t kstat;               /* KSTAT register. */
     uint16_t kdata_read;          /* KDATA register (to read). */
     uint16_t kdata;               /* KDATA register (written value). */
