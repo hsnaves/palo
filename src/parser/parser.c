@@ -1,4 +1,9 @@
 
+/* To implement the assembler, the AltoSubsystems_Oct79.pdf manual
+ * was used. It can be found at:
+ *   https://bitsavers.computerhistory.org/pdf/xerox/alto/
+ */
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -466,6 +471,16 @@ int parse_include_file(struct parser *p)
     unsigned int line_num;
     int ret;
 
+    /* According to page 77 of AltoSubsystems_Oct79.pdf
+     *
+     *   Include statements have the form:
+     *     #filename;
+     *   They cause the contents of the specified file to replace the
+     *   include statement. Nesting to three levels is allowed.
+     *
+     * Note: we do not impose limits on nesting here.
+     */
+
     ret = consume_punctuation(p, '#');
     if (ret != OK) return ret;
 
@@ -507,6 +522,26 @@ int parse_declaration(struct parser *p)
     struct token *tk;
     struct symbol_info *si;
     int ret;
+
+    /* According to pages 77 and 78 of AltoSubsystems_Oct79.pdf
+     *
+     *   Declarations are of three types: symbol definitions, constant
+     *   definitions, and R memory names.
+     *
+     *   Symbol definitions have the form:
+     *     $name$Ln1,n2,n3;
+     *   The symbol "name" is defined, with values n1, n2, and n3.
+     *   ...
+     *
+     *   Normal constants are declared thus:
+     *     $name$n;
+     *   ...
+     *
+     *   R memory names are defined with:
+     *     $name$Rn;    0<=n<40B
+     *     (100B if your Alto has a RAM board, as most do)
+     *   An R location may have several names.
+     */
 
     ret = consume_punctuation(p, '$');
     if (ret != OK) return ret;
@@ -600,6 +635,19 @@ int parse_address_predefinition(struct parser *p)
     struct symbol_info *symbol_infos;
     int ret, extended;
 
+    /* According to page 78 of AltoSubsystems_Oct79.pdf,
+     *
+     *   Address predefinitions allow groups of instructions to be
+     *   placed in specific locations in the control memory, as is
+     *   required by the OR branching scheme used by the Alto. Their
+     *   syntax is:
+     *     !n,k,name0,name1,name2,...,name{k-1};
+     *   ...
+     *   A more general variant of the predefinition facility is
+     *   available. The syntax is:
+     *      %mask2, mask1, init, L1, L2, ..., Ln;
+     *   ...
+     */
     tk = peek_token(p, FALSE);
     if (unlikely(!tk)) return ERROR;
 
@@ -649,6 +697,10 @@ int parse_address_predefinition(struct parser *p)
             ret = parse_name(p, &name);
             if (ret != OK) return ret;
 
+            /* According to AltoSubsystems_Oct79.pdf,
+             *  A predefinition must be the first mention of the
+             *  name in the source text.
+             */
             ret = add_symbol(p, &name, TRUE, &si);
             if (unlikely(ret == ERROR)) return ERROR;
             if (ret == FAIL) {
@@ -721,6 +773,34 @@ int parse_executable_statement(struct parser *p)
     struct parser_node *lhs, *lhs_last;
     int is_first, is_goto;
     int ret;
+
+    /* According to page 79 of AltoSubsystems_Oct79.pdf
+     *
+     *   Executable code statements consist of an optional label followed
+     *   by a number of clauses separated by commas, and terminated with a
+     *   semi-colon
+     *     label: clause, clause, clause, ...;
+     *   ....
+     *
+     *   Clauses are of three types: gotos, nondata functions, and
+     *   assignments.
+     *
+     *   Goto clauses are of the form ':label' and cause the value of the
+     *   label to be assembled into the NEXT field of the instruction. If
+     *   the label is undefined, a chain of forward references is
+     *   constructed which will be fixed up when the symbol is encountered
+     *   as a label.
+     *
+     *   Nondata functions must be defined (by a literal symbol definition)
+     *   before being encountered in a code clause. This type of clause
+     *   assembles into the F1, F2, or F3 fields, and represent either a
+     *   branch condition or a control function (e.g., BUS=0, TASK).
+     *
+     *   All data transfers (assignments) are specified by assignments of
+     *   the form:
+     *     dest1<- dest2<- ... <- source
+     *   ...
+     */
 
     st = new_statement(p);
     if (unlikely(!st)) return ERROR;
@@ -874,6 +954,12 @@ int parse_statement(struct parser *p)
     struct token *tk;
     char c;
 
+    /* According to page 77 of AltoSubsystems_Oct79.pdf
+     *
+     *   Statements are of four basic types: include statements,
+     *   declarations, address predefinitions, and executable code.
+     */
+
     tk = peek_token(p, FALSE);
     if (unlikely(!tk)) return ERROR;
 
@@ -902,6 +988,17 @@ int parse_statements(struct parser *p)
     struct token *tk;
     int ret, success;
 
+    /* According to page 77 of AltoSubsystems_Oct79.pdf
+     *
+     *   An Alto microprogram consists of a number of statements and
+     *   comments. Statements are terminated by semicolons, and everything
+     *   between the semicolon and the next Return is treated as a
+     *   comment. Statements can thus span several lines of text (the
+     *   current limit is 500 characters). All other control characters
+     *   and blanks are ignored. Bravo formatting is also ignored.
+     *
+     * Note: we do not impose character limits here.
+     */
     success = TRUE;
     while (TRUE) {
         tk = peek_token(p, FALSE);

@@ -1,4 +1,9 @@
 
+/* To implement the assembler, the AltoSubsystems_Oct79.pdf manual
+ * was used. It can be found at:
+ *   https://bitsavers.computerhistory.org/pdf/xerox/alto/
+ */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -50,6 +55,33 @@
 #define LST_XMAR                 035
 
 /* Macros. */
+/* According to pages 82 and 83 of AltoSybsystems_Oct79.pdf.
+ *
+ *   The value of a symbol is a 3 word quantity. The first word contains
+ *   a type (6 bits) and a value (10 bits) which determines the
+ *   interpretation of the symbol in all cases except when it is
+ *   encountered as the source in a data transfer clause (assignment).
+ *   The second word contains the type and value used in this case.
+ *   The third word contains the bits specifying the definitional
+ *   requirements and source attributes applied when the symbol is
+ *   encountered in an assignment. The definitional requirements are
+ *   represented by single bits where zero means "must be defined" and
+ *   one means "don't care".
+ *
+ *     Destination-imposed requirements:
+ *       Bit 0: 0 if L output must be defined
+ *       Bit 1: 0 if BUS must be defined
+ *       Bit 2: 0 if ALU output must be defined.
+ *       Bits 3-7: Unused (?)
+ *     Source attributes:
+ *       Bit 8: L is defined.
+ *       Bit 9: Bus is defined
+ *       Bit 10: ALU output is defined
+ *       Bit 14: ALU output is defined if BUS is defined
+ *
+ * Note: recall bits are numbered in reverse order in the Alto.
+ */
+
 #define LITERAL_ATTRB_REQUIRE(n) (((n) >> 13) & 0x7)
 #define LITERAL_ATTRB_DEFINE(n) (((n) >> 5) & 0x7)
 #define LITERAL_ATTRB_EXTRA(n) (((n) >> 1) & 0x1)
@@ -163,6 +195,24 @@ uint16_t find_constant_slot(struct assembler *as, uint16_t val,
                             uint16_t bs, int has_bs_mask)
 {
     uint16_t slot;
+
+    /* According to page 77 of AltoSubsystems_Oct79.pdf,
+     *
+     *   Normal constants are declared thus:
+     *     $name$n;
+     *   This declares a 16 bit unsigned constant with value n. The
+     *   assembler assigns the constant to the first free location in
+     *   constant  memory, unless the value has appeared before under
+     *   another name in which case the value of the name is the address
+     *   of the previously declared constant.
+     *   An alternative constant definition is used for mask constants
+     *   which have a specific bus source (recall that the constant memory
+     *   address is the concatenation of the rselect and bus source fields
+     *   of the microinstruction). The syntax is:
+     *     $name$Mn:v;   4<=n<=7, 0<=v<2**16
+     *   Here n specifies the desired bus source value, v is the constant
+     *   value.
+     */
     for (slot = 0; slot < CONSTANT_SIZE; slot++) {
         if (as->const_sts[slot]) {
             if (as->consts[slot] != val) continue;
@@ -189,6 +239,7 @@ int assembler_resolve_constants(struct assembler *as)
         case ST_DECLARATION:
             switch (st->v.decl.d_type) {
             case DECL_SYMBOL:
+                /* To handle the special case of 0 constant. */
                 if (LITERAL_SYMB_TYPE(st->v.decl.n2) != LST_CONSTANT)
                     goto skip;
                 val = LITERAL_SYMB_VALUE(st->v.decl.n2);
@@ -234,12 +285,14 @@ int assembler_resolve_constants(struct assembler *as)
 }
 
 /* Finds an empty slot for the microcode and assignes the labels.
- * The pointer to the address_predefinition is in `apdef`.
+ * The pointer to the address_predefinition is in `apdef`. The
+ * parameters `filename` and `line_num` are for error reporting.
  * Returns the slot number.
  */
 static
 uint16_t find_microcode_slot(struct assembler *as,
-                             struct address_predefinition *apdef)
+                             struct address_predefinition *apdef,
+                             const char *filename, unsigned int line_num)
 {
     uint16_t address, j, num, num_labels;
     uint16_t mask1, mask2, not_mask2;
@@ -251,9 +304,23 @@ uint16_t find_microcode_slot(struct assembler *as,
     num_labels = apdef->num_labels;
 
     if (apdef->extended) {
-        /* Not sure if this is correct.
-         * This is guess work, which was entirely based on the
-         * addresses of the generated ROM file.
+        /* According to page 78 of AltoSubsystems_Oct79.pdf,
+         *
+         *   A more general variant of the predefinition facility is
+         *   available. The syntax is:
+         *      %mask2, mask1, init, L1, L2, ..., Ln;
+         *   The effect of this is to find a block of instructions
+         *   starting at location P, where P and mask1 = init, and assign
+         *   the L's to 'successive' locations under mask2.
+         *   For example:
+         *     %1,1,0,x0,x1;
+         *   would force x0 to an even position, x1 to odd (the normal
+         *   predefinition for most branches).
+         *     %360,377,17,L0,L1,...,L15;
+         *   would place L0 at xx17, L1 at xx37, L2 at xx57, etc.
+         *   As before, if there are unused slots (e.g., 'L2,,L4') they
+         *   are available for reassignment, and MU complains if there
+         *   are too many labels for the block.
          */
         mask1 = apdef->k;
         mask2 = apdef->n;
@@ -285,7 +352,12 @@ uint16_t find_microcode_slot(struct assembler *as,
             if (num == num_labels) break;
         }
 
-        if (address == MICROCODE_SIZE) return address;
+        if (address == MICROCODE_SIZE) {
+            report_error("assembler: resolve_labels: %s:%d: "
+                         "no free slots available",
+                         filename, line_num);
+            return address;
+        }
 
         j = 0;
         for (num = 0; num < num_labels; num++) {
@@ -307,8 +379,42 @@ uint16_t find_microcode_slot(struct assembler *as,
             }
         }
     } else {
+        /* According to page 78 of AltoSubsystems_Oct79.pdf,
+         *
+         *   Address predefinitions allow groups of instructions to be
+         *   placed in specific locations in the control memory, as is
+         *   required by the OR branching scheme used by the Alto. Their
+         *   syntax is:
+         *     !n,k,name0,name1,name2,...,name{k-1};
+         *   This declaration causes a block of consecutive locations to
+         *   be allocated in the instruction memory, and the names assigned
+         *   to them. n defines the location of the block, in that if L
+         *   is the address of the last location of the block, L and n = n.
+         *   Usually, n will be 2**p - 1 for some small p. For example, if
+         *   the predefinition
+         *     !3,4,foo0,foo1,foo2,foo3;
+         *   is encountered in the source text before any executable
+         *   statement, the labels foo0-foo3 will be assigned to control
+         *   memory locations 0-3. If there are too few names, they are
+         *   assigned to the low addresses in the block. If there are too
+         *   many, they are discarded, and an error is indicated. If there
+         *   are missing labels, e.g. 'foo0,,foo2', the locations remain
+         *   available for the normal instruction allocation process. A
+         *   predefinition must be the first mention of the name in the
+         *   source text (forward references or labels encountered before
+         *   a predefinition of a given name cause an error when the
+         *   predefinition is encountered.)
+         */
         mask1 = apdef->n;
         len = apdef->k;
+
+        if (num_labels > len) {
+            /* Issue a warning here. */
+            report_error("assembler: resolve_labels: %s:%d: "
+                         "discarding excess labels (k < num_labels)",
+                         filename, line_num);
+        }
+
         for (address = 0; address < MICROCODE_SIZE; address++) {
             if ((address + len - 1) >= MICROCODE_SIZE) continue;
             if (((address + len - 1) & mask1) != mask1) continue;
@@ -318,7 +424,12 @@ uint16_t find_microcode_slot(struct assembler *as,
             if (j == len) break;
         }
 
-        if (address == MICROCODE_SIZE) return address;
+        if (address == MICROCODE_SIZE) {
+            report_error("assembler: resolve_labels: %s:%d: "
+                         "no free slots available",
+                         filename, line_num);
+            return address;
+        }
 
         for (j = 0; j < len; j++) {
             if (!pn) break;
@@ -352,30 +463,49 @@ int assembler_resolve_labels(struct assembler *as)
             break;
 
         case ST_ADDRESS_PREDEFINITION:
-            address = find_microcode_slot(as, &st->v.addr);
+            address = find_microcode_slot(as, &st->v.addr,
+                                          st->filename,
+                                          st->line_num);
             if (address == MICROCODE_SIZE)
-                goto error_overflow;
+                return FALSE;
             break;
 
         case ST_EXECUTABLE:
             si = st->v.exec.si;
             if (si) {
-                /* To resolve the address. */
+                /* If the label has no address yet, we force the
+                 * address resolution to use the fake address
+                 * predefintion below.
+                 */
                 if (!si->addr) si = NULL;
             }
 
             if (si) {
-                address = st->v.exec.si->address;
+                /* Use the address of the label. */
+                address = si->address;
             } else {
+                /* We create a fake address predefinition just
+                 * to call find_microcode_slot() to resolve the
+                 * address of this statement.
+                 *
+                 * According to page 79 of AltoSubsystems_Oct79.pdf,
+                 *
+                 *   If a label has been predefined, the instruction is
+                 *   placed at the control memory location reserved for
+                 *   it. Otherwise, it is assigned to the lowest unused
+                 *   location.
+                 */
                 apdef.n = 0;
                 apdef.k = 1;
                 apdef.l = 0;
                 apdef.extended = FALSE;
                 apdef.labels = NULL;
                 apdef.num_labels = 0;
-                address = find_microcode_slot(as, &apdef);
+                address = find_microcode_slot(as, &apdef,
+                                              st->filename,
+                                              st->line_num);
                 if (address >= MICROCODE_SIZE)
-                    goto error_overflow;
+                    return FALSE;
                 si = st->v.exec.si;
                 if (si) si->address = address;
             }
@@ -391,80 +521,6 @@ int assembler_resolve_labels(struct assembler *as)
     }
 
     return TRUE;
-
-error_overflow:
-    report_error("assembler: resolve_labels: %s:%d: overflow",
-                 st->filename, st->line_num);
-    return FALSE;
-}
-
-/* Resolves a symbol by name to symbol_info.
- * Returns the symbol information.
- */
-static
-struct symbol_info *resolve_symbol(struct assembler *as,
-                                   const struct string *name)
-{
-    struct string_node *n;
-    struct symbol_info *si;
-
-    n = table_find(&as->p.symbols, name);
-    if (n) {
-        size_t offset;
-        offset = offsetof(struct symbol_info, n);
-        si = (struct symbol_info *) &(((char *) n)[-offset]);
-    } else {
-        si = NULL;
-    }
-    return si;
-}
-
-/* Resolves the RHS of an assignment expression.
- * Returns the
- */
-static
-void resolve_rhs(struct assembler *as,
-                 const struct string *name,
-                 struct symbol_info **first,
-                 struct symbol_info **second)
-{
-    struct string copy;
-    struct symbol_info *si;
-    size_t i;
-
-    /* Tries to resolve the symbol as is. */
-    si = resolve_symbol(as, name);
-    if (si) {
-        *first = si;
-        *second = NULL;
-        return;
-    }
-
-    /* Break the RHS into 2 parts, and resolve each
-     * one independently.
-     */
-    for (i = 1; i + 1 < name->len; i++) {
-        copy.s = name->s;
-        copy.len = i;
-        copy.hash = string_hash(copy.s, copy.len);
-
-        si = resolve_symbol(as, &copy);
-        if (!si) continue;
-        *first = si;
-
-        copy.s = &name->s[i];
-        copy.len = name->len - i;
-        copy.hash = string_hash(copy.s, copy.len);
-
-        si = resolve_symbol(as, &copy);
-        if (!si) continue;
-
-        *second = si;
-        return;
-    }
-
-    *first = NULL;
-    *second = NULL;
 }
 
 #define CREATE_SET_FUNCTION(field) \
@@ -489,6 +545,27 @@ CREATE_SET_FUNCTION(f3)
 CREATE_SET_FUNCTION(rsel)
 CREATE_SET_FUNCTION(aluf)
 CREATE_SET_FUNCTION(bs)
+
+/* Resolves a symbol by name to symbol_info.
+ * Returns the symbol information.
+ */
+static
+struct symbol_info *resolve_symbol(struct assembler *as,
+                                   const struct string *name)
+{
+    struct string_node *n;
+    struct symbol_info *si;
+
+    n = table_find(&as->p.symbols, name);
+    if (n) {
+        size_t offset;
+        offset = offsetof(struct symbol_info, n);
+        si = (struct symbol_info *) &(((char *) n)[-offset]);
+    } else {
+        si = NULL;
+    }
+    return si;
+}
 
 /* Processes a GOTO clause.
  * Returns TRUE on success.
@@ -604,6 +681,149 @@ int process_function_clause(struct instruction *insn,
     return TRUE;
 }
 
+/* Resolves the RHS of an assignment expression.
+ * The parameter `name` specifies the RHS string to be resolved.
+ * The parameter `req` specifies the requirements for the RHS,
+ * and it consists of the bitwise OR of a bunch of LSA_* constants.
+ * It might be broken down intwo two component substrings
+ * If that is the case the parameters `first` and `second`
+ * will return the symbol information of the two parts. If
+ * `name` does not need to be broken, only `first` is populated
+ * and `second` returns NULL.
+ * Lastly, `gate_alu` returns TRUE if the ALU should be gated
+ * to return the BUS.
+ */
+static
+void resolve_rhs(struct assembler *as,
+                 const struct string *name, uint16_t req,
+                 struct symbol_info **first, struct symbol_info **second,
+                 int *gate_alu)
+{
+    struct string copy;
+    struct symbol_info *si;
+    struct declaration *decl;
+    uint16_t def;
+    size_t i;
+
+    /*
+     * According to pages 79 of AltoSybsystems_Oct79.pdf.
+     *
+     *   If neither of the above conditions hold, the source can legally
+     *   be only a bus source concatenated with an ALU function. The source
+     *   token is repeatedly broken into two substrings, and each is looked
+     *   up in the symbol table. If two substrings can be found which
+     *   satisfy the requirements, the field assignment implied by both are
+     *   made: otherwise an error is generated. This method of evaluation
+     *   is simple, but it has pitfalls. For instance, 'L<- 2 + T' is legal
+     *   (provided that the constant "2" has been defined) but 'L<- T + 2'
+     *   is not (and the BUS operand must always be on the left). Note that
+     *   'L<- foo + T + 1' specifies a bus source of 'foo' and an ALU
+     *   function of '+T+1'.
+     *
+     *   CAVEAT: The T register maybe loaded from either the BUS or the
+     *   output of the ALU, depending on the ALU function. The assembler
+     *   does not check to see whether an assignment is of the form
+     *   'T<- ALU' specifies an ALU function that actually loads T from the
+     *   ALU. For example, the clause 'L<- T<- MD - T' is accepted, but its
+     *   effect is to load T directly from MD. If this is what you intend,
+     *   it makes matters clearer if you write 'L<- MD - T, T<- MD'; if it
+     *   is not what you intend, you are in trouble. Beware!
+     *
+     * Page 82 also states:
+     *
+     *   When the source token is encountered, if it is a defined symbol
+     *   it is tested by checking the definitional requirements of the
+     *   destinations against the corresponding attributes in the source.
+     *   If all destination requirements are satisfied, the clause is
+     *   complete. If the only unsatisfied requirement is ALU definition,
+     *   and the BUS is defined, the ALU function is set to gate the BUS
+     *   through (thereby defining the ALU), and the clause is complete.
+     *   If this doesn't work, or the source token is not a defined symbol,
+     *   the source string is dismembered in search for two substrings,
+     *   the first of which defines the BUS (bit 9), and the second of
+     *   which defines the ALU output if the BUS is defined (bit 14). If
+     *   two substrings are found, the implied assignments are made, and
+     *   the clause is complete. Otherwise, an error is indicated.
+
+     */
+
+    /* Tries to resolve the symbol as is. */
+    si = resolve_symbol(as, name);
+    if (!si) goto break_name;
+    if (!si->decl) goto break_name;
+
+    decl = &si->decl->v.decl;
+    if (decl->d_type == DECL_SYMBOL) {
+        def = LITERAL_ATTRB_DEFINE(decl->n3);
+    } else {
+        def = LSA_BUS;
+    }
+
+    if ((req | def) == (LSA_L | LSA_BUS)) {
+        /* Gate the ALU results. */
+        def |= LSA_ALU;
+        *gate_alu = TRUE;
+    } else {
+        *gate_alu = FALSE;
+    }
+
+    if ((req | def) != (LSA_L | LSA_BUS | LSA_ALU))
+        goto break_name;
+
+    *first = si;
+    *second = NULL;
+    return;
+
+break_name:
+
+    /* Break the RHS into 2 parts, and resolve each
+     * one independently.
+     */
+    for (i = 1; i + 1 < name->len; i++) {
+        copy.s = name->s;
+        copy.len = i;
+        copy.hash = string_hash(copy.s, copy.len);
+
+        si = resolve_symbol(as, &copy);
+        if (!si) continue;
+        if (!si->decl) continue;
+
+        decl = &si->decl->v.decl;
+        if (decl->d_type == DECL_SYMBOL) {
+            def = LITERAL_ATTRB_DEFINE(decl->n3);
+        } else {
+            def = LSA_BUS;
+        }
+
+        if (def != LSA_BUS) continue;
+        *first = si;
+
+        copy.s = &name->s[i];
+        copy.len = name->len - i;
+        copy.hash = string_hash(copy.s, copy.len);
+
+        si = resolve_symbol(as, &copy);
+        if (!si) continue;
+        if (!si->decl) continue;
+
+        decl = &si->decl->v.decl;
+        if (decl->d_type != DECL_SYMBOL) continue;
+        if (!LITERAL_ATTRB_EXTRA(decl->n3)) continue;
+
+        def |= LSA_ALU;
+
+        if ((req | def) != (LSA_L | LSA_BUS | LSA_ALU))
+            continue;
+
+        *second = si;
+        *gate_alu = FALSE;
+        return;
+    }
+
+    *first = NULL;
+    *second = NULL;
+}
+
 /* Processes an assignment clause.
  * Returns TRUE on success.
  */
@@ -616,9 +836,34 @@ int process_assignment_clause(struct instruction *insn,
     struct parser_node *pn;
     struct declaration *decl;
     uint16_t lst;
-    uint16_t req, def;
+    uint16_t req;
     uint16_t val;
     int has_load_t;
+    int gate_alu;
+
+    /* According to pages 79 of AltoSybsystems_Oct79.pdf.
+     *
+     *   This type of clause is assembled by looking up the destinations,
+     *   checking their legality, and making the field assignments implied
+     *   by the symbol types. Each destination imposes definitional
+     *   requirements on the source (e.g., ALU output must be defined, BUS
+     *   must be defined). These requirements must be satisfied by the
+     *   source in order for the statement to be legal.
+     *
+     *   When the source is encountered, it is looked up in the symbol
+     *   table. If it is legal and satisfies the definitional requirements
+     *   imposed by the destinations, the necessary field assignments are
+     *   made, and processing continues. If the entire source defines the
+     *   BUS, and the only remaining requirement is that the ALU output
+     *   must be defined (e.g., L<- MD), the ALUF field is set to 0 (ALU
+     *   output = BUS), and processing continues.
+     *
+     * Page 82 also states:
+     *
+     *   Assignment processing proceeds by ANDing together the attribute
+     *   words for all the destinations. The result contains zeros in the
+     *   bits 0-2 for things that must be defined and ones elsewhere.
+     */
 
     has_load_t = FALSE;
     st = insn->st;
@@ -706,7 +951,7 @@ int process_assignment_clause(struct instruction *insn,
         }
     }
 
-    resolve_rhs(insn->as, &cl->name, &si, &si_extra);
+    resolve_rhs(insn->as, &cl->name, req, &si, &si_extra, &gate_alu);
     if (!si) {
         report_error("assembler: assemble: %s:%d: "
                      "%s is not a valid RHS",
@@ -715,19 +960,9 @@ int process_assignment_clause(struct instruction *insn,
         return FALSE;
     }
 
-    if (!si->decl) {
-        report_error("assembler: assemble: %s:%d: "
-                     "RHS %s has no declaration",
-                     st->filename, st->line_num,
-                     si->n.str.s);
-        return FALSE;
-    }
-
     decl = &si->decl->v.decl;
 
-    def = 0;
     if (decl->d_type == DECL_SYMBOL) {
-        def = LITERAL_ATTRB_DEFINE(decl->n3);
         lst = LITERAL_SYMB_TYPE(decl->n2);
         val = LITERAL_SYMB_VALUE(decl->n2);
 
@@ -773,19 +1008,16 @@ int process_assignment_clause(struct instruction *insn,
             return FALSE;
         }
     } else if (decl->d_type == DECL_CONSTANT) {
-        def = LSA_BUS;
         insn->has_constant = TRUE;
         if (!set_rsel(insn, CONST_ADDR_RSEL(decl->si->address)))
             return FALSE;
         if (!set_bs(insn, CONST_ADDR_BS(decl->si->address)))
             return FALSE;
     } else if (decl->d_type == DECL_M_CONSTANT) {
-        def = LSA_BUS;
         insn->has_m_constant = TRUE;
         if (!set_rsel(insn, CONST_ADDR_RSEL(decl->si->address)))
             return FALSE;
     } else if (decl->d_type == DECL_R_MEMORY) {
-        def = LSA_BUS;
         if (decl->n1 <= R_MASK) {
             if (!set_rsel(insn, decl->n1 & R_MASK))
                 return FALSE;
@@ -800,13 +1032,6 @@ int process_assignment_clause(struct instruction *insn,
     }
 
     if (si_extra) {
-        if (!si_extra->decl) {
-            report_error("assembler: assemble: %s:%d: "
-                         "RHS suffix %s has no declaration",
-                         st->filename, st->line_num,
-                         si_extra->n.str.s);
-            return FALSE;
-        }
         decl = &si_extra->decl->v.decl;
 
         if (decl->d_type != DECL_SYMBOL) {
@@ -836,24 +1061,12 @@ int process_assignment_clause(struct instruction *insn,
                          lst);
             return FALSE;
         }
-
-        def |= LITERAL_ATTRB_DEFINE(decl->n3);
-        if (LITERAL_ATTRB_EXTRA(decl->n3))
-            def |= LSA_ALU;
     }
 
-    if ((req | def) == (LSA_L | LSA_BUS)) {
+    if (gate_alu) {
         /* Gate the ALU results. */
-        def |= LSA_ALU;
         if (!set_aluf(insn, ALU_BUS))
             return FALSE;
-    }
-
-    if ((req | def) != (LSA_L | LSA_BUS | LSA_ALU)) {
-        report_error("assembler: assemble: %s:%d: "
-                     "requirements are not met in clause",
-                     st->filename, st->line_num);
-        return FALSE;
     }
 
     return TRUE;
@@ -938,15 +1151,15 @@ int assemble_one(struct assembler *as, struct statement *st,
         /* To support defined labels. */
         microcode = LITERAL_SYMB_VALUE(insn.goto_st->v.decl.n1);
     }
-    microcode &= 0x3FF;
+    microcode &= MC_NEXT_M;
 
-    microcode |= (insn.rsel & 0x1F) << 27;
-    microcode |= (insn.aluf & 0x0F) << 23;
-    microcode |= (insn.bs & 0x07) << 20;
-    microcode |= (insn.f1 & 0x0F) << 16;
-    microcode |= (insn.f2 & 0x0F) << 12;
-    if (insn.load_t) microcode |= (1 << 11);
-    if (insn.load_l) microcode |= (1 << 10);
+    microcode |= (insn.rsel & MC_RSEL_M) << MC_RSEL_S;
+    microcode |= (insn.aluf & MC_ALUF_M) << MC_ALUF_S;
+    microcode |= (insn.bs & MC_BS_M) << MC_BS_S;
+    microcode |= (insn.f1 & MC_F1_M) << MC_F1_S;
+    microcode |= (insn.f2 & MC_F2_M) << MC_F2_S;
+    if (insn.load_t) microcode |= (1 << MC_T_S);
+    if (insn.load_l) microcode |= (1 << MC_L_S);
 
     as->microcode[st->v.exec.address] = microcode;
     return TRUE;
@@ -1158,7 +1371,8 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
     fprintf(fp, "00    NEVER                   ILLEGAL\n");
     fprintf(fp, "01    ADDRESS                 UNDEFINED ADDRESS\n");
     fprintf(fp, "02    ADDRESS     NEXT        DEFINED ADDDRESS\n");
-    fprintf(fp, "03    LHS         RSEL        R LOCATION LHS\n");
+    fprintf(fp, "03    LHS         RSEL        R LOCATION LHS"
+                "[BS<- 0]\n");
     fprintf(fp, "04    RHS         RSEL        R LOCATION RHS\n");
     fprintf(fp, "05    RHS         RSEL,BS     CONSTANT\n");
     fprintf(fp, "06    RHS         BS          BUS SOURCE\n");
@@ -1171,7 +1385,7 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
                 "[BS<- 1, RSEL<- 0]\n");
     fprintf(fp, "15    RHS         F2          DATA F2 (RHS) "
                 "[BS<- 0, RSEL<- 0]\n");
-    fprintf(fp, "16    CLAUSE                  END\n");
+    fprintf(fp, "16    CLAUSE                  END [Not used]\n");
     fprintf(fp, "17    RHS                     READ L\n");
     fprintf(fp, "20    LHS         LOADL       LOAD L\n");
     fprintf(fp, "21    CLAUSE      F3          NONDATA F3\n");
