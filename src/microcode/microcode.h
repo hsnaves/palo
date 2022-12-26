@@ -259,20 +259,6 @@ void microcode_predecode(struct microcode *mc,
                          uint16_t address, uint32_t mcode,
                          uint8_t task);
 
-/* Function to guess the task from the microcode.
- * Returns a mask of possible tasks that can run the microcode.
- */
-uint16_t microcode_guess_tasks(const struct microcode *mc);
-
-/* Which bits of the following microcode's NEXT field can be
- * modified by the current microcode.
- * Returns the bit mask of modified by the microcode.
- * The result is 32 bits so it can accomodate some other meta
- * bits such as NEXT_MASK_DSK_INIT, NEXT_MASK_BUS, and
- * NEXT_MASK_CONSTANT.
- */
-uint32_t microcode_next_mask(const struct microcode *mc);
-
 /* Decodes the microinstruction from the decoder `dec` into the
  * output buffer `output`. The details of the microinstruction are
  * given by `mc`.
