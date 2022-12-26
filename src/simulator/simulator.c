@@ -574,6 +574,16 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         output &= sim->consts[mc->const_addr];
     }
 
+    if (mc->task == TASK_EMULATOR && mc->f1 == F1_EMU_RSNF) {
+        output &= ethernet_rsnf(&sim->ether);
+    } else if (mc->task == TASK_ETHERNET) {
+        if (mc->f1 == F1_ETH_EILFCT) {
+            output &= ethernet_eilfct(&sim->ether);
+        } else if (mc->f1 == F1_ETH_EPFCT) {
+            output &= ethernet_epfct(&sim->ether);
+        }
+    }
+
     switch (mc->bs) {
     case BS_READ_R:
         output &= sim->r[modified_rsel];
@@ -585,15 +595,6 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         output &= 0;
         break;
     case BS_NONE:
-        if (mc->task == TASK_EMULATOR && mc->f1 == F1_EMU_RSNF) {
-            output &= ethernet_rsnf(&sim->ether);
-        } else if (mc->task == TASK_ETHERNET) {
-            if (mc->f1 == F1_ETH_EILFCT) {
-                output &= ethernet_eilfct(&sim->ether);
-            } else if (mc->f1 == F1_ETH_EPFCT) {
-                output &= ethernet_epfct(&sim->ether);
-            }
-        }
         break;
     case BS_READ_MD:
         /* Wait until cycle 5 to perform the read. */
@@ -1553,6 +1554,13 @@ void check_for_interrupts(struct simulator *sim, int32_t prev_cycle)
         }
         if (sim->intr_cycle == sim->displ.intr_cycle) {
             display_interrupt(&sim->displ);
+            /* Transfer the TASK_ETHERNET pending bit
+             * to the ethernet object.
+             */
+            if (sim->displ.pending & (1 << TASK_ETHERNET)) {
+                sim->displ.pending &= ~(1 << TASK_ETHERNET);
+                sim->ether.pending |= (1 << TASK_ETHERNET);
+            }
         }
         if (sim->intr_cycle == sim->ether.intr_cycle) {
             ethernet_interrupt(&sim->ether);
@@ -1599,6 +1607,13 @@ void simulator_step(struct simulator *sim)
 
     /* Updates the cycles. */
     update_cycles(sim);
+
+    /* The Ethernet cycle needs to run ethernet_before_step() before*
+     * every step.
+     */
+    if (sim->ctask == TASK_ETHERNET) {
+        ethernet_before_step(&sim->ether);
+    }
 
     /* Copy the swmode in a local variable. */
     swmode = sim->swmode;

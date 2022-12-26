@@ -186,8 +186,7 @@ uint16_t ethernet_rsnf(struct ethernet *ether)
 void ethernet_startf(struct ethernet *ether, uint16_t bus)
 {
     ether->iocmd = (bus & 0x03);
-    /* TODO: once the ethernet controller is working, enable this. */
-    /* ether->pending |= (1 << TASK_ETHERNET); */
+    ether->pending |= (1 << TASK_ETHERNET);
 }
 
 uint16_t ethernet_eilfct(struct ethernet *ether)
@@ -227,7 +226,7 @@ void ethernet_eosfct(struct ethernet *ether)
 
 uint16_t ethernet_erbfct(struct ethernet *ether)
 {
-    return (ether->iocmd << 2);
+    return ((ether->iocmd & 3) << 2);
 }
 
 void ethernet_eefct(struct ethernet *ether, int32_t cycle)
@@ -342,6 +341,14 @@ void ethernet_interrupt(struct ethernet *ether)
     if (has_rx) rx_interrupt(ether);
 
     update_intr_cycle(ether);
+}
+
+void ethernet_before_step(struct ethernet *ether)
+{
+    if (ether->countdown_wakeup) {
+        ether->countdown_wakeup = FALSE;
+        ether->pending &= ~(1 << TASK_ETHERNET);
+    }
 }
 
 void ethernet_print_registers(struct ethernet *ether,

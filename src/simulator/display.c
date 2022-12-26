@@ -168,9 +168,8 @@ void dv_interrupt(struct display *displ)
     displ->vblank_scanline++;
 
     /* Wakup the memory refresh task. */
-    displ->pending |= (1 << TASK_MEMORY_REFRESH);
-
-    /* TODO: Wakeup the Ethernet task. */
+    displ->pending |= (1 << TASK_MEMORY_REFRESH)
+        | (1 << TASK_ETHERNET);
 
     vblank_thresh = displ->even_field ? 33 : 34;
 

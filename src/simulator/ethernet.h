@@ -134,6 +134,9 @@ void ethernet_block_task(struct ethernet *ether, uint8_t task);
 /* Processes the ethernet interrupts. */
 void ethernet_interrupt(struct ethernet *ether);
 
+/* Runs this before every microinstruction. */
+void ethernet_before_step(struct ethernet *ether);
+
 /* Prints the state of the registers.
  * The output is written to `output`.
  */

@@ -291,6 +291,12 @@ int disk_save_image(const struct disk *dsk, unsigned int drive_num,
                 c = fputc((int) ((w >> 8) & 0xFF), fp);
                 if (c == EOF) goto error;
             }
+
+            w = compute_checksum(&wptr[1], max_j - 2);
+            if (wptr[max_j - 1] != w) {
+                report_error("disk: save_image: "
+                             "invalid checksum on sector %u", i);
+            }
         }
     }
 
