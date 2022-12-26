@@ -22,7 +22,7 @@ LDFLAGS := $(shell sdl2-config --libs)
 INCLUDES := -I.
 LIBS :=
 
-TARGET := pmu palos
+TARGET := pmu par palos
 
 # Modify the FLAGS based on the options
 
@@ -47,6 +47,9 @@ include module.mk
 # Pattern rules
 
 pmu: $(PMU_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+par: $(PAR_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 palos: $(PALOS_OBJS)

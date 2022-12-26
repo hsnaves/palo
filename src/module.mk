@@ -2,6 +2,8 @@ PMU_OBJS := common/allocator.o common/table.o common/utils.o \
  assembler/assembler.o parser/lexer.o parser/parser.o \
  microcode/microcode.o pmu.o
 
+PAR_OBJS := fs/fs.o common/utils.o par.o
+
 PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
  simulator/display.o simulator/ethernet.o simulator/keyboard.o \
  simulator/mouse.o simulator/utils.o simulator/rom.o gui/gui.o \
@@ -9,10 +11,10 @@ PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
 
 OBJS := common/allocator.o common/table.o common/utils.o \
  assembler/assembler.o parser/lexer.o parser/parser.o \
- microcode/microcode.o pmu.o simulator/simulator.o simulator/disk.o \
- simulator/display.o simulator/ethernet.o simulator/keyboard.o \
- simulator/mouse.o simulator/utils.o simulator/rom.o \
- microcode/nova.o gui/gui.o debugger/debugger.o palos.o
+ microcode/microcode.o pmu.o fs/fs.o par.o simulator/simulator.o \
+ simulator/disk.o simulator/display.o simulator/ethernet.o \
+ simulator/keyboard.o simulator/mouse.o simulator/utils.o \
+ simulator/rom.o microcode/nova.o gui/gui.o debugger/debugger.o palos.o
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
@@ -29,6 +31,8 @@ microcode/microcode.o: microcode/microcode.c microcode/microcode.h \
 microcode/nova.o: microcode/nova.c microcode/nova.h common/utils.h
 pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
  common/allocator.h common/table.h common/utils.h
+fs/fs.o: fs/fs.c fs/fs.h common/utils.h
+par.o: par.c fs/fs.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  microcode/microcode.h common/utils.h simulator/disk.h simulator/display.h \
  simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
