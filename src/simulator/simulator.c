@@ -651,8 +651,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
                 }
                 break;
             } else if (mc->bs == BS_RAM_LOAD_S_LOCATION) {
-                /* Random garbage appears on the bus. */
-                output &= 0xBEEF;
+                output &= 0xFFFF;
                 break;
             }
         } else if (mc->task == TASK_ETHERNET && mc->bs == BS_ETH_EIDFCT) {
@@ -1880,14 +1879,15 @@ void simulator_print_extra_registers(const struct simulator *sim,
     }
 
     string_buffer_print(output,
-                        "XM_B : %03o        SR_B : %03o        "
-                        "RMR  : %07o    CRAM : %07o\n",
-                        sim->xm_banks[sim->ctask], rb,
-                        sim->rmr, sim->cram_addr);
+                        "M    : %07o    XM_B  : %03o        "
+                        "SR_B : %07o    RMR : %07o\n",
+                        sim->m,  sim->xm_banks[sim->ctask],
+                        rb, sim->rmr);
 
     string_buffer_print(output,
-                        "RDR  : %-7d    WRTR : %-7d    "
-                        "SRES : %d\n",
+                        "CRAM : %07o    RDR  : %-7d    "
+                        "WRTR : %-7d    SRES : %d\n",
+                        sim->cram_addr,
                         sim->rdram ? 1 : 0,
                         sim->wrtram ? 1 : 0,
                         sim->soft_reset ? 1 : 0);
