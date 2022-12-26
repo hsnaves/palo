@@ -16,7 +16,8 @@
 #define NUM_S_REGISTERS       (8 * 32)
 
 /* For the MPC. */
-#define MPC_BANK_MASK            0xC00
+#define MPC_BANK_SHIFT              10
+#define MPC_BANK_MASK            0x003
 #define MPC_ADDR_MASK            0x3FF
 
 /* For the memory. */
@@ -320,7 +321,6 @@ void simulator_reset(struct simulator *sim)
     sim->cram_addr = 0x0;
     sim->rdram = FALSE;
     sim->wrtram = FALSE;
-    sim->swmode = FALSE;
     sim->soft_reset = FALSE;
 
     sim->cycle = 0;
@@ -863,11 +863,12 @@ uint16_t get_pending(const struct simulator *sim)
  * The current predecoded microcode is in `mc`.
  * The value of the bus is in `bus`, and of the alu in `alu`.
  * The next task after the following microinstruction is returned
- * in  `nntask`.
+ * in  `nntask`. Lastly, the `swmode` parameter returns TRUE if
+ * a SWMODE instruction was executed.
  */
 static
 void do_f1(struct simulator *sim, const struct microcode *mc,
-           uint16_t bus, uint16_t alu, uint8_t *nntask)
+           uint16_t bus, uint16_t alu, uint8_t *nntask, int *swmode)
 {
     uint16_t addr;
     uint16_t pending;
@@ -875,6 +876,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     uint8_t tmp;
 
     *nntask = sim->ntask;
+    *swmode = FALSE;
 
     switch (mc->f1) {
     case F1_NONE:
@@ -949,6 +951,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                 sim->error = TRUE;
                 return;
             }
+            *swmode = TRUE;
             return;
         case F1_RAM_WRTRAM:
             sim->wrtram = TRUE;
@@ -969,9 +972,6 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
     switch (mc->task) {
     case TASK_EMULATOR:
         switch (mc->f1) {
-        case F1_EMU_SWMODE:
-            sim->swmode = TRUE;
-            break;
         case F1_EMU_LOAD_RMR:
             sim->rmr = bus;
             break;
@@ -996,6 +996,15 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
                 case 0x02:
                 case 0x03:
                     ethernet_startf(&sim->ether, bus);
+                    break;
+
+                case 0x04:
+                    /* TODO: Implement this for Orbit. */
+                    break;
+
+                case 0x10:
+                case 0x20:
+                    /* TODO: Implement this for Trident. */
                     break;
 
                 default:
@@ -1427,14 +1436,16 @@ void wb_registers(struct simulator *sim,
 /* Updates the micro program counter and the next task.
  * The bits that are to be modified in the NEXT field of the following
  * instruction are given by `next_extra`. The task following the next
- * instruction is given by `nntask`.
+ * instruction is given by `nntask`. If the SWMODE instruction was
+ * executed before this one, the flag `swmode` is set to TRUE.
  */
 static
 void update_program_counters(struct simulator *sim,
-                             uint16_t next_extra, uint8_t nntask)
+                             uint16_t next_extra, uint8_t nntask,
+                             int swmode)
 {
     uint32_t mcode;
-    uint16_t mpc;
+    uint16_t mpc, next_addr, bank;
     uint8_t task;
 
     /* Updates the current task. */
@@ -1445,8 +1456,66 @@ void update_program_counters(struct simulator *sim,
     task = sim->ctask;
     mpc = sim->task_mpc[task];
     mcode = sim->microcode[mpc];
-    sim->task_mpc[task] = (mpc & MPC_BANK_MASK)
-        | MICROCODE_NEXT(mcode) | next_extra;
+
+    next_addr = MICROCODE_NEXT(mcode) | next_extra;
+    bank = (mpc >> MPC_BANK_SHIFT) & MPC_BANK_MASK;
+    if (swmode) {
+        switch (sim->sys_type) {
+        case ALTO_I:
+        case ALTO_II_1KROM:
+            bank ^= 1; /* ROM0 <-> ROM1 */
+            break;
+
+        case ALTO_II_2KROM:
+            switch (bank) {
+            case 0: /* ROM0 */
+                /* ROM1 or RAM0 */
+                bank = (next_addr & 0x100) ? 1 : 2; break;
+            case 1: /* ROM1 */
+                /* RAM0 or ROM0 */
+                bank = (next_addr & 0x100) ? 2 : 0; break;
+            case 2: /* RAM0 */
+                /* ROM1 or ROM0 */
+                bank = (next_addr & 0x100) ? 1 : 0; break;
+            }
+            break;
+
+        case ALTO_II_3KRAM:
+            if (next_addr & 0x100) {
+                switch (bank) {
+                case 0: /* ROM0 */
+                    /* RAM0 or RAM1 */
+                    bank = (next_addr & 0x80) ? 1 : 2;
+                    break;
+                case 1: /* RAM0 */
+                    bank = 2; /* RAM1 */
+                    break;
+                case 2: /* RAM1 */
+                case 3: /* RAM2 */
+                    bank = 1; /* RAM0 */
+                    break;
+                }
+            } else {
+                switch (bank) {
+                case 0: /* ROM0 */
+                    /* RAM2 or RAM0 */
+                    bank = (next_addr & 0x80) ? 3 : 1;
+                    break;
+                case 1: /* RAM0 */
+                case 2: /* RAM1 */
+                    /* RAM2 or ROM0 */
+                    bank = (next_addr & 0x80) ? 3 : 0;
+                    break;
+                case 3: /* RAM2 */
+                    /* RAM1 or ROM0 */
+                    bank = (next_addr & 0x80) ? 2 : 0;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    sim->task_mpc[task] = (bank << MPC_BANK_SHIFT) | next_addr;
 
     sim->mir = mcode;
     sim->mpc = mpc;
@@ -1475,37 +1544,27 @@ void update_program_counters(struct simulator *sim,
     }
 }
 
-/* Performs a SWMODE. */
-static
-void do_swmode(struct simulator *sim)
-{
-    /* TODO: Implement this. */
-    sim->error = TRUE;
-    report_error("simulator: step: "
-                 "SWMODE not implemented\n");
-}
-
 /* Performs a soft reset. */
 static
 void do_soft_reset(struct simulator *sim)
 {
-    uint16_t addr, ram_addr;
+    uint16_t addr, bank;
     uint8_t task;
 
     memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
 
     if (sim->sys_type == ALTO_II_2KROM) {
-        ram_addr = 2048;
+        bank = 2;
     } else {
-        ram_addr = 1024;
+        bank = 1;
     }
 
     for (task = 0; task < TASK_NUM_TASKS; task++) {
         if ((1 << task) & sim->rmr) {
-            addr = ram_addr;
-            addr |= (uint16_t) task;
-        } else {
             addr = (uint16_t) task;
+        } else {
+            addr = (bank << MPC_BANK_SHIFT);
+            addr |= (uint16_t) task;
         }
         sim->task_mpc[task] = addr;
     }
@@ -1514,7 +1573,8 @@ void do_soft_reset(struct simulator *sim)
     sim->ntask = TASK_EMULATOR;
     sim->mpc = sim->task_mpc[sim->ctask];
     sim->mir = sim->microcode[sim->mpc];
-    sim->task_mpc[sim->ctask] = (sim->mpc & MPC_BANK_MASK)
+    bank = (sim->mpc >> MPC_BANK_SHIFT) & MPC_BANK_MASK;
+    sim->task_mpc[sim->ctask] = (bank << MPC_BANK_SHIFT)
         | MICROCODE_NEXT(sim->mir);
 
     /* This is a hack copied from ContrAlto source code. */
@@ -1615,10 +1675,6 @@ void simulator_step(struct simulator *sim)
         ethernet_before_step(&sim->ether);
     }
 
-    /* Copy the swmode in a local variable. */
-    swmode = sim->swmode;
-    sim->swmode = FALSE;
-
     /* Copy the soft_reset in a local variable. */
     soft_reset = sim->soft_reset;
     sim->soft_reset = FALSE;
@@ -1651,7 +1707,7 @@ void simulator_step(struct simulator *sim)
     shifter_output = do_shift(sim, &mc, &load_r, &nova_carry);
 
     /* Compute the F1 function. */
-    do_f1(sim, &mc, bus, alu, &nntask);
+    do_f1(sim, &mc, bus, alu, &nntask, &swmode);
     if (sim->error) return;
 
     /* Compute the F2 function. */
@@ -1666,10 +1722,7 @@ void simulator_step(struct simulator *sim)
                  bus, alu, shifter_output, aluC0);
 
     /* Update the micro program counter and the next task. */
-    update_program_counters(sim, next_extra, nntask);
-
-    /* Perform the SWMODE. */
-    if (swmode) do_swmode(sim);
+    update_program_counters(sim, next_extra, nntask, swmode);
 
     /* Perform the soft reset. */
     if (soft_reset) do_soft_reset(sim);
@@ -1834,10 +1887,9 @@ void simulator_print_extra_registers(const struct simulator *sim,
 
     string_buffer_print(output,
                         "RDR  : %-7d    WRTR : %-7d    "
-                        "SW   : %-7d    SRES : %d\n",
+                        "SRES : %d\n",
                         sim->rdram ? 1 : 0,
                         sim->wrtram ? 1 : 0,
-                        sim->swmode ? 1 : 0,
                         sim->soft_reset ? 1 : 0);
 
     if (sim->error) {

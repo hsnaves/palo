@@ -40,7 +40,6 @@ struct simulator {
     uint16_t cram_addr;           /* Control RAM address. */
     int rdram;                    /* Previous instruction had RDRAM. */
     int wrtram;                   /* Previous instruction had WRTRAM. */
-    int swmode;                   /* Previous instruction had SWMODE. */
     int soft_reset;               /* Previous instruction had soft reset. */
 
     uint8_t *acs_rom;             /* The contents of the ACSROM. */

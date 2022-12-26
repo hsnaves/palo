@@ -84,7 +84,6 @@
 #define F1_RAM_RDRAM             012
 #define F1_RAM_LOAD_SRB          013
 /* F1 functions specific to the emulator task. */
-#define F1_EMU_SWMODE            010
 #define F1_EMU_LOAD_RMR          013
 #define F1_EMU_LOAD_ESRB         015
 #define F1_EMU_RSNF              016

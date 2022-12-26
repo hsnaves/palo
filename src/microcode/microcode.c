@@ -41,7 +41,7 @@ uint16_t microcode_guess_tasks(const struct microcode *mc)
     task_mask = TASK_VALID_MASK;
 
     switch (mc->f1) {
-    case 010: /* F1_EMU_SWMODE */
+    case 010: /* F1_RAM_SWMODE */
         task_mask &= (1 << TASK_EMULATOR);
         break;
     case 011: /* F1_EMU_WRTRAM, F1_DSK_STROBE */
