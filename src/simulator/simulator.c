@@ -602,7 +602,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
             update_cycles(sim);
         }
 
-        if (sim->sys_type == ALTO_I) {
+        if (mc->sys_type == ALTO_I) {
             if (sim->mem_cycle == 5) {
                 output &= sim->mem_low;
             } else if (sim->mem_cycle == 6) {
@@ -888,7 +888,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         /* Already handled. */
         return;
     case F1_LOAD_MAR:
-        min_cycles = (sim->sys_type == ALTO_I) ? 7 : 5;
+        min_cycles = (mc->sys_type == ALTO_I) ? 7 : 5;
         while (sim->mem_cycle < min_cycles) {
             update_cycles(sim);
         }
@@ -896,7 +896,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         sim->mem_cycle = 1;
         sim->mem_task = mc->task;
         sim->mem_status = 0;
-        if (sim->sys_type != ALTO_I && (mc->f2 == F2_STORE_MD)) {
+        if (mc->sys_type != ALTO_I && (mc->f2 == F2_STORE_MD)) {
             sim->mem_status |= MA_EXTENDED;
         }
 
@@ -905,13 +905,18 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         sim->mem_low = simulator_read(sim, addr, sim->mem_task,
                                       sim->mem_status & MA_EXTENDED);
 
-        addr = (sim->sys_type == ALTO_I) ? (1 | addr) : (1 ^ addr);
+        addr = (mc->sys_type == ALTO_I) ? (1 | addr) : (1 ^ addr);
         sim->mem_high = simulator_read(sim, addr, sim->mem_task,
                                        sim->mem_status & MA_EXTENDED);
 
-        /* TODO: Check that for TASK_MEMORY_REFRESH, loading MAR
-         * with RSEL = 037 performs a BLOCK.
+        /* Forr TASK_MEMORY_REFRESH, loading MAR with RSEL = 037 performs
+         * a BLOCK.
          */
+        if (mc->task == TASK_MEMORY_REFRESH) {
+            if ((mc->sys_type == ALTO_I) && (mc->rsel == 037)) {
+                sim->displ.pending &= ~(1 << mc->task);
+            }
+        }
         return;
     case F1_TASK:
         /* Should we not prevent two consecutive switches? */
@@ -961,7 +966,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         case F1_RAM_LOAD_SRB:
             if (mc->task == TASK_EMULATOR) break;
             tmp = (uint8_t) ((bus >> 1) & 0x7);
-            if (sim->sys_type != ALTO_II_3KRAM)
+            if (mc->sys_type != ALTO_II_3KRAM)
                 tmp = 0;
             sim->sreg_banks[mc->task] = tmp;
             return;
@@ -976,7 +981,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
             break;
         case F1_EMU_LOAD_ESRB:
             tmp = (uint8_t) ((bus >> 1) & 0x7);
-            if (sim->sys_type != ALTO_II_3KRAM)
+            if (mc->sys_type != ALTO_II_3KRAM)
                 tmp = 0;
             sim->sreg_banks[mc->task] = tmp;
             break;
@@ -1120,7 +1125,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
     case F2_ALUCY:
         return (sim->aluC0) ? 1 : 0;
     case F2_STORE_MD:
-        if (mc->f1 == F1_LOAD_MAR && sim->sys_type != ALTO_I) {
+        if (mc->f1 == F1_LOAD_MAR && mc->sys_type != ALTO_I) {
             /* On Alto II MAR<- and <-MD in the same microinstruction
              * becomes XMAR<-.
              */
@@ -1128,7 +1133,7 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
         }
 
         addr = sim->mar;
-        if (sim->sys_type == ALTO_I) {
+        if (mc->sys_type == ALTO_I) {
             while (sim->mem_cycle < 5) {
                 update_cycles(sim);
             }

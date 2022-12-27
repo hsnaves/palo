@@ -8,9 +8,9 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define FIFO_SIZE         32
-#define TX_DURATION       20
-#define RX_DURATION       20
+#define FIFO_SIZE         16
+#define TX_DURATION      512
+#define RX_DURATION       31
 
 #define IST_OFF            0
 #define IST_WAITING        1
