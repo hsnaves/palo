@@ -101,7 +101,7 @@ uint16_t read_input_fifo(struct ethernet *ether, int peek)
         ether->fifo_end -= FIFO_SIZE;
     }
 
-    if (ether->fifo_start < ether->fifo_end + 2) {
+    if (ether->fifo_end < ether->fifo_start + 2) {
         if (ether->in_gone) {
             ether->in_busy = FALSE;
             ether->pending |= (1 << TASK_ETHERNET);

@@ -20,7 +20,7 @@ struct ethernet {
     int in_gone;
     int input_state;
 
-    /* Below NS means not simulated. */
+    /* NS below means not simulated. */
     int data_late;                /* Data late detected (NS). */
     int collision;                /* Packet collision detected (NS). */
     int crc_bad;                  /* Bad CRC deteced (NS). */

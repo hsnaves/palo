@@ -1013,9 +1013,8 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
 
                 default:
                     report_error("simulator: step: "
-                                 "invalid STARTF value: %d",
+                                 "invalid STARTF value: %o",
                                  bus);
-                    sim->error = TRUE;
                     return;
                 }
             }
@@ -1585,11 +1584,6 @@ void do_soft_reset(struct simulator *sim)
     sim->dsk.pending |= (1 << TASK_DISK_SECTOR);
     sim->dsk.pending &= ~(1 << TASK_DISK_WORD);
     sim->rmr = 0xFFFF;
-
-    /* TODO: Finish this implementation. */
-    sim->error = TRUE;
-    report_error("simulator: step: "
-                 "soft reset not implemented\n");
 }
 
 /* Checks for interrupts.
@@ -1623,7 +1617,9 @@ void check_for_interrupts(struct simulator *sim, int32_t prev_cycle)
              */
             if (sim->displ.pending & (1 << TASK_ETHERNET)) {
                 sim->displ.pending &= ~(1 << TASK_ETHERNET);
-                sim->ether.pending |= (1 << TASK_ETHERNET);
+                if (sim->ether.countdown_wakeup) {
+                    sim->ether.pending |= (1 << TASK_ETHERNET);
+                }
             }
         }
         if (sim->intr_cycle == sim->ether.intr_cycle) {
