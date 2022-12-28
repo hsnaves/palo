@@ -10,9 +10,15 @@ ifndef DEBUG
     DEBUG := 0
 endif
 
+# PREFIX is environment variable, but if it is not set, then set default value
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
+
 # General definitions
 
 CC := gcc
+INSTALL := install
 RM := rm -f
 
 CFLAGS := -Wall -Wextra -ansi -pedantic -std=c99 \
@@ -58,7 +64,13 @@ palos: $(PALOS_OBJS)
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
+install: $(TARGET)
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/bin/
+	$(INSTALL) -m 755 pmu $(DESTDIR)$(PREFIX)/bin/
+	$(INSTALL) -m 755 par $(DESTDIR)$(PREFIX)/bin/
+	$(INSTALL) -m 755 palos $(DESTDIR)$(PREFIX)/bin/
+
 clean:
 	$(RM) $(TARGET) $(OBJS)
 
-.PHONY: all clean
+.PHONY: all install clean

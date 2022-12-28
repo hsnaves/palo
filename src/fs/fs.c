@@ -10,6 +10,13 @@
 
 /* Data structures and types. */
 
+/* Auxiliary data structure used by traverse_dirs_cb(). */
+struct traverse_result {
+    struct file_entry dir_fe;     /* Current directory. */
+    unsigned int count;           /* The entry count so far. */
+    int found_missing;            /* Already found missing entries. */
+};
+
 /* Auxiliary data structure used by fs_find_file(). */
 struct find_result {
     const char *filename;         /* The name of the searched file. */
@@ -53,10 +60,19 @@ struct scavenge_result {
 #define DIRECTORY_FILENAME               12U
 
 /* Other constants. */
-#define DIR_ENTRY_VALID                   1U
-#define DIR_ENTRY_MISSING                 0U
+#define DIR_ENTRY_TYPE_SHIFT              10
 #define DIR_ENTRY_LEN_MASK            0x3FFU
 
+/* Offsets in the DiscDescriptor file. */
+#define DESCRIPTOR_NUM_DISKS              0U
+#define DESCRIPTOR_NUM_CYLINDERS          2U
+#define DESCRIPTOR_NUM_HEADS              4U
+#define DESCRIPTOR_NUM_SECTORS            6U
+#define DESCRIPTOR_LAST_SN                8U
+#define DESCRIPTOR_BLANK                 12U
+#define DESCRIPTOR_DISKBT_SIZE           14U
+#define DESCRIPTOR_VERSIONS_KEPT         16U
+#define DESCRIPTOR_FREE_PAGES            18U
 
 /* Forward declarations. */
 static int real_to_virtual(const struct fs *fs, uint16_t rda,
@@ -72,12 +88,16 @@ static time_t read_alto_time(const uint8_t *data, size_t offset);
 void fs_initvar(struct fs *fs)
 {
     fs->pages = NULL;
+    fs->bitmap = NULL;
 }
 
 void fs_destroy(struct fs *fs)
 {
     if (fs->pages) free((void *) fs->pages);
     fs->pages = NULL;
+
+    if (fs->bitmap) free((void *) fs->bitmap);
+    fs->bitmap = NULL;
 }
 
 int fs_create(struct fs *fs, struct geometry dg)
@@ -85,7 +105,8 @@ int fs_create(struct fs *fs, struct geometry dg)
     size_t size;
     fs_initvar(fs);
 
-    if (unlikely(dg.num_heads > 2
+    if (unlikely(dg.num_disks > 2
+                 || dg.num_heads > 2
                  || dg.num_sectors > 15
                  || dg.num_cylinders >= 512)) {
         report_error("fs: create: invalid disk geometry");
@@ -94,12 +115,20 @@ int fs_create(struct fs *fs, struct geometry dg)
 
     fs->dg = dg;
 
-    fs->length = dg.num_cylinders * dg.num_heads * dg.num_sectors;
-    size = ((size_t) fs->length) * sizeof(struct page);
+    fs->length = dg.num_disks * dg.num_cylinders
+        * dg.num_heads * dg.num_sectors;
+    fs->bitmap_size = (fs->length >> 4);
+    if (fs->length & 0xF) fs->bitmap_size++;
 
+    size = ((size_t) fs->length) * sizeof(struct page);
     fs->pages = (struct page *) malloc(size);
-    if (unlikely(!fs->pages)) {
+
+    size = ((size_t) fs->bitmap_size) * sizeof(uint16_t);
+    fs->bitmap = (uint16_t *) malloc(size);
+
+    if (unlikely(!fs->pages || !fs->bitmap)) {
         report_error("fs: create: memory exhausted");
+        fs_destroy(fs);
         return FALSE;
     }
 
@@ -126,10 +155,10 @@ int fs_load_image(struct fs *fs, const char *filename)
         pg = &fs->pages[vda];
 
         c = fgetc(fp);
-        if (c == EOF) goto error;
+        if (c == EOF) goto error_eof;
 
         c = fgetc(fp);
-        if (c == EOF) goto error;
+        if (c == EOF) goto error_eof;
 
         /* Discard the first word and use the loop index instead. */
         pg->page_vda = vda;
@@ -138,11 +167,11 @@ int fs_load_image(struct fs *fs, const char *filename)
         for (j = 1; j < meta_len; j++) {
             /* Process data in little endian format. */
             c = fgetc(fp);
-            if (c == EOF) goto error;
+            if (c == EOF) goto error_eof;
             w = (uint16_t) (c & 0xFF);
 
             c = fgetc(fp);
-            if (c == EOF) goto error;
+            if (c == EOF) goto error_eof;
             w |= (uint16_t) ((c & 0xFF) << 8);
 
             meta_ptr[j] = w;
@@ -150,7 +179,7 @@ int fs_load_image(struct fs *fs, const char *filename)
 
         for (j = 0; j < PAGE_DATA_SIZE; j++) {
             c = fgetc(fp);
-            if (c == EOF) goto error;
+            if (c == EOF) goto error_eof;
 
             /* Byte swap the data here. */
             pg->data[j ^ 1] = (uint8_t) c;
@@ -158,14 +187,19 @@ int fs_load_image(struct fs *fs, const char *filename)
     }
 
     c = fgetc(fp);
-    if (c != EOF) goto error;
+    if (c != EOF) {
+        report_error("fs: load_image: "
+                     "file `%s` longer than expected", filename);
+        fclose(fp);
+        return FALSE;
+    }
 
     fclose(fp);
     return TRUE;
 
-error:
-    report_error("fs: load_image: premature end of file in `%s`",
-                 filename);
+error_eof:
+    report_error("fs: load_image: "
+                 "premature end of file in `%s`", filename);
     fclose(fp);
     return FALSE;
 }
@@ -249,7 +283,9 @@ int check_integrity_stage1(const struct fs *fs)
 
         if (pg->header[1] != rda || pg->header[0] != 0) {
             report_error("fs: check_integrity: "
-                         "invalid page header at VDA = %u", vda);
+                         "invalid page header at VDA = %u: "
+                         "expecting %u, 0 but got %u, %u",
+                         vda, rda, pg->header[1], pg->header[0]);
             success = FALSE;
             continue;
         }
@@ -387,9 +423,214 @@ int check_integrity_stage1(const struct fs *fs)
     return success;
 }
 
-int fs_check_integrity(const struct fs *fs)
+/* Auxiliary callback used by check_integrity_stage2().
+ * The `arg` parameter is a pointer to find_result structure.
+ */
+static
+int traverse_dirs_cb(const struct fs *fs,
+                     const struct directory_entry *de,
+                     void *arg)
 {
-    if (!check_integrity_stage1(fs)) return FALSE;
+    struct traverse_result *tr;
+    struct traverse_result child_tr;
+    struct file_entry fe;
+
+    tr = (struct traverse_result *) arg;
+    tr->count++;
+
+    if (de->type == DIR_ENTRY_MISSING) {
+        tr->found_missing = TRUE;
+        return 1;
+    }
+
+    if (tr->found_missing) {
+        report_error("fs: check_integrity: "
+                     "missing entry in middle of directory: "
+                     "directory entry %u at VDA %u",
+                     tr->count, tr->dir_fe.leader_vda);
+        /* return -1; */
+    }
+
+    if (!fs_file_entry(fs, de->fe.leader_vda, &fe)) {
+        report_error("fs: check_integrity: "
+                     "invalid leader page at VDA %u: "
+                     "directory entry %u at VDA %u",
+                     de->fe.leader_vda,
+                     tr->count, tr->dir_fe.leader_vda);
+        return -1;
+    }
+
+    if (memcmp(&fe, &de->fe, sizeof(struct file_entry)) != 0) {
+        report_error("fs: check_integrity: "
+                     "file entries do not match: "
+                     "directory entry %u at VDA %u",
+                     tr->count, tr->dir_fe.leader_vda);
+        return -1;
+    }
+
+    if (fe.sn.word1 & DIRECTORY_SN) {
+        child_tr.dir_fe = fe;
+        child_tr.count = 0;
+        child_tr.found_missing = FALSE;
+
+        if (!fs_scan_directory(fs, &fe, &traverse_dirs_cb, &child_tr))
+            return -1;
+    }
+
+    return 1;
+}
+
+/* Auxiliary function to fs_check_integrity() [stage2].
+ * Checks SysDir and its sub-directories.
+ * Returns TRUE on success.
+ */
+static
+int check_integrity_stage2(const struct fs *fs)
+{
+    struct file_entry root_fe;
+    struct traverse_result tr;
+
+    if (!fs_file_entry(fs, 1, &root_fe)) {
+        report_error("fs: check_integrity: "
+                     "error finding SysDir at page 1");
+        return FALSE;
+    }
+
+    tr.dir_fe = root_fe;
+    tr.count = 0;
+    tr.found_missing = FALSE;
+    if (!fs_scan_directory(fs, &root_fe,
+                           &traverse_dirs_cb, &tr)) {
+        report_error("fs: check_integrity: "
+                     "could not traverse SysDir");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* Auxiliary function to fs_check_integrity() [stage3].
+ * Checks the disk geometry.
+ * Returns TRUE on success.
+ */
+static
+int check_integrity_stage3(const struct fs *fs)
+{
+    struct file_entry fe;
+    struct open_file of;
+    uint8_t buffer[32];
+    uint16_t num_disks;
+    uint16_t num_cylinders;
+    uint16_t num_heads;
+    uint16_t num_sectors;
+    uint16_t diskbt_size;
+    uint16_t expected_size;
+    size_t nbytes;
+
+    if (!fs_find_file(fs, "DiskDescriptor", &fe)) {
+        report_error("fs: check_integrity: "
+                     "could not find DiskDescriptor");
+        return FALSE;
+    }
+
+    if (!fs_open(fs, &fe, &of, FALSE)) {
+        report_error("fs: check_integrity: "
+                     "could not open DiskDescriptor");
+        return FALSE;
+    }
+
+    nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
+    if (nbytes != sizeof(buffer)) {
+        report_error("fs: check_integrity: "
+                     "could not read DiskDescriptor");
+        return FALSE;
+    }
+
+    num_disks = read_word_bs(buffer, DESCRIPTOR_NUM_DISKS);
+    num_cylinders = read_word_bs(buffer, DESCRIPTOR_NUM_CYLINDERS);
+    num_heads = read_word_bs(buffer, DESCRIPTOR_NUM_HEADS);
+    num_sectors = read_word_bs(buffer, DESCRIPTOR_NUM_SECTORS);
+    diskbt_size = read_word_bs(buffer, DESCRIPTOR_DISKBT_SIZE);
+
+    if (num_disks != fs->dg.num_disks
+        || num_cylinders != fs->dg.num_cylinders
+        || num_heads != fs->dg.num_heads
+        || num_sectors != fs->dg.num_sectors) {
+
+        report_error("fs: check_integrity: "
+                     "invalid disk geometry");
+        return FALSE;
+    }
+
+    expected_size = (fs->length >> 4);
+    if ((fs->length & 0xF) != 0) expected_size++;
+    if (diskbt_size != expected_size) {
+        report_error("fs: check_integrity: "
+                     "invalid disk bitmap size");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+int fs_check_integrity(const struct fs *fs, int level)
+{
+    if (level < 0) level = 3;
+
+    if (level <= 0) return TRUE;
+    if (!check_integrity_stage1(fs))
+        return FALSE;
+
+    if (level <= 1) return TRUE;
+    if (!check_integrity_stage2(fs))
+        return FALSE;
+
+    if (level <= 2) return TRUE;
+    if (!check_integrity_stage3(fs))
+        return FALSE;
+
+    return TRUE;
+}
+
+int fs_file_entry(const struct fs *fs, uint16_t leader_vda,
+                  struct file_entry *fe)
+{
+    const struct page *pg;
+
+    if (leader_vda >= fs->length) {
+        report_error("fs: file_entry: "
+                     "invalid VDA: %u", leader_vda);
+        return FALSE;
+    }
+
+    pg = &fs->pages[leader_vda];
+    if (pg->label.version == VERSION_FREE) {
+        report_error("fs: file_entry: "
+                     "free page at VDA %u", leader_vda);
+        return FALSE;
+    }
+
+    if (pg->label.version == VERSION_BAD) {
+        report_error("fs: file_entry: "
+                     "bad page at VDA %u", leader_vda);
+        return FALSE;
+    }
+
+    if (pg->label.version == 0) {
+        report_error("fs: file_entry: "
+                     "invalid version at VDA %u", leader_vda);
+        return FALSE;
+    }
+
+    if (pg->label.file_pgnum != 0) {
+        report_error("fs: file_entry: "
+                     "not the first page at VDA %u", leader_vda);
+        return FALSE;
+    }
+
+    fe->sn = pg->label.sn;
+    fe->version = pg->label.version;
+    fe->blank = 0;
+    fe->leader_vda = leader_vda;
+
     return TRUE;
 }
 
@@ -502,12 +743,7 @@ size_t fs_read(const struct fs *fs, struct open_file *of,
     return pos;
 }
 
-/* Finds a free page within the filesystem.
- * The virtual disk address is returned in `free_vda`.
- * Returns TRUE on success.
- */
-static
-int find_free_page(struct fs *fs, uint16_t *free_vda)
+int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
 {
     uint16_t vda;
     const struct page *pg;
@@ -607,7 +843,7 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         }
 
         /* Otherwise, allocate a new page. */
-        if (!find_free_page(fs, &vda)) {
+        if (!fs_find_free_page(fs, &vda)) {
             of->error = TRUE;
             report_error("fs: write: disk full");
             break;
@@ -745,71 +981,6 @@ int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
     return TRUE;
 }
 
-int fs_replace_file(struct fs *fs, const struct file_entry *fe,
-                    const char *input_filename)
-{
-    uint8_t buffer[PAGE_DATA_SIZE];
-    struct open_file of;
-    FILE *fp;
-    size_t nbytes;
-    size_t ret;
-
-    if (!fs_open(fs, fe, &of, FALSE)) {
-        report_error("fs: replace_file: could not open filesystem file");
-        return FALSE;
-    }
-
-    fp = fopen(input_filename, "rb");
-    if (!fp) {
-        report_error("fs: repalce_file: could not open `%s`",
-                     input_filename);
-        return FALSE;
-    }
-
-    while (TRUE) {
-        nbytes = fread(buffer, 1, sizeof(buffer), fp);
-
-        if (nbytes > 0) {
-            ret = fs_write(fs, &of, buffer, nbytes, TRUE);
-            if (of.error || (ret != nbytes)) {
-                report_error("fs: replace_file: error while writing");
-                fclose(fp);
-                return FALSE;
-            }
-        }
-
-        if (nbytes < sizeof(buffer)) break;
-    }
-
-    if (!fs_trim(fs, &of)) {
-        report_error("fs: replace_file: could not trim");
-        fclose(fp);
-        return FALSE;
-    }
-
-    fclose(fp);
-    return TRUE;
-}
-
-int fs_file_entry(const struct fs *fs, uint16_t leader_vda,
-                  struct file_entry *fe)
-{
-    const struct page *pg;
-
-    if (leader_vda >= fs->length) {
-        report_error("fs: file_entry: invalid VDA: %u",
-                     leader_vda);
-        return FALSE;
-    }
-
-    pg = &fs->pages[leader_vda];
-    fe->sn = pg->label.sn;
-    fe->version = pg->label.version;
-    fe->blank = 0;
-    fe->leader_vda = leader_vda;
-    return TRUE;
-}
-
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
                    size_t *length)
 {
@@ -857,11 +1028,11 @@ int fs_file_info(const struct fs *fs, const struct file_entry *fe,
     finfo->consecutive = pg->data[LEADER_CONSECUTIVE];
     finfo->change_sn = pg->data[LEADER_CHANGESN];
 
-    finfo->dir_fe.sn.word1 = read_word_bs(pg->data, LEADER_DIRFPHINT);
-    finfo->dir_fe.sn.word2 = read_word_bs(pg->data, LEADER_DIRFPHINT + 2);
-    finfo->dir_fe.version = read_word_bs(pg->data, LEADER_DIRFPHINT + 4);
-    finfo->dir_fe.blank = read_word_bs(pg->data, LEADER_DIRFPHINT + 6);
-    finfo->dir_fe.leader_vda = read_word_bs(pg->data, LEADER_DIRFPHINT + 8);
+    finfo->fe.sn.word1 = read_word_bs(pg->data, LEADER_DIRFPHINT);
+    finfo->fe.sn.word2 = read_word_bs(pg->data, LEADER_DIRFPHINT + 2);
+    finfo->fe.version = read_word_bs(pg->data, LEADER_DIRFPHINT + 4);
+    finfo->fe.blank = read_word_bs(pg->data, LEADER_DIRFPHINT + 6);
+    finfo->fe.leader_vda = read_word_bs(pg->data, LEADER_DIRFPHINT + 8);
 
     finfo->last_page.vda = read_word_bs(pg->data, LEADER_LASTPAGEHINT);
     finfo->last_page.pgnum = read_word_bs(pg->data, LEADER_LASTPAGEHINT + 2);
@@ -879,6 +1050,11 @@ int find_file_cb(const struct fs *fs,
 {
     struct find_result *res;
     struct file_info finfo;
+
+    if (de->type == DIR_ENTRY_MISSING) {
+        /* Skip missing entries (but do not stop). */
+        return 1;
+    }
 
     res = (struct find_result *) arg;
     if (!fs_file_info(fs, &de->fe, &finfo)) {
@@ -904,7 +1080,8 @@ int fs_find_file(const struct fs *fs, const char *filename,
     size_t pos, npos;
 
     if (!fs_file_entry(fs, 1, &root_fe)) {
-        report_error("fs: find_file: error finding SysDir");
+        report_error("fs: find_file: "
+                     "error finding SysDir at page 1");
         return FALSE;
     }
 
@@ -1037,13 +1214,20 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
 {
     struct directory_entry de;
     struct open_file of;
-    uint16_t w, de_len;
+    uint16_t w;
     uint8_t buffer[128];
     size_t to_read, nbytes;
-    int ret, is_valid;
+    int ret;
+
+    if (!(fe->sn.word1 & SN_DIRECTORY)) {
+        report_error("fs: scan_directory: "
+                     "file_entry does not point to a directory");
+        return FALSE;
+    }
 
     if (!fs_open(fs, fe, &of, FALSE)) {
-        report_error("fs: scan_directory: could not open directory");
+        report_error("fs: scan_directory: "
+                     "could not open directory");
         return FALSE;
     }
 
@@ -1055,21 +1239,18 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
         if (nbytes != 2) goto error_short;
 
         w = read_word_bs(buffer, 0);
-        is_valid = ((w >> 10) == DIR_ENTRY_VALID);
+        de.type = (w >> DIR_ENTRY_TYPE_SHIFT);
 
-        de_len = (w & DIR_ENTRY_LEN_MASK);
-        if (de_len == 0) {
-            report_error("fs: scan_directory: invalid entry length");
-            return FALSE;
-        }
+        de.length = (w & DIR_ENTRY_LEN_MASK);
+        to_read = 2 * ((size_t) de.length);
 
-        to_read = 2 * ((size_t) de_len);
         if (to_read > sizeof(buffer)) {
             nbytes = fs_read(fs, &of, &buffer[2], sizeof(buffer) - 2);
             if (of.error) goto error_read;
             if (nbytes != sizeof(buffer) - 2) goto error_short;
-
             to_read -= sizeof(buffer);
+
+            /* Discard the remaining data. */
             nbytes = fs_read(fs, &of, NULL, to_read);
             if (of.error) goto error_read;
             if (nbytes != to_read) goto error_short;
@@ -1079,13 +1260,29 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
             if (nbytes != to_read - 2) goto error_short;
         }
 
-        if (!is_valid) continue;
-
         de.fe.sn.word1 = read_word_bs(buffer, DIRECTORY_SN);
         de.fe.sn.word2 = read_word_bs(buffer, 2 + DIRECTORY_SN);
         de.fe.version = read_word_bs(buffer, DIRECTORY_VERSION);
+        de.fe.blank = 0;
         de.fe.leader_vda = read_word_bs(buffer, DIRECTORY_LEADER_VDA);
         copy_name(de.filename, (const char *) &buffer[DIRECTORY_FILENAME]);
+
+        if (de.type == DIR_ENTRY_VALID) {
+            if (to_read <= DIRECTORY_FILENAME) {
+                report_error("fs: scan_directory: "
+                             "entry length too short: %lu",
+                             to_read);
+                return FALSE;
+            }
+
+            nbytes = (size_t) buffer[DIRECTORY_FILENAME];
+            nbytes += DIRECTORY_FILENAME;
+            if (nbytes > to_read) {
+                report_error("fs: scan_directory: "
+                             "string buffer overflow");
+                return FALSE;
+            }
+        }
 
         ret = cb(fs, &de, arg);
         if (ret < 0) return FALSE;
@@ -1111,19 +1308,25 @@ error_short:
 static
 int real_to_virtual(const struct fs *fs, uint16_t rda, uint16_t *vda)
 {
-    uint16_t cylinder, head, sector;
+    uint16_t i, cylinder, head, sector, disk_num;
     const struct geometry *dg;
 
     cylinder = (rda >> 3) & 0x1FF;
     head = (rda >> 2) & 1;
     sector = (rda >> 12) & 0xF;
+    disk_num = (rda >> 1) & 1;
 
     dg = &fs->dg;
-    if ((cylinder >= dg->num_cylinders) || (head >= dg->num_heads)
-        || (sector >= dg->num_sectors || ((rda & 3) != 0)))
+    if ((disk_num >= dg->num_disks) || (cylinder >= dg->num_cylinders)
+        || (head >= dg->num_heads) || (sector >= dg->num_sectors)
+        || ((rda & 1) != 0))
         return FALSE;
 
-    *vda = ((cylinder * dg->num_heads) + head) * dg->num_sectors + sector;
+    i = disk_num;
+    i = i * dg->num_cylinders + cylinder;
+    i = i * dg->num_heads + head;
+    i = i * dg->num_sectors + sector;
+    *vda = i;
     return TRUE;
 }
 
@@ -1135,7 +1338,7 @@ int real_to_virtual(const struct fs *fs, uint16_t rda, uint16_t *vda)
 static
 int virtual_to_real(const struct fs *fs, uint16_t vda, uint16_t *rda)
 {
-    uint16_t i, cylinder, head, sector;
+    uint16_t i, cylinder, head, sector, disk_num;
     const struct geometry *dg;
 
     if (vda >= fs->length) return FALSE;
@@ -1146,9 +1349,12 @@ int virtual_to_real(const struct fs *fs, uint16_t vda, uint16_t *rda)
     i /= dg->num_sectors;
     head = i % dg->num_heads;
     i /= dg->num_heads;
-    cylinder = i;
+    cylinder = i % dg->num_cylinders;
+    i /= dg->num_cylinders;
+    disk_num = i % dg->num_disks;
 
-    *rda = (cylinder << 3) | (head << 2) | (sector << 12);
+    *rda = (cylinder << 3) | (head << 2)
+        | (sector << 12) | (disk_num << 1);
     return TRUE;
 }
 

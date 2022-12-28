@@ -27,10 +27,10 @@ void print_file_info_details(struct file_info *finfo)
            ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
     printf("Consecutive: %u\n", finfo->consecutive);
     printf("Change SN: %u\n", finfo->change_sn);
-    printf("Directory: \n");
-    printf("  VDA: %u\n", finfo->dir_fe.leader_vda);
-    printf("  SN: %u\n", finfo->dir_fe.sn.word2);
-    printf("  VER: %u\n", finfo->dir_fe.version);
+    printf("File Entry: \n");
+    printf("  VDA: %u\n", finfo->fe.leader_vda);
+    printf("  SN: %u\n", finfo->fe.sn.word2);
+    printf("  VER: %u\n", finfo->fe.version);
     printf("Last page: \n");
     printf("  VDA: %u\n", finfo->last_page.vda);
     printf("  PGNUM: %u\n", finfo->last_page.pgnum);
@@ -106,15 +106,18 @@ int print_dir_cb(const struct fs *fs,
     size_t length;
     int verbose;
 
-    verbose = *((int *) arg);
+    if (de->type == DIR_ENTRY_MISSING) return 1;
 
+    verbose = *((int *) arg);
     if (!fs_file_info(fs, &de->fe, &finfo)) {
-        report_error("main: could not get file information");
+        report_error("main: could not get file information of `%s`",
+                     de->filename);
         return -1;
     }
 
     if (!fs_file_length(fs, &de->fe, &length)) {
-        report_error("main: could not get file length");
+        report_error("main: could not get file length of `%s`",
+                     de->filename);
         return -1;
     }
 
@@ -166,10 +169,11 @@ void usage(const char *prog_name)
     printf("Usage:\n");
     printf(" %s [options] disk\n", prog_name);
     printf("where:\n");
+    printf("  -2            Use double disk\n");
+    printf("  -c level      To check the disk image\n");
     printf("  -l            Lists all files in the filesystem\n");
     printf("  -d dirname    Lists the contents of a directory\n");
     printf("  -e filename   Extracts a given file\n");
-    printf("  -r filename   Replaces a given file\n");
     printf("  -s            Scavenges files instead of finding them\n");
     printf("  -v            Increase verbosity\n");
     printf("  --help        Print this help\n");
@@ -180,30 +184,44 @@ int main(int argc, char **argv)
 
     const char *disk_filename;
     const char *extract_filename;
-    const char *replace_filename;
     const char *dirname;
+    char *end;
     struct geometry dg;
     struct fs fs;
     struct file_entry fe;
     int list_files, do_scavenge;
+    int check_level;
     int i, is_last;
     int verbose;
 
     disk_filename = NULL;
     extract_filename = NULL;
-    replace_filename = NULL;
     dirname = NULL;
     list_files = FALSE;
     do_scavenge = FALSE;
+    check_level = -1;
     verbose = 0;
 
+    dg.num_disks = 1;
     dg.num_cylinders = 203;
     dg.num_heads = 2;
     dg.num_sectors = 12;
 
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);
-        if (strcmp("-l", argv[i]) == 0) {
+        if (strcmp("-2", argv[i]) == 0) {
+            dg.num_disks = 2;
+        } else if (strcmp("-c", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the check level");
+                return 1;
+            }
+            check_level = strtol(argv[++i], &end, 10);
+            if (end[0] != '\0') {
+                report_error("main: invalid level: %s", argv[i]);
+                return 1;
+            }
+        } else if (strcmp("-l", argv[i]) == 0) {
             list_files = TRUE;
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
@@ -217,12 +235,6 @@ int main(int argc, char **argv)
                 return 1;
             }
             extract_filename = argv[++i];
-        } else if (strcmp("-r", argv[i]) == 0) {
-            if (is_last) {
-                report_error("main: please specify the file to replace");
-                return 1;
-            }
-            replace_filename = argv[++i];
         } else if (strcmp("-s", argv[i]) == 0) {
             do_scavenge = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
@@ -254,7 +266,7 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (!fs_check_integrity(&fs)) {
+    if (!fs_check_integrity(&fs, check_level)) {
         report_error("main: invalid disk");
         goto error;
     }
@@ -303,26 +315,6 @@ int main(int argc, char **argv)
         }
 
         if (!print_directory(&fs, &fe, verbose)) goto error;
-    }
-
-    if (replace_filename) {
-        if (!fs_find_file(&fs, replace_filename, &fe)) {
-            report_error("main: could not find %s", replace_filename);
-            goto error;
-        }
-        if (!fs_replace_file(&fs, &fe, replace_filename)) {
-            report_error("main: could not replace file");
-            goto error;
-        }
-
-        printf("replaced `%s` successfully\n", replace_filename);
-
-        if (!fs_save_image(&fs, disk_filename)) {
-            report_error("main: could not save image");
-            goto error;
-        }
-
-        printf("disk image `%s` written successfully\n", disk_filename);
     }
 
     fs_destroy(&fs);
