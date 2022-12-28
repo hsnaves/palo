@@ -9,70 +9,70 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define MAX_SECTORS      (406 * 2 * 12)
+#define MAX_SECTORS           (406 * 2 * 12)
 
 /* TODO: Check. */
-#define SEEK_DURATION              5882 /*     1 ms / 170 ns */
-#define SECTOR_DURATION           19607 /* 3.333 ms / 170 ns */
-#define WORD_DURATION                56 /*    10 us / 170 ns */
-#define SECLATE_DURATION            505 /*    86 us / 170 ns */
+#define SEEK_DURATION                   5882 /*     1 ms / 170 ns */
+#define SECTOR_DURATION                19607 /* 3.333 ms / 170 ns */
+#define WORD_DURATION                     56 /*    10 us / 170 ns */
+#define SECLATE_DURATION                 505 /*    86 us / 170 ns */
 
 /* The bits for address word. */
-#define AW_SECTOR_SHIFT              12
-#define AW_SECTOR_MASK           0x000F
-#define AW_CYLINDER_SHIFT             3
-#define AW_CYLINDER_MASK         0x01FF
-#define AW_HEAD_SHIFT                 2
-#define AW_DISK_SHIFT                 1
-#define AW_RESTORE_SHIFT              0
+#define AW_SECTOR_SHIFT                   12
+#define AW_SECTOR_MASK                0x000F
+#define AW_CYLINDER_SHIFT                  3
+#define AW_CYLINDER_MASK              0x01FF
+#define AW_HEAD_SHIFT                      2
+#define AW_DISK_SHIFT                      1
+#define AW_RESTORE_SHIFT                   0
 
 /* The bits of KSTAT register. */
-#define KSTAT_SECTOR_SHIFT           12
-#define KSTAT_SECTOR_MASK        0x000F
-#define KSTAT_ALWAYS_ONE         0x0F00
-#define KSTAT_SEEK_FAIL          0x0080
-#define KSTAT_SEEKING            0x0040
-#define KSTAT_NOT_READY          0x0020
-#define KSTAT_LATE               0x0010
-#define KSTAT_IDLE               0x0008
-#define KSTAT_CHECKSUM_ERROR     0x0004
-#define KSTAT_COMPLETION_MASK    0x0003
-#define KSTAT_GOOD_STATUS        0x0000
-#define KSTAT_HW_ERROR           0x0001
-#define KSTAT_CHECK_ERROR        0x0002
-#define KSTAT_ILLEGAL_SECTOR     0x0003
+#define KSTAT_SECTOR_SHIFT                12
+#define KSTAT_SECTOR_MASK             0x000F
+#define KSTAT_ALWAYS_ONE              0x0F00
+#define KSTAT_SEEK_FAIL               0x0080
+#define KSTAT_SEEKING                 0x0040
+#define KSTAT_NOT_READY               0x0020
+#define KSTAT_LATE                    0x0010
+#define KSTAT_IDLE                    0x0008
+#define KSTAT_CHECKSUM_ERROR          0x0004
+#define KSTAT_COMPLETION_MASK         0x0003
+#define KSTAT_GOOD_STATUS             0x0000
+#define KSTAT_HW_ERROR                0x0001
+#define KSTAT_CHECK_ERROR             0x0002
+#define KSTAT_ILLEGAL_SECTOR          0x0003
 
 /* The bits of KCOMM register. */
-#define KCOMM_SHIFT                  10
-#define KCOMM_XFEROFF              0x10
-#define KCOMM_WDINHB               0x08
-#define KCOMM_BCLKSRC              0x04
-#define KCOMM_WFFO                 0x02
-#define KCOMM_SENDADR              0x01
-#define KCOMM_MASK                 0x1F
+#define KCOMM_SHIFT                       10
+#define KCOMM_XFEROFF                   0x10
+#define KCOMM_WDINHB                    0x08
+#define KCOMM_BCLKSRC                   0x04
+#define KCOMM_WFFO                      0x02
+#define KCOMM_SENDADR                   0x01
+#define KCOMM_MASK                      0x1F
 
 /* The bits of KADR register. */
-#define KADR_VALID_SHIFT              8
-#define KADR_VALID_MASK          0x00FF
-#define KADR_VALID_VALUE             72
-#define KADR_HEADER_SHIFT             6
-#define KADR_LABEL_SHIFT              4
-#define KADR_DATA_SHIFT               2
-#define KADR_SINGLE_SHIFT             2
-#define KADR_BLOCK_MASK          0x0003
-#define KADR_NO_XFER             0x0002
-#define KADR_DISK_MOD            0x0001
+#define KADR_VALID_SHIFT                   8
+#define KADR_VALID_MASK               0x00FF
+#define KADR_VALID_VALUE                  72
+#define KADR_HEADER_SHIFT                  6
+#define KADR_LABEL_SHIFT                   4
+#define KADR_DATA_SHIFT                    2
+#define KADR_SINGLE_SHIFT                  2
+#define KADR_BLOCK_MASK               0x0003
+#define KADR_NO_XFER                  0x0002
+#define KADR_DISK_MOD                 0x0001
 
 /* The layout of the disk sector (in words). */
-#define DS_HEADER                    44
-#define DS_LABEL                     58
-#define DS_DATA                      78
-#define DS_END                      347
+#define DS_HEADER                         44
+#define DS_LABEL                          58
+#define DS_DATA                           78
+#define DS_END                           347
 
 /* The possible word types in a sector. */
-#define WT_GAP                        0
-#define WT_DATA                       1
-#define WT_SYNC                       2
+#define WT_GAP                             0
+#define WT_DATA                            1
+#define WT_SYNC                            2
 
 /* Functions. */
 

@@ -6,12 +6,11 @@
 
 /* Data structures and types. */
 
-/* A structure representing the user interface. */
-
 /* Callback to run as a separate thread in gui_start(). */
 struct gui;
 typedef int (*gui_thread_cb)(struct gui *ui);
 
+/* A structure representing the user interface. */
 struct gui {
     struct simulator *sim;        /* Reference to the simulator. */
     void *internal;               /* Opaque internal structure. */

@@ -7,17 +7,17 @@
 #include <time.h>
 
 /* Constants. */
-#define FILENAME_LENGTH                              40U
-#define PAGE_DATA_SIZE                              512U
+#define FILENAME_LENGTH                  40U
+#define PAGE_DATA_SIZE                  512U
 
 /* To interpret the bits of serial_number.word1. */
-#define SN_DIRECTORY                             0x8000U
-#define SN_RAND                                  0x4000U
-#define SN_NOLOG                                 0x2000U
-#define SN_PART1_MASK                            0x1FFFU
+#define SN_DIRECTORY                 0x8000U
+#define SN_RAND                      0x4000U
+#define SN_NOLOG                     0x2000U
+#define SN_PART1_MASK                0x1FFFU
 
-#define VERSION_FREE                             0xFFFFU
-#define VERSION_BAD                              0xFFFEU
+#define VERSION_FREE                 0xFFFFU
+#define VERSION_BAD                  0xFFFEU
 
 /* Data structures and types. */
 

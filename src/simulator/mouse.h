@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 /* Constants. */
-#define MOUSE_BASE            0xFE18
-#define MOUSE_END             0xFE1C
+#define MOUSE_BASE                    0xFE18
+#define MOUSE_END                     0xFE1C
 
 /* Data structures and types. */
 

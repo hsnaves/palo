@@ -8,16 +8,16 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define FIFO_SIZE                    16
-#define SCANLINE_WORDS               38
-#define VBLANK_DURATION            3911  /*   665 us / 170 ns */
-#define SCANLINE_DURATION           224  /*    38 us / 170 ns */
-#define HBLANK_DURATION              35  /*     6 us / 170 ns */
-#define WORD_DURATION                 5  /* 0.842 us / 170 ns */
+#define FIFO_SIZE                         16
+#define SCANLINE_WORDS                    38
+#define VBLANK_DURATION                 3911  /*   665 us / 170 ns */
+#define SCANLINE_DURATION                224  /*    38 us / 170 ns */
+#define HBLANK_DURATION                   35  /*     6 us / 170 ns */
+#define WORD_DURATION                      5  /* 0.842 us / 170 ns */
 
-#define MODE_LOWRES              0x8000
-#define MODE_WOB                 0x4000
-#define FIRST_BIT                0x8000
+#define MODE_LOWRES                   0x8000
+#define MODE_WOB                      0x4000
+#define FIRST_BIT                     0x8000
 
 /* Functions. */
 

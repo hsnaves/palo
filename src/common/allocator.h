@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 /* Constants. */
-#define DEFAULT_ALIGNMENT 16
+#define DEFAULT_ALIGNMENT                 16
 
 /* Data structures and types. */
 

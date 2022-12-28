@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 /* Constants. */
-#define KEYBOARD_BASE         0xFE1C
-#define KEYBOARD_END          0xFE20
+#define KEYBOARD_BASE                 0xFE1C
+#define KEYBOARD_END                  0xFE20
 
 /* Data structures and types. */
 

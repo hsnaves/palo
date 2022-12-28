@@ -6,7 +6,7 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define DEFAULT_SIZE     4096
+#define DEFAULT_SIZE                    4096
 
 /* Functions. */
 void allocator_initvar(struct allocator *a)

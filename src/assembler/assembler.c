@@ -17,42 +17,42 @@
 #include "common/utils.h"
 
 /* For attributes of literal symbols. */
-#define LSA_L               (1 << 2)
-#define LSA_BUS             (1 << 1)
-#define LSA_ALU             (1 << 0)
-#define LSA_MASK                 0x7
+#define LSA_L                       (1 << 2)
+#define LSA_BUS                     (1 << 1)
+#define LSA_ALU                     (1 << 0)
+#define LSA_MASK                         0x7
 
 /* For types of literal symbols. */
-#define LST_ILLEGAL                0
-#define LST_UNDEF_ADDR            01
-#define LST_DEF_ADDR              02
-#define LST_RLOC_LHS              03
-#define LST_RLOC_RHS              04
-#define LST_CONSTANT              05
-#define LST_BUS_SOURCE            06
-#define LST_F1                    07
-#define LST_DATA_F1_LHS          010
-#define LST_L_DEFINING_F1        011
-#define LST_F2                   012
-#define LST_DATA_F2_LHS          013
-#define LST_DATA_F2              014
-#define LST_DATA_F2_RHS          015
-#define LST_END                  016
-#define LST_L_RHS                017
-#define LST_L_LHS                020
-#define LST_F3                   021
-#define LST_DATA_F3_LHS          022
-#define LST_DATA_F3_RHS          023
-#define LST_ALUF                 024
-#define LST_T_LHS                025
-#define LST_T_RHS                026
-#define LST_UNUSED               027
-#define LST_PREDEF_ADDR          030
-#define LST_LMRSHLMLSH           031
-#define LST_MASK_CONST           032
-#define LST_ASSIGN_F2            033
-#define LST_ASSIGN_F1            034
-#define LST_XMAR                 035
+#define LST_ILLEGAL                        0
+#define LST_UNDEF_ADDR                    01
+#define LST_DEF_ADDR                      02
+#define LST_RLOC_LHS                      03
+#define LST_RLOC_RHS                      04
+#define LST_CONSTANT                      05
+#define LST_BUS_SOURCE                    06
+#define LST_F1                            07
+#define LST_DATA_F1_LHS                  010
+#define LST_L_DEFINING_F1                011
+#define LST_F2                           012
+#define LST_DATA_F2_LHS                  013
+#define LST_DATA_F2                      014
+#define LST_DATA_F2_RHS                  015
+#define LST_END                          016
+#define LST_L_RHS                        017
+#define LST_L_LHS                        020
+#define LST_F3                           021
+#define LST_DATA_F3_LHS                  022
+#define LST_DATA_F3_RHS                  023
+#define LST_ALUF                         024
+#define LST_T_LHS                        025
+#define LST_T_RHS                        026
+#define LST_UNUSED                       027
+#define LST_PREDEF_ADDR                  030
+#define LST_LMRSHLMLSH                   031
+#define LST_MASK_CONST                   032
+#define LST_ASSIGN_F2                    033
+#define LST_ASSIGN_F1                    034
+#define LST_XMAR                         035
 
 /* Macros. */
 /* According to pages 82 and 83 of AltoSybsystems_Oct79.pdf.

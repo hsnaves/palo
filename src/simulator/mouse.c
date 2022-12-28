@@ -5,11 +5,11 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define MOVE_NOCHANGE        0x0
-#define MOVE_DOWN            0x1
-#define MOVE_UP              0x2
-#define MOVE_LEFT            0x3
-#define MOVE_RIGHT           0x6
+#define MOVE_NOCHANGE                    0x0
+#define MOVE_DOWN                        0x1
+#define MOVE_UP                          0x2
+#define MOVE_LEFT                        0x3
+#define MOVE_RIGHT                       0x6
 
 /* Static tables. */
 

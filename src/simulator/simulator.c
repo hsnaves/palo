@@ -12,28 +12,28 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define NUM_R_REGISTERS             32
-#define NUM_S_REGISTERS       (8 * 32)
+#define NUM_R_REGISTERS                   32
+#define NUM_S_REGISTERS             (8 * 32)
 
 /* For the MPC. */
-#define MPC_BANK_SHIFT              10
-#define MPC_BANK_MASK            0x003
-#define MPC_ADDR_MASK            0x3FF
+#define MPC_BANK_SHIFT                    10
+#define MPC_BANK_MASK                  0x003
+#define MPC_ADDR_MASK                  0x3FF
 
 /* For the memory. */
-#define NUM_MICROCODE_BANKS          4
-#define NUM_BANKS                    4
-#define NUM_BANK_SLOTS  TASK_NUM_TASKS
-#define MEMORY_TOP              0xFE00
-#define XM_BANK_START           0xFFE0
+#define NUM_MICROCODE_BANKS                4
+#define NUM_BANKS                          4
+#define NUM_BANK_SLOTS        TASK_NUM_TASKS
+#define MEMORY_TOP                    0xFE00
+#define XM_BANK_START                 0xFFE0
 #define XM_BANK_END (XM_BANK_START + NUM_BANK_SLOTS)
 
 /* For fixing the microcode in RAM. */
-#define MC_INVERT_MASK      0x00088400
+#define MC_INVERT_MASK            0x00088400
 
 /* For memory access. */
-#define MA_EXTENDED                  1
-#define MA_HAS_STORE                 2
+#define MA_EXTENDED                        1
+#define MA_HAS_STORE                       2
 
 /* Functions. */
 

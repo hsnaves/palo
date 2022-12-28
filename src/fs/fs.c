@@ -28,34 +28,34 @@ struct scavenge_result {
 /* Constants. */
 
 /* Offsets within the page. */
-#define PAGE_HEADER        offsetof(struct page, header)
-#define PAGE_LABEL          offsetof(struct page, label)
-#define PAGE_DATA            offsetof(struct page, data)
+#define PAGE_HEADER offsetof(struct page, header)
+#define PAGE_LABEL   offsetof(struct page, label)
+#define PAGE_DATA     offsetof(struct page, data)
 
 /* Offsets within the leader page data. */
-#define LEADER_CREATED                                0U
-#define LEADER_WRITTEN                                4U
-#define LEADER_READ                                   8U
-#define LEADER_FILENAME                              12U
-#define LEADER_PROPS                                 52U
-#define LEADER_SPARE                                472U
-#define LEADER_PROPBEGIN                            492U
-#define LEADER_PROPLEN                              493U
-#define LEADER_CONSECUTIVE                          494U
-#define LEADER_CHANGESN                             495U
-#define LEADER_DIRFPHINT                            496U
-#define LEADER_LASTPAGEHINT                         506U
+#define LEADER_CREATED                    0U
+#define LEADER_WRITTEN                    4U
+#define LEADER_READ                       8U
+#define LEADER_FILENAME                  12U
+#define LEADER_PROPS                     52U
+#define LEADER_SPARE                    472U
+#define LEADER_PROPBEGIN                492U
+#define LEADER_PROPLEN                  493U
+#define LEADER_CONSECUTIVE              494U
+#define LEADER_CHANGESN                 495U
+#define LEADER_DIRFPHINT                496U
+#define LEADER_LASTPAGEHINT             506U
 
 /* Offsets within the directory entry. */
-#define DIRECTORY_SN                                  2U
-#define DIRECTORY_VERSION                             6U
-#define DIRECTORY_LEADER_VDA                         10U
-#define DIRECTORY_FILENAME                           12U
+#define DIRECTORY_SN                      2U
+#define DIRECTORY_VERSION                 6U
+#define DIRECTORY_LEADER_VDA             10U
+#define DIRECTORY_FILENAME               12U
 
 /* Other constants. */
-#define DIR_ENTRY_VALID                               1U
-#define DIR_ENTRY_MISSING                             0U
-#define DIR_ENTRY_LEN_MASK                        0x3FFU
+#define DIR_ENTRY_VALID                   1U
+#define DIR_ENTRY_MISSING                 0U
+#define DIR_ENTRY_LEN_MASK            0x3FFU
 
 
 /* Forward declarations. */

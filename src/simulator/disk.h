@@ -21,10 +21,11 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define NUM_DISK_DRIVES               2
-#define DS_HEADER_DSIZE               4 /* Sync word + header + checksum. */
-#define DS_LABEL_DSIZE               10 /* Sync word + label + checksum. */
-#define DS_DATA_DSIZE               258 /* Sync word + data + checksum. */
+#define CONSTANT_SIZE                    256
+#define NUM_DISK_DRIVES                    2
+#define DS_HEADER_DSIZE                    4 /* Sync + header + checksum. */
+#define DS_LABEL_DSIZE                    10 /* Sync + label + checksum. */
+#define DS_DATA_DSIZE                    258 /* Sync + data + checksum. */
 
 /* Data structures and types. */
 

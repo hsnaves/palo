@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Constants. */
-#define ACSROM_SIZE              256
+#define ACSROM_SIZE                      256
 
 /* Declaration of global variables. */
 extern const uint8_t ACSROM[ACSROM_SIZE];

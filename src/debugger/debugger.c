@@ -16,8 +16,8 @@
 
 
 /* Constants. */
-#define MAX_BREAKPOINTS   1024
-#define BUFFER_SIZE       8192
+#define MAX_BREAKPOINTS                 1024
+#define BUFFER_SIZE                     8192
 
 /* Functions. */
 

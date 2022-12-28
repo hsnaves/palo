@@ -7,7 +7,7 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define TBUF_SIZE 4096
+#define TBUF_SIZE                       4096
 
 /* Functions. */
 void lexer_initvar(struct lexer *l)

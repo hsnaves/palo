@@ -8,9 +8,9 @@
 #include "common/table.h"
 
 /* Constants. */
-#define OK    1
-#define FAIL  2
-#define ERROR 0
+#define OK                                 1
+#define FAIL                               2
+#define ERROR                              0
 
 /* Data structures and types. */
 
