@@ -14,20 +14,12 @@
 struct traverse_result {
     struct file_entry dir_fe;     /* Current directory. */
     unsigned int count;           /* The entry count so far. */
-    int found_missing;            /* Already found missing entries. */
 };
 
 /* Auxiliary data structure used by fs_find_file(). */
 struct find_result {
-    const char *filename;         /* The name of the searched file. */
-    size_t flen;                  /* Length of the filename. */
-    struct file_entry fe;         /* The file_entry of the file. */
-    int found;                    /* If the file was found. */
-};
-
-/* Auxiliary data structure used by fs_scavenge_file(). */
-struct scavenge_result {
-    const char *filename;         /* The name of the searched file. */
+    const char *name;             /* The name of the searched file. */
+    size_t name_length;           /* Length of the name. */
     struct file_entry fe;         /* The file_entry of the file. */
     int found;                    /* If the file was found. */
 };
@@ -43,7 +35,7 @@ struct scavenge_result {
 #define LEADER_CREATED                    0U
 #define LEADER_WRITTEN                    4U
 #define LEADER_READ                       8U
-#define LEADER_FILENAME                  12U
+#define LEADER_NAME                      12U
 #define LEADER_PROPS                     52U
 #define LEADER_SPARE                    472U
 #define LEADER_PROPBEGIN                492U
@@ -57,7 +49,7 @@ struct scavenge_result {
 #define DIRECTORY_SN                      2U
 #define DIRECTORY_VERSION                 6U
 #define DIRECTORY_LEADER_VDA             10U
-#define DIRECTORY_FILENAME               12U
+#define DIRECTORY_NAME                   12U
 
 /* Other constants. */
 #define DIR_ENTRY_TYPE_SHIFT              10
@@ -365,10 +357,10 @@ int check_integrity_stage1(const struct fs *fs)
                 continue;
             }
 
-            slen = pg->data[LEADER_FILENAME];
-            if (slen == 0 || slen >= FILENAME_LENGTH) {
+            slen = pg->data[LEADER_NAME];
+            if (slen == 0 || slen >= NAME_LENGTH) {
                 report_error("fs: check_integrity: "
-                             "invalid filename at VDA = %u", vda);
+                             "invalid name at VDA = %u", vda);
                 success = FALSE;
                 continue;
             }
@@ -438,18 +430,8 @@ int traverse_dirs_cb(const struct fs *fs,
     tr = (struct traverse_result *) arg;
     tr->count++;
 
-    if (de->type == DIR_ENTRY_MISSING) {
-        tr->found_missing = TRUE;
+    if (de->type == DIR_ENTRY_MISSING)
         return 1;
-    }
-
-    if (tr->found_missing) {
-        report_error("fs: check_integrity: "
-                     "missing entry in middle of directory: "
-                     "directory entry %u at VDA %u",
-                     tr->count, tr->dir_fe.leader_vda);
-        /* return -1; */
-    }
 
     if (!fs_file_entry(fs, de->fe.leader_vda, &fe)) {
         report_error("fs: check_integrity: "
@@ -468,10 +450,21 @@ int traverse_dirs_cb(const struct fs *fs,
         return -1;
     }
 
+    if ((2 * de->length) <= DIRECTORY_NAME) {
+        report_error("fs: scan_directory: "
+                     "entry length too short");
+        return FALSE;
+    }
+
+    if ((de->name_length + DIRECTORY_NAME) > (2 * de->length)) {
+        report_error("fs: scan_directory: "
+                     "string buffer overflow");
+        return FALSE;
+    }
+
     if (fe.sn.word1 & DIRECTORY_SN) {
         child_tr.dir_fe = fe;
         child_tr.count = 0;
-        child_tr.found_missing = FALSE;
 
         if (!fs_scan_directory(fs, &fe, &traverse_dirs_cb, &child_tr))
             return -1;
@@ -498,7 +491,6 @@ int check_integrity_stage2(const struct fs *fs)
 
     tr.dir_fe = root_fe;
     tr.count = 0;
-    tr.found_missing = FALSE;
     if (!fs_scan_directory(fs, &root_fe,
                            &traverse_dirs_cb, &tr)) {
         report_error("fs: check_integrity: "
@@ -1020,7 +1012,8 @@ int fs_file_info(const struct fs *fs, const struct file_entry *fe,
     }
 
     pg = &fs->pages[fe->leader_vda];
-    copy_name(finfo->filename, (const char *) &pg->data[LEADER_FILENAME]);
+    finfo->name_length = pg->data[LEADER_NAME];
+    copy_name(finfo->name, (const char *) &pg->data[LEADER_NAME]);
     finfo->created = read_alto_time(pg->data, LEADER_CREATED);
     finfo->written = read_alto_time(pg->data, LEADER_WRITTEN);
     finfo->read = read_alto_time(pg->data, LEADER_READ);
@@ -1062,7 +1055,7 @@ int find_file_cb(const struct fs *fs,
         return -1;
     }
 
-    if (strncmp(finfo.filename, res->filename, res->flen) == 0) {
+    if (strncmp(finfo.name, res->name, res->name_length) == 0) {
         res->fe = de->fe;
         res->found = TRUE;
         /* Stop the search in this directory. */
@@ -1071,7 +1064,7 @@ int find_file_cb(const struct fs *fs,
     return 1;
 }
 
-int fs_find_file(const struct fs *fs, const char *filename,
+int fs_find_file(const struct fs *fs, const char *name,
                  struct file_entry *fe)
 {
     struct find_result res;
@@ -1087,25 +1080,25 @@ int fs_find_file(const struct fs *fs, const char *filename,
 
     pos = 0;
     cur_fe = root_fe;
-    while (filename[pos]) {
-        if (filename[pos] == '<') {
+    while (name[pos]) {
+        if (name[pos] == '<') {
             cur_fe = root_fe;
             pos++;
             continue;
         }
 
         npos = pos + 1;
-        while (filename[npos]) {
-            if (filename[npos] == '<' || filename[npos] == '>')
+        while (name[npos]) {
+            if (name[npos] == '<' || name[npos] == '>')
                 break;
             npos++;
         }
 
-        res.filename = &filename[pos];
-        res.flen = npos - pos;
+        res.name = &name[pos];
+        res.name_length = npos - pos;
         res.found = FALSE;
 
-        if (res.flen >= FILENAME_LENGTH) return FALSE;
+        if (res.name_length >= NAME_LENGTH) return FALSE;
 
         if (!fs_scan_directory(fs, &cur_fe, &find_file_cb, &res)) {
             report_error("fs: find_file: could not scan directory");
@@ -1115,7 +1108,7 @@ int fs_find_file(const struct fs *fs, const char *filename,
         if (!res.found) return FALSE;
         cur_fe = res.fe;
 
-        if (filename[npos] == '>') {
+        if (name[npos] == '>') {
             /* Checks if its a directory. */
             if (!(cur_fe.sn.word1 & SN_DIRECTORY)) {
                 report_error("fs: find_file: not a valid directory");
@@ -1129,54 +1122,6 @@ int fs_find_file(const struct fs *fs, const char *filename,
 
     *fe = cur_fe;
     return TRUE;
-}
-
-
-/* Auxiliary callback used by fs_scavenge_file().
- * The `arg` parameter is a pointer to find_result structure.
- */
-static
-int scavenge_file_cb(const struct fs *fs,
-                     const struct file_entry *fe,
-                     void *arg)
-{
-    struct scavenge_result *res;
-    struct file_info finfo;
-
-    res = (struct scavenge_result *) arg;
-    if (!fs_file_info(fs, fe, &finfo)) {
-        report_error("fs: scavenge_file: could not get file information");
-        return -1;
-    }
-
-    if (strcmp(finfo.filename, res->filename) == 0) {
-        res->fe = *fe;
-        res->found++;
-        /* Continue the search (to check if there exists only one
-         * file with the given name).
-         */
-    }
-    return 1;
-}
-
-int fs_scavenge_file(const struct fs *fs, const char *filename,
-                     struct file_entry *fe)
-{
-    struct scavenge_result res;
-
-    res.filename = filename;
-    res.found = 0;
-    if (!fs_scan_files(fs, &scavenge_file_cb, &res)) {
-        report_error("fs: scavenge_file: could not scan filesystem");
-        return FALSE;
-    }
-
-    if (res.found == 1) {
-        *fe = res.fe;
-        return TRUE;
-    }
-
-    return FALSE;
 }
 
 int fs_scan_files(const struct fs *fs, scan_files_cb cb, void *arg)
@@ -1265,24 +1210,8 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
         de.fe.version = read_word_bs(buffer, DIRECTORY_VERSION);
         de.fe.blank = 0;
         de.fe.leader_vda = read_word_bs(buffer, DIRECTORY_LEADER_VDA);
-        copy_name(de.filename, (const char *) &buffer[DIRECTORY_FILENAME]);
-
-        if (de.type == DIR_ENTRY_VALID) {
-            if (to_read <= DIRECTORY_FILENAME) {
-                report_error("fs: scan_directory: "
-                             "entry length too short: %lu",
-                             to_read);
-                return FALSE;
-            }
-
-            nbytes = (size_t) buffer[DIRECTORY_FILENAME];
-            nbytes += DIRECTORY_FILENAME;
-            if (nbytes > to_read) {
-                report_error("fs: scan_directory: "
-                             "string buffer overflow");
-                return FALSE;
-            }
-        }
+        de.name_length = buffer[DIRECTORY_NAME];
+        copy_name(de.name, (const char *) &buffer[DIRECTORY_NAME]);
 
         ret = cb(fs, &de, arg);
         if (ret < 0) return FALSE;
@@ -1358,7 +1287,7 @@ int virtual_to_real(const struct fs *fs, uint16_t vda, uint16_t *rda)
     return TRUE;
 }
 
-/* Copies the filename to `dst` and set the proper
+/* Copies the name from `srt` to `dst` and set the proper
  * NUL byte at the end of the string.
  */
 static
@@ -1367,8 +1296,8 @@ void copy_name(char *dst, const char *src)
     uint8_t slen;
 
     slen = (uint8_t) src[0];
-    if (slen >= FILENAME_LENGTH)
-        slen = FILENAME_LENGTH - 1;
+    if (slen >= NAME_LENGTH)
+        slen = NAME_LENGTH - 1;
 
     if (slen == 0) {
         dst[0] = '\0';

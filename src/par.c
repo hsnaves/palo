@@ -37,65 +37,6 @@ void print_file_info_details(struct file_info *finfo)
     printf("  POS: %u\n", finfo->last_page.pos);
 }
 
-/* Callback to print the files in the filesystem. */
-static
-int print_files_cb(const struct fs *fs,
-                   const struct file_entry *fe,
-                   void *arg)
-{
-    struct file_info finfo;
-    size_t length;
-    int verbose;
-
-    verbose = *((int *) arg);
-    if (!fs_file_info(fs, fe, &finfo)) {
-        report_error("main: could not get file information");
-        return -1;
-    }
-
-    if (!fs_file_length(fs, fe, &length)) {
-        report_error("main: could not get file length");
-        return -1;
-    }
-
-    if (verbose) {
-        printf("Leader VDA: %u\n", fe->leader_vda);
-        printf("Serial number: %u\n",
-               ((fe->sn.word1 & SN_PART1_MASK) << 16) | fe->sn.word2);
-        printf("Version: %u\n", fe->version);
-        printf("Name: %s\n", finfo.filename);
-        printf("Length: %u\n", (unsigned int) length);
-        if (verbose > 1) {
-            print_file_info_details(&finfo);
-        }
-        printf("\n");
-    } else {
-        printf("%-6u %-6u %-6u %-6u  %-38s\n",
-               fe->leader_vda, fe->sn.word2, fe->version,
-               (unsigned int) length, finfo.filename);
-    }
-
-    return 1;
-}
-
-/* Main function to print the files in the filesystem.
- * The verbosity level is indicated by `verbose`.
- * Returns TRUE on success.
- */
-static
-int print_files(const struct fs *fs, int verbose)
-{
-    if (!verbose)
-        printf("VDA    SN     VER    SIZE    FILENAME\n");
-
-    if (!fs_scan_files(fs, &print_files_cb, &verbose)) {
-        report_error("main: could not print files");
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
 /* Callback to print the files in the directory. */
 static
 int print_dir_cb(const struct fs *fs,
@@ -111,13 +52,13 @@ int print_dir_cb(const struct fs *fs,
     verbose = *((int *) arg);
     if (!fs_file_info(fs, &de->fe, &finfo)) {
         report_error("main: could not get file information of `%s`",
-                     de->filename);
+                     de->name);
         return -1;
     }
 
     if (!fs_file_length(fs, &de->fe, &length)) {
         report_error("main: could not get file length of `%s`",
-                     de->filename);
+                     de->name);
         return -1;
     }
 
@@ -126,16 +67,16 @@ int print_dir_cb(const struct fs *fs,
         printf("Serial number: %u\n",
                ((de->fe.sn.word1 & SN_PART1_MASK) << 16) | de->fe.sn.word2);
         printf("Version: %u\n", de->fe.version);
-        printf("Name: %s\n", de->filename);
+        printf("Name: %s\n", de->name);
         printf("Length: %u\n", (unsigned int) length);
         if (verbose > 1) {
             print_file_info_details(&finfo);
         }
         printf("\n");
     } else {
-        printf("%-6u %-6u %-6u %-6u  %-38s\n",
+        printf("%-6u %-6u %-6u %-9u  %-38s\n",
                de->fe.leader_vda, de->fe.sn.word2, de->fe.version,
-               (unsigned int) length, de->filename);
+               (unsigned int) length, de->name);
     }
 
     return 1;
@@ -151,7 +92,7 @@ int print_directory(const struct fs *fs,
                     int verbose)
 {
     if (!verbose)
-        printf("VDA    SN     VER    SIZE    FILENAME\n");
+        printf("VDA    SN     VER    SIZE       FILENAME\n");
 
     if (!fs_scan_directory(fs, fe, &print_dir_cb, &verbose)) {
         report_error("main: could not print directory");
@@ -171,10 +112,8 @@ void usage(const char *prog_name)
     printf("where:\n");
     printf("  -2            Use double disk\n");
     printf("  -c level      To check the disk image\n");
-    printf("  -l            Lists all files in the filesystem\n");
     printf("  -d dirname    Lists the contents of a directory\n");
     printf("  -e filename   Extracts a given file\n");
-    printf("  -s            Scavenges files instead of finding them\n");
     printf("  -v            Increase verbosity\n");
     printf("  --help        Print this help\n");
 }
@@ -189,7 +128,6 @@ int main(int argc, char **argv)
     struct geometry dg;
     struct fs fs;
     struct file_entry fe;
-    int list_files, do_scavenge;
     int check_level;
     int i, is_last;
     int verbose;
@@ -197,8 +135,6 @@ int main(int argc, char **argv)
     disk_filename = NULL;
     extract_filename = NULL;
     dirname = NULL;
-    list_files = FALSE;
-    do_scavenge = FALSE;
     check_level = -1;
     verbose = 0;
 
@@ -221,8 +157,6 @@ int main(int argc, char **argv)
                 report_error("main: invalid level: %s", argv[i]);
                 return 1;
             }
-        } else if (strcmp("-l", argv[i]) == 0) {
-            list_files = TRUE;
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -235,8 +169,6 @@ int main(int argc, char **argv)
                 return 1;
             }
             extract_filename = argv[++i];
-        } else if (strcmp("-s", argv[i]) == 0) {
-            do_scavenge = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
             verbose++;
         } else if (strcmp("--help", argv[i]) == 0
@@ -272,16 +204,9 @@ int main(int argc, char **argv)
     }
 
     if (extract_filename != NULL) {
-        if (do_scavenge) {
-            if (!fs_scavenge_file(&fs, extract_filename, &fe)) {
-                report_error("main: could not scavenge %s", extract_filename);
-                goto error;
-            }
-        } else {
-            if (!fs_find_file(&fs, extract_filename, &fe)) {
-                report_error("main: could not find %s", extract_filename);
-                goto error;
-            }
+        if (!fs_find_file(&fs, extract_filename, &fe)) {
+            report_error("main: could not find %s", extract_filename);
+            goto error;
         }
 
         if (!fs_extract_file(&fs, &fe, extract_filename)) {
@@ -292,25 +217,9 @@ int main(int argc, char **argv)
         printf("extracted `%s` successfully\n", extract_filename);
     }
 
-    if (list_files) {
-        if (!print_files(&fs, verbose)) goto error;
-    }
-
     if (dirname) {
-        if (do_scavenge) {
-            if (!fs_scavenge_file(&fs, dirname, &fe)) {
-                report_error("main: could not scavenge %s", dirname);
-                goto error;
-            }
-        } else {
-            if (!fs_find_file(&fs, dirname, &fe)) {
-                report_error("main: could not find %s", dirname);
-                goto error;
-            }
-        }
-
-        if (!(fe.sn.word1 & SN_DIRECTORY)) {
-            report_error("main: %s is not a directory", dirname);
+        if (!fs_find_file(&fs, dirname, &fe)) {
+            report_error("main: could not find %s", dirname);
             goto error;
         }
 

@@ -12,7 +12,7 @@
 #include <time.h>
 
 /* Constants. */
-#define FILENAME_LENGTH                  40U
+#define NAME_LENGTH                      40U
 #define PAGE_DATA_SIZE                  512U
 
 /* To interpret the bits of serial_number.word1. */
@@ -108,14 +108,16 @@ struct directory_entry {
     uint16_t type;                /* The type of this entry. */
     uint16_t length;              /* The length of this entry. */
     struct file_entry fe;         /* A pointer to file_entry information. */
-    char filename[FILENAME_LENGTH];/* The name of the file. */
+    uint8_t name_length;          /* The original length of the name. */
+    char name[NAME_LENGTH];       /* The name of the file. */
 };
 
 /* The file information (from the leader page).
  * Roughly corresponds to the LD structure in AltoFileSys.D.
  */
 struct file_info {
-    char filename[FILENAME_LENGTH];/* The name of the file (hint). */
+    uint8_t name_length;          /* The original length of the name. */
+    char name[NAME_LENGTH];       /* The name of the file (hint). */
     time_t created;               /* The time the file was created. */
     time_t written;               /* The time the file was written. */
     time_t read;                  /* The time the file was accessed. */
@@ -274,25 +276,13 @@ int fs_file_info(const struct fs *fs, const struct file_entry *fe,
                  struct file_info *finfo);
 
 /* Finds a file in the filesystem.
- * The name of the file to find is given in `filename`.
+ * The name of the file to find is given in `name`.
  * The parameter `fe` will be populated with information about
  * the file found (such as leader page virtual disk address, etc.).
  * Returns TRUE on success.
  */
-int fs_find_file(const struct fs *fs, const char *filename,
+int fs_find_file(const struct fs *fs, const char *name,
                  struct file_entry *fe);
-
-/* Scavenges  a file in the filesystem.
- * This is different from fs_find_file() as it does not use any information
- * about the SysDir directory, it is solely based on the leader
- * pages of files (and so relies completely on hints).
- * The name of the file to find is given in `filename`.
- * The parameter `fe` will be populated with information about
- * the scavenged file (such as leader page virtual disk address, etc.).
- * Returns TRUE on success.
- */
-int fs_scavenge_file(const struct fs *fs, const char *filename,
-                     struct file_entry *fe);
 
 /* Scans the files in the filesystem.
  * The callback `cb` is used to scan the filesystem. The `arg` is
