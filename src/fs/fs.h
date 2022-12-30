@@ -99,7 +99,7 @@ struct page {
                                    */
         struct serial_number sn;  /* The file serial number. */
     } label;
-    uint8_t data[512];            /* Page data. */
+    uint8_t data[PAGE_DATA_SIZE]; /* Page data. */
 };
 
 /* Structure to represent an entry within a directory.
@@ -211,38 +211,12 @@ int fs_load_image(struct fs *fs, const char *filename);
  */
 int fs_save_image(const struct fs *fs, const char *filename);
 
-/* Converts a real address to a virtual address.
- * The real address is in `rda` and the virtual address is returned
- * in the `vda` parameter.
- * Returns TRUE on success.
- */
-int fs_real_to_virtual(const struct fs *fs, uint16_t rda, uint16_t *vda);
-
-/* Converts a virtual address to a real address.
- * The virtual address is in `vda` and the real address is returned
- * in the `rda` parameter.
- * Returns TRUE on success.
- */
-int fs_virtual_to_real(const struct fs *fs, uint16_t vda, uint16_t *rda);
-
 /* Checks the integrity of the filesystem.
  * The level of integrity to check is given by `level`.
  * If `level` is negative, the maximum level is assumed.
  * Returns TRUE on success.
  */
 int fs_check_integrity(struct fs *fs, int level);
-
-/* Updates the filesystem metadata.
- * This includes updating the bitmask, the number
- * of free available pages, etc.
- */
-void fs_update_metadata(struct fs *fs);
-
-/* Finds a free page within the filesystem.
- * The virtual disk address is returned in `free_vda`.
- * Returns TRUE on success.
- */
-int fs_find_free_page(struct fs *fs, uint16_t *free_vda);
 
 /* Converts the virtual disk address of the leader page `leader_vda` of a
  * file to a file_entry object `fe`.
@@ -273,6 +247,14 @@ int fs_open(const struct fs *fs,
             const struct file_entry *fe,
             struct open_file *of);
 
+/* Creates a new file in the filesystem.
+ * If `directory` is set to TRUE, a directory is created.
+ * The open file is stored in `of`.
+ * Returns TRUE on success.
+ */
+int fs_new_file(struct fs *fs, int directory,
+                struct open_file *of);
+
 /* Checks the open_file for errors.
  * The parameter `of` specifies the file to check.
  * Returns TRUE if the open_file has no errors.
@@ -286,12 +268,6 @@ int fs_check_of(const struct fs *fs, struct open_file *of);
  */
 size_t fs_read(const struct fs *fs, struct open_file *of,
                uint8_t *dst, size_t len);
-
-/* Advances to the next page (if at the end of the current page).
- * The open_file to advance is given in parameter `of`.
- * Returns TRUE on success.
- */
-int fs_advance_page(const struct fs *fs, struct open_file *of);
 
 /* Writes `len` bytes of an open file `of` from `src`.  If `src` is
  * NULL, the file is zeroed. The parameter `extends` tells the function
@@ -384,24 +360,5 @@ int fs_update_leader_page(struct fs *fs, const struct file_entry *fe);
  */
 int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
                     const char *output_filename, int include_leader_page);
-
-/* Reads a word (in big endian format).
- * The source data is given by `data`, and the offset where
- * the word is in `offset`.
- * Returns the word.
- */
-uint16_t read_word_be(const uint8_t *data, size_t offset);
-
-/* Writes a word (in big endian format).
- * The destination data is given by `data`, and the offset where
- * the word is in `offset`. The word to be written is in `w`.
- */
-void write_word_be(uint8_t *data, size_t offset, uint16_t w);
-
-/* Obtains a time_t from the Alto filesystem.
- * The alto data is located at `offset` in `data`.
- * Returns the time.
- */
-time_t read_alto_time(const uint8_t *data, size_t offset);
 
 #endif /* __FS_FS_H */
