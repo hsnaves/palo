@@ -79,7 +79,7 @@ int fs_load_image(struct fs *fs, const char *filename)
         return FALSE;
     }
 
-    meta_len = (sizeof(pg->header) + sizeof(pg->label)) / sizeof(uint16_t);
+    meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
 
@@ -148,7 +148,7 @@ int fs_save_image(const struct fs *fs, const char *filename)
         return FALSE;
     }
 
-    meta_len = (sizeof(pg->header) + sizeof(pg->label)) / sizeof(uint16_t);
+    meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
 
