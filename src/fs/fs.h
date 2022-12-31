@@ -113,6 +113,14 @@ struct directory_entry {
     char name[NAME_LENGTH];       /* The name of the file. */
 };
 
+/* Structure representing the disk geometry. */
+struct geometry {
+    uint16_t num_disks;           /* Number of disks. */
+    uint16_t num_cylinders;       /* Number of cylinders. */
+    uint16_t num_heads;           /* Number of heads per cylinder. */
+    uint16_t num_sectors;         /* Number of sectors per head. */
+};
+
 /* The file information (from the leader page).
  * Roughly corresponds to the LD structure in AltoFileSys.D.
  */
@@ -128,16 +136,11 @@ struct file_info {
     uint8_t consecutive;          /* The consecutive value. */
     uint8_t change_sn;            /* The change serial number value. */
 
+    struct geometry dg;           /* One of the properties of this file. */
+    int has_dg;                   /* If it has the disk geometry. */
+
     struct file_entry fe;         /* Hint to the file entry. */
     struct file_position last_page;/* Hint to the last page. */
-};
-
-/* Structure representing the disk geometry. */
-struct geometry {
-    uint16_t num_disks;           /* Number of disks. */
-    uint16_t num_cylinders;       /* Number of cylinders. */
-    uint16_t num_heads;           /* Number of heads per cylinder. */
-    uint16_t num_sectors;         /* Number of sectors per head. */
 };
 
 /* Structure representing the filesystem. */
@@ -154,15 +157,6 @@ struct fs {
     uint16_t free_pages;          /* Number of free pages. */
     struct serial_number last_sn; /* Last used serial number. */
 };
-
-/* Defines the type of the callback function for fs_scan_properties().
- * The callback should return a positive number to continue scanning,
- * zero to stop scanning, and a negative number on error.
- */
-typedef int (*scan_property_cb)(const struct fs *fs,
-                                const struct file_entry *fe,
-                                uint8_t type, uint8_t length,
-                                const uint8_t *data, void *arg);
 
 /* Defines the type of the callback function for fs_scan_files().
  * The callback should return a positive number to continue scanning,
@@ -303,16 +297,6 @@ int fs_file_info(const struct fs *fs,
                  const struct file_entry *fe,
                  struct file_info *finfo);
 
-/* Scans the file properties from the leader page.
- * The parameter `fe` specifies the file to be scanned.
- * The callback `cb` is used to scan the properties. The `arg` is
- * an extra parameter passed to the callback.
- * Returns TRUE on success.
- */
-int fs_scan_properties(const struct fs *fs,
-                       const struct file_entry *fe,
-                       scan_property_cb cb, void *arg);
-
 /* Finds a file in the filesystem.
  * The name of the file to find is given in `name`.
  * The parameter `fe` will be populated with information about
@@ -339,7 +323,6 @@ int fs_scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
  */
 int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
                       scan_directory_cb cb, void *arg);
-
 
 /* Updates the DiskDescriptor file.
  * Returns TRUE on success.

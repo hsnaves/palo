@@ -236,42 +236,6 @@ int check_basic_data(const struct fs *fs)
     return success;
 }
 
-/* Auxiliary callback used by traverse_files_cb().
- * The `arg` parameter is a pointer to a traverse_files_result structure.
- */
-static
-int traverse_properties_cb(const struct fs *fs,
-                           const struct file_entry *fe,
-                           uint8_t type, uint8_t length,
-                           const uint8_t *data, void *arg)
-{
-    struct traverse_files_result *tr;
-    struct geometry dg;
-
-    tr = (struct traverse_files_result *) arg;
-
-    if (type == 1 && fe->leader_vda == 1) {
-        if (length != 5) {
-            report_error("fs: check_integrity: "
-                         "invalid property length");
-            tr->error = TRUE;
-            return 1;
-        }
-
-        read_geometry(data, 0, &dg);
-        if (dg.num_disks != fs->dg.num_disks
-            || dg.num_cylinders != fs->dg.num_cylinders
-            || dg.num_heads != fs->dg.num_heads
-            || dg.num_sectors != fs->dg.num_sectors) {
-
-            report_error("fs: check_integrity: "
-                         "invalid disk geometry");
-            tr->error = TRUE;
-        }
-    }
-    return 1;
-}
-
 /* Auxiliary callback used by check_files().
  * The `arg` parameter is a pointer to a traverse_files_result structure.
  */
@@ -281,6 +245,7 @@ int traverse_files_cb(const struct fs *fs,
                       void *arg)
 {
     struct traverse_files_result *tr;
+    struct file_info finfo;
     uint16_t idx, bit;
 
     tr = (struct traverse_files_result *) arg;
@@ -290,10 +255,31 @@ int traverse_files_cb(const struct fs *fs,
     bit = BIT(fe->leader_vda);
     tr->fs->bitmap[idx] |= (1 << bit);
 
-    if (!fs_scan_properties(fs, fe, &traverse_properties_cb, arg)) {
+    if (!fs_file_info(fs, fe, &finfo)) {
         report_error("fs: check_integrity: "
-                     "could not scan properties");
+                     "could not get file information");
         tr->error = TRUE;
+    } else {
+        if (finfo.name_length >= NAME_LENGTH) {
+            report_error("fs: check_integrity: "
+                         "name too large");
+            tr->error = TRUE;
+        }
+        if (fe->leader_vda == 1 && !finfo.has_dg) {
+            report_error("fs: check_integrity: "
+                         "missing disk geometry in SysDir properties");
+            tr->error = TRUE;
+        } else if (fe->leader_vda == 1 && fe->leader_vda == 1) {
+            if (finfo.dg.num_disks != fs->dg.num_disks
+                || finfo.dg.num_cylinders != fs->dg.num_cylinders
+                || finfo.dg.num_heads != fs->dg.num_heads
+                || finfo.dg.num_sectors != fs->dg.num_sectors) {
+
+                report_error("fs: check_integrity: "
+                             "invalid disk geometry");
+                tr->error = TRUE;
+            }
+        }
     }
 
     return 1;
@@ -463,7 +449,8 @@ int check_descriptor(const struct fs *fs)
     /* Skip the leader page. */
     nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
     if (nbytes != PAGE_DATA_SIZE || of.error) {
-        report_error("fs: check_integrity: error while reading");
+        report_error("fs: check_integrity: "
+                     "error while reading leader page");
         return FALSE;
     }
 
@@ -522,7 +509,7 @@ int fs_check_integrity(struct fs *fs, int level)
         return FALSE;
 
 check_okay:
-    fs_update_metadata(fs);
+    fs_update_disk_metadata(fs);
     return TRUE;
 }
 

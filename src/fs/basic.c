@@ -12,99 +12,6 @@
 
 /* Functions. */
 
-void fs_increment_serial_number(struct fs *fs)
-{
-   fs->last_sn.word2++;
-    if (fs->last_sn.word2 == 0) {
-        fs->last_sn.word1++;
-        fs->last_sn.word1 &= SN_PART1_MASK;
-    }
-}
-
-void fs_update_metadata(struct fs *fs)
-{
-    const struct page *pg;
-    uint16_t vda, idx, bit;
-    uint16_t word1, word2;
-
-    memset(fs->bitmap, -1, fs->bitmap_size * sizeof(uint16_t));
-    fs->free_pages = 0;
-    fs->last_sn.word1 = 0;
-    fs->last_sn.word2 = 0;
-
-    for (vda = 0; vda < fs->length; vda++) {
-        idx = IDX(vda);
-        bit = BIT(vda);
-
-        pg = &fs->pages[vda];
-        if (pg->label.version == VERSION_FREE) {
-            fs->bitmap[idx] &= ~(1 << bit);
-            fs->free_pages++;
-            continue;
-        }
-
-        if (pg->label.version == 0
-            || pg->label.version == VERSION_BAD)
-            continue;
-
-        if (pg->label.file_pgnum == 0) {
-            word1 = pg->label.sn.word1 & SN_PART1_MASK;
-            word2 = pg->label.sn.word2;
-            if (word1 > fs->last_sn.word1
-                || ((word1 == fs->last_sn.word1)
-                    && (word2 > fs->last_sn.word2))) {
-
-                fs->last_sn.word1 = word1;
-                fs->last_sn.word2 = word2;
-            }
-        }
-    }
-    fs_increment_serial_number(fs);
-}
-
-int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
-{
-    const struct page *pg;
-    uint16_t idx, bit;
-    uint16_t vda;
-
-    while (TRUE) {
-        if (fs->free_pages == 0)
-            return FALSE;
-
-        for (idx = 0; idx < fs->bitmap_size; idx++) {
-            if (fs->bitmap[idx] != 0xFFFF) break;
-        }
-
-        if (idx == fs->bitmap_size) {
-            /* Something went wrong here, retry. */
-            fs_update_metadata(fs);
-            continue;
-        }
-
-        for (bit = 0; bit < 16; bit++) {
-            if (!(fs->bitmap[idx] & (1 << bit)))
-                break;
-        }
-
-        fs->bitmap[idx] |= (1 << bit);
-        fs->free_pages--;
-
-        vda = VDA(idx, bit);
-        pg = &fs->pages[vda];
-        if (pg->label.version != VERSION_FREE) {
-            /* Something went wrong here, retry. */
-            fs_update_metadata(fs);
-            continue;
-        }
-
-        *free_vda = vda;
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
 int real_to_virtual(const struct geometry *dg, uint16_t rda, uint16_t *vda)
 {
     uint16_t i, cylinder, head, sector, disk_num;
@@ -148,11 +55,12 @@ int virtual_to_real(const struct geometry *dg, uint16_t vda, uint16_t *rda)
     return TRUE;
 }
 
-void read_name(const uint8_t *data, char name[NAME_LENGTH])
+void read_name(const uint8_t *data, size_t offset,
+               char name[NAME_LENGTH])
 {
     size_t slen;
 
-    slen = data[0];
+    slen = data[offset];
     if (slen >= NAME_LENGTH)
         slen = NAME_LENGTH - 1;
 
@@ -161,11 +69,12 @@ void read_name(const uint8_t *data, char name[NAME_LENGTH])
         return;
     }
 
-    memcpy(name, &data[1], slen - 1);
+    memcpy(name, &data[offset + 1], slen - 1);
     name[slen - 1] = '\0';
 }
 
-void write_name(uint8_t *data, char name[NAME_LENGTH])
+void write_name(uint8_t *data, size_t offset,
+                const char name[NAME_LENGTH])
 {
     size_t slen;
 
@@ -174,13 +83,13 @@ void write_name(uint8_t *data, char name[NAME_LENGTH])
         slen = NAME_LENGTH - 1;
 
     if (slen == 0) {
-        data[0] = 0;
-        data[1] = 0;
+        data[offset] = 0;
+        data[offset + 1] = 0;
         return;
     }
 
-    data[0] = (uint8_t) slen;
-    memcpy(&data[1], name, slen - 1);
+    data[offset] = (uint8_t) slen;
+    memcpy(&data[offset + 1], name, slen - 1);
 }
 
 uint16_t read_word_be(const uint8_t *data, size_t offset)
@@ -195,6 +104,54 @@ void write_word_be(uint8_t *data, size_t offset, uint16_t w)
 {
     data[offset + 1] = (uint8_t) w;
     data[offset] = (uint8_t) (w >> 8);
+}
+
+void read_serial_number(const uint8_t *data, size_t offset,
+                        struct serial_number *sn)
+{
+    sn->word1 = read_word_be(data, offset);
+    sn->word2 = read_word_be(data, offset + 2);
+}
+
+void write_serial_number(uint8_t *data, size_t offset,
+                         const struct serial_number *sn)
+{
+    write_word_be(data, offset, sn->word1);
+    write_word_be(data, offset + 2, sn->word2);
+}
+
+void read_file_entry(const uint8_t *data, size_t offset,
+                     struct file_entry *fe)
+{
+    read_serial_number(data, offset, &fe->sn);
+    fe->version = read_word_be(data, offset + 4);
+    fe->blank = 0; /* read_word_be(data, offset + 6); */
+    fe->leader_vda = read_word_be(data, offset + 8);
+}
+
+void write_file_entry(uint8_t *data, size_t offset,
+                      const struct file_entry *fe)
+{
+    write_serial_number(data, offset, &fe->sn);
+    write_word_be(data, offset + 4, fe->version);
+    write_word_be(data, offset + 6, 0);
+    write_word_be(data, offset + 8, fe->leader_vda);
+}
+
+void read_file_position(const uint8_t *data, size_t offset,
+                        struct file_position *pos)
+{
+    pos->vda = read_word_be(data, offset);
+    pos->pgnum = read_word_be(data, offset + 2);
+    pos->pos = read_word_be(data, offset + 4);
+}
+
+void write_file_position(uint8_t *data, size_t offset,
+                         const struct file_position *pos)
+{
+    write_word_be(data, offset, pos->vda);
+    write_word_be(data, offset + 2, pos->pgnum);
+    write_word_be(data, offset + 4, pos->pos);
 }
 
 void read_geometry(const uint8_t *data, size_t offset,

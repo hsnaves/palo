@@ -170,13 +170,11 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
             if (nbytes != to_read - 2) goto error_short;
         }
 
-        de.fe.sn.word1 = read_word_be(buffer, DIR_OFF_SN);
-        de.fe.sn.word2 = read_word_be(buffer, 2 + DIR_OFF_SN);
-        de.fe.version = read_word_be(buffer, DIR_OFF_VERSION);
-        de.fe.blank = 0;
-        de.fe.leader_vda = read_word_be(buffer, DIR_OFF_LEADER_VDA);
+
+        read_file_entry(buffer, DIR_OFF_FILE_ENTRY, &de.fe);
+
         de.name_length = buffer[DIR_OFF_NAME];
-        read_name(&buffer[DIR_OFF_NAME], de.name);
+        read_name(buffer, DIR_OFF_NAME, de.name);
 
         ret = cb(fs, &de, arg);
         if (ret < 0) {
