@@ -44,56 +44,27 @@
 
 /* Data structures and types. */
 
-/* Defines the type of the callback function for fs_scan_properties().
- * The callback should return a positive number to continue scanning,
- * zero to stop scanning, and a negative number on error.
+/* Defines the type of the callback function for scan_properties().
+ * The callback should return TRUE to continue scanning, and FALSE to
+ * stop scanning.
  */
 typedef int (*scan_property_cb)(const struct fs *fs,
                                 const struct file_entry *fe,
                                 uint8_t type, uint8_t length,
                                 const uint8_t *data, void *arg);
 
+/* Defines the type of the callback function for scan_files().
+ * The callback should return TRUE to continue scanning, and FALSE to
+ * stop scanning.
+ */
+typedef int (*scan_files_cb)(const struct fs *fs,
+                             const struct file_entry *fe,
+                             void *arg);
+
 /* Functions. */
 
-/* Advances to the next page (if at the end of the current page).
- * The open_file to advance is given in parameter `of`.
- * Returns TRUE on success.
- */
-int fs_advance_page(const struct fs *fs, struct open_file *of);
 
-/* Increments the last serial number of the filesystem. */
-void fs_increment_serial_number(struct fs *fs);
-
-/* Updates the filesystem (disk) metadata.
- * This includes updating the bitmask, the number
- * of free available pages, etc.
- */
-void fs_update_disk_metadata(struct fs *fs);
-
-/* Finds a free page within the filesystem.
- * The virtual disk address is returned in `free_vda`.
- * Returns TRUE on success.
- */
-int fs_find_free_page(struct fs *fs, uint16_t *free_vda);
-
-/* Function to read the leader page.
- * The file to read the leader page is given in parameter `fe`.
- * The page is stored in `data`.
- * Returns TRUE on success.
- */
-int fs_read_leader_page(const struct fs *fs,
-                        const struct file_entry *fe,
-                        uint8_t data[PAGE_DATA_SIZE]);
-
-/* Scans the file properties from the leader page.
- * The parameter `fe` specifies the file to be scanned.
- * The callback `cb` is used to scan the properties. The `arg` is
- * an extra parameter passed to the callback.
- * Returns TRUE on success.
- */
-int fs_scan_properties(const struct fs *fs,
-                       const struct file_entry *fe,
-                       scan_property_cb cb, void *arg);
+/* basic.c */
 
 
 /* Converts a real address to a virtual address.
@@ -208,5 +179,207 @@ time_t read_alto_time(const uint8_t *data, size_t offset);
  * serialize is in the parameter `time`.
  */
 void write_alto_time(uint8_t *data, size_t offset, time_t time);
+
+
+/* check.c */
+
+
+/* Checks the file_entry with the data on disk.
+ * The file_entry to check is in parameter `fe`.
+ * Returns TRUE if it is a valid file_entry object.
+ */
+int check_file_entry(const struct fs *fs, const struct file_entry *fe);
+
+/* Checks the directory_entry.
+ * The directory_entry to check is in parameter `de`.
+ * Returns TRUE if it is a valid directory_entry object.
+ */
+int check_directory_entry(const struct fs *fs,
+                          const struct directory_entry *de);
+
+/* Checks the file properties of a given file.
+ * The parameter `fe` specifies the file.
+ * Returns TRUE if the properties are valid.
+ */
+int check_file_properties(const struct fs *fs,
+                          const struct file_entry *fe);
+
+/* Checks if the contents of the directory are valid.
+ * The parameter `dir_fe` specifies the directory.
+ * Returns TRUE if the directory contents are valid.
+ */
+int check_directory_contents(const struct fs *fs,
+                             const struct file_entry *dir_fe);
+
+/* Checks the open_file for errors.
+ * The parameter `of` specifies the file to check.
+ * Returns TRUE if the open_file has no errors.
+ */
+int check_of(const struct fs *fs, struct open_file *of);
+
+
+/* disk.c */
+
+
+/* Increments the last serial number of the filesystem. */
+void increment_serial_number(struct fs *fs);
+
+/* Updates the filesystem (disk) metadata.
+ * This includes updating the bitmask, the number
+ * of free available pages, etc.
+ */
+void update_disk_metadata(struct fs *fs);
+
+/* Finds a free page within the filesystem.
+ * The virtual disk address is returned in `free_vda`.
+ * Returns TRUE on success.
+ */
+int find_free_page(struct fs *fs, uint16_t *free_vda);
+
+/* Updates the DiskDescriptor file.
+ * Returns TRUE on success.
+ */
+int update_disk_descriptor(struct fs *fs);
+
+
+/* file.c */
+
+
+/* Converts the virtual disk address of the leader page `leader_vda` of a
+ * file to a file_entry object `fe`.
+ */
+void get_file_entry(const struct fs *fs, uint16_t leader_vda,
+                    struct file_entry *fe);
+
+/* Obtains the file_entry object of the SysDir.
+ * The file_entry is stored in `sysdir_fe`.
+ */
+void get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
+
+/* Obtains an open_file.
+ * The file is specified by `fe` and the open file is stored in `of`.
+ * This function starts at the leader page if `skip_leader` is set
+ * to FALSE.
+ */
+void get_of(const struct fs *fs,
+            const struct file_entry *fe,
+            int skip_leader,
+            struct open_file *of);
+
+/* Creates a new file in the filesystem.
+ * The `leader_vda` parameter specifies the VDA of the leader page.
+ * If `directory` is set to TRUE, a directory is created.
+ * The open file is stored in `of`.
+ * Returns TRUE on success.
+ */
+void new_file(struct fs *fs, uint16_t leader_vda, int directory,
+              struct open_file *of);
+
+/* Advances to the next page.
+ * The open_file to advance is given in parameter `of`.
+ */
+void advance_page(const struct fs *fs, struct open_file *of);
+
+/* Reads `len` bytes of an open file `of` to `dst`.
+ * If `dst` is NULL, the file pointer in `of` is still updated,
+ * but no actual bytes are copied.
+ * Returns the number of bytes read.
+ */
+size_t _read(const struct fs *fs, struct open_file *of,
+             uint8_t *dst, size_t len);
+
+/* Writes `len` bytes of an open file `of` from `src`.  If `src` is
+ * NULL, the file is zeroed. The parameter `extends` tells the function
+ * to allocate free pages when it reaches the end of the file,
+ * thereby extending the existing file.
+ * Returns the number of written bytes.
+ */
+size_t _write(struct fs *fs, struct open_file *of,
+              const uint8_t *src, size_t len, int extend);
+
+/* Trims the file to have the size matching the current position
+ * in the file.
+ */
+void trim(struct fs *fs, struct open_file *of);
+
+
+/* meta.c */
+
+
+/* Function to read the leader page.
+ * The file to read the leader page is given in parameter `fe`.
+ * The page is stored in `data`.
+ */
+void read_leader_page(const struct fs *fs,
+                      const struct file_entry *fe,
+                      uint8_t data[PAGE_DATA_SIZE]);
+
+/* Determines the file length.
+ * The `fe` specifies the file. Optionally, the `end_of` returns a
+ * pointer to the end of the file (if provided).
+ * Returns the file length.
+ */
+size_t file_length(const struct fs *fs, const struct file_entry *fe,
+                   struct open_file *end_of);
+
+/* Obtains the file metadata at the leader page.
+ * This includes the name of the file, access and modification times,
+ * etc.
+ */
+void file_info(const struct fs *fs,
+               const struct file_entry *fe,
+               struct file_info *finfo);
+
+/* Writes the leader page.
+ * The file whose leader page is to be written is specified by `fe`.
+ * The `finfo` parameter specifies the data of the leader page.
+ */
+void write_leader_page(struct fs *fs,
+                       const struct file_entry *fe,
+                       const struct file_info *finfo);
+
+/* Updates the leader page of a file with the correct hints.
+ * The file whose leader page is to be written is specified by `fe`.
+ */
+void update_leader_page(struct fs *fs, const struct file_entry *fe);
+
+
+/* scan.c */
+
+
+/* Scans the file properties from the leader page.
+ * The parameter `fe` specifies the file to be scanned.
+ * The callback `cb` is used to scan the properties. The `arg` is
+ * an extra parameter passed to the callback.
+ */
+void scan_properties(const struct fs *fs,
+                     const struct file_entry *fe,
+                     scan_property_cb cb, void *arg);
+
+/* Scans the files in the filesystem.
+ * The callback `cb` is used to scan the filesystem. The `arg` is
+ * an extra parameter passed to the callback.
+ */
+void scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
+
+/* Scans one directory.
+ * The directory is specified by the file_entry `dir_fe` parameter.
+ * The callback `cb` is used to scan the directory. The `arg` is
+ * an extra parameter passed to the callback.
+ */
+void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
+                    scan_directory_cb cb, void *arg);
+
+/* Resolves a name in the filesystem.
+ * The name of the file to find is given in `name`. If the file
+ * is found, `found` will return TRUE.
+ * The parameter `fe` will be populated with information about
+ * the file found (such as leader page virtual disk address, etc.).
+ * The parameter `dir_fe`, if provided, will be populated with
+ * the information about the directory that contains the file.
+ * Returns TRUE on success.
+ */
+void resolve_name(const struct fs *fs, const char *name, int *found,
+                  struct file_entry *fe, struct file_entry *dir_fe);
 
 #endif /* __FS_FS_INTERNAL_H */

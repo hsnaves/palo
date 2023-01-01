@@ -9,7 +9,7 @@
 
 /* Functions. */
 
-void fs_increment_serial_number(struct fs *fs)
+void increment_serial_number(struct fs *fs)
 {
    fs->last_sn.word2++;
     if (fs->last_sn.word2 == 0) {
@@ -18,7 +18,7 @@ void fs_increment_serial_number(struct fs *fs)
     }
 }
 
-void fs_update_disk_metadata(struct fs *fs)
+void update_disk_metadata(struct fs *fs)
 {
     const struct page *pg;
     uint16_t vda, idx, bit;
@@ -56,10 +56,10 @@ void fs_update_disk_metadata(struct fs *fs)
             }
         }
     }
-    fs_increment_serial_number(fs);
+    increment_serial_number(fs);
 }
 
-int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
+int find_free_page(struct fs *fs, uint16_t *free_vda)
 {
     const struct page *pg;
     uint16_t idx, bit;
@@ -75,7 +75,7 @@ int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
 
         if (idx == fs->bitmap_size) {
             /* Something went wrong here, retry. */
-            fs_update_disk_metadata(fs);
+            update_disk_metadata(fs);
             continue;
         }
 
@@ -91,7 +91,7 @@ int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
         pg = &fs->pages[vda];
         if (pg->label.version != VERSION_FREE) {
             /* Something went wrong here, retry. */
-            fs_update_disk_metadata(fs);
+            update_disk_metadata(fs);
             continue;
         }
 
@@ -102,45 +102,36 @@ int fs_find_free_page(struct fs *fs, uint16_t *free_vda)
     return FALSE;
 }
 
-int fs_update_disk_descriptor(struct fs *fs)
+int update_disk_descriptor(struct fs *fs)
 {
     struct file_entry fe;
     struct open_file of;
     uint8_t buffer[32];
     size_t nbytes;
     uint16_t i;
+    int found;
 
-    fs_update_disk_metadata(fs);
+    update_disk_metadata(fs);
 
-    if (!fs_find_file(fs, "DiskDescriptor", &fe, NULL)) {
+    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL);
+    if (!found) {
         report_error("fs: update_disk_descriptor: "
                      "could not find DiskDescriptor");
         return FALSE;
     }
 
-    if (!fs_open(fs, &fe, &of)) {
-        report_error("fs: update_disk_descriptor: "
-                     "could not open DiskDescriptor");
-        return FALSE;
-    }
-    /* Skip the leader page. */
-    nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
-    if (nbytes != PAGE_DATA_SIZE || of.error) {
-        report_error("fs: update_disk_descriptor: "
-                     "could not skip leader page");
-        return FALSE;
-    }
+    get_of(fs, &fe, TRUE, &of);
 
     memset(buffer, 0, sizeof(buffer));
     write_geometry(buffer, DESCR_OFF_GEOMETRY, &fs->dg);
 
     write_serial_number(buffer, DESCR_OFF_LAST_SN, &fs->last_sn);
     write_word_be(buffer, DESCR_OFF_DISKBT_SIZE, fs->bitmap_size);
-    /* TODO: Use the correct versions kept. */
+    /* TODO: Use the correct VERSIONS_KEPT. */
     write_word_be(buffer, DESCR_OFF_VERSIONS_KEPT, 0);
     write_word_be(buffer, DESCR_OFF_FREE_PAGES, fs->free_pages);
 
-    nbytes = fs_write(fs, &of, buffer, sizeof(buffer), TRUE);
+    nbytes = _write(fs, &of, buffer, sizeof(buffer), TRUE);
     if (nbytes != sizeof(buffer) || of.error) {
         report_error("fs: update_disk_descriptor: "
                      "could not write first part");
@@ -149,18 +140,14 @@ int fs_update_disk_descriptor(struct fs *fs)
 
     for (i = 0; i < fs->bitmap_size; i++) {
         write_word_be(buffer, 0, fs->bitmap[i]);
-        nbytes = fs_write(fs, &of, buffer, 2, TRUE);
+        nbytes = _write(fs, &of, buffer, 2, TRUE);
         if (nbytes != 2 || of.error) {
             report_error("fs: update_disk_descriptor: "
                          "could not write second part");
             return FALSE;
         }
     }
-    if (!fs_trim(fs, &of)) {
-        report_error("fs: update_disk_descriptor: "
-                     "could not trim file");
-        return FALSE;
-    }
+    trim(fs, &of);
 
     return TRUE;
 }

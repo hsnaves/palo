@@ -6,45 +6,15 @@
 #include "fs/fs.h"
 #include "common/utils.h"
 
-/* Prints the details of a file_info structure. */
-static
-void print_file_info_details(const struct file_info *finfo)
-{
-    struct tm *ltm;
+/* Data structures and types. */
 
-    ltm = localtime(&finfo->created);
-    printf("Created: %02d-%02d-%02d %2d:%02d:%02d\n",
-           ltm->tm_mday, ltm->tm_mon + 1,
-           ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-    ltm = localtime(&finfo->written);
-    printf("Written: %02d-%02d-%02d %2d:%02d:%02d\n",
-           ltm->tm_mday, ltm->tm_mon + 1,
-           ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-    ltm = localtime(&finfo->read);
-    printf("Read:    %02d-%02d-%02d %2d:%02d:%02d\n",
-           ltm->tm_mday, ltm->tm_mon + 1,
-           ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+/* Argument passed to print_dir_cb(). */
+struct print_dir_cb_arg {
+    unsigned int count;           /* Directory entry count. */
+    int verbose;                  /* To print verbose information. */
+};
 
-    printf("Propbegin: %u\n", finfo->propbegin);
-    printf("Proplen: %u\n", finfo->proplen);
-    if (finfo->has_dg) {
-        printf("num_disks = %u, num_cylinders = %u\n"
-               "num_heads = %u, num_sectors = %u\n",
-               finfo->dg.num_disks, finfo->dg.num_cylinders,
-               finfo->dg.num_heads, finfo->dg.num_sectors);
-    }
-
-    printf("Consecutive: %u\n", finfo->consecutive);
-    printf("Change SN: %u\n", finfo->change_sn);
-    printf("File Entry: \n");
-    printf("  VDA: %u\n", finfo->fe.leader_vda);
-    printf("  SN: %u\n", finfo->fe.sn.word2);
-    printf("  VER: %u\n", finfo->fe.version);
-    printf("Last page: \n");
-    printf("  VDA: %u\n", finfo->last_page.vda);
-    printf("  PGNUM: %u\n", finfo->last_page.pgnum);
-    printf("  POS: %u\n", finfo->last_page.pos);
-}
+/* Functions. */
 
 /* Callback to print the files in the directory. */
 static
@@ -53,64 +23,81 @@ int print_dir_cb(const struct fs *fs,
                  void *arg)
 {
     struct file_info finfo;
+    struct print_dir_cb_arg *cb_arg;
+    uint32_t sn;
+    struct tm *ltm;
     size_t length;
-    int verbose;
 
-    if (de->type == DIR_ENTRY_MISSING) return 1;
+    cb_arg = ((struct print_dir_cb_arg *) arg);
+    cb_arg->count++;
 
-    verbose = *((int *) arg);
+    if (!cb_arg->verbose && (cb_arg->count == 1)) {
+        printf("N      VDA    SN     VER    SIZE        FILENAME\n");
+    }
+
+    if (de->type == DIR_ENTRY_MISSING) return TRUE;
+
     if (!fs_file_info(fs, &de->fe, &finfo)) {
         report_error("main: could not get file information of `%s`",
                      de->name);
-        return -1;
+        return FALSE;
     }
 
-    if (!fs_file_length(fs, &de->fe, &length, NULL)) {
+    if (!fs_file_length(fs, &de->fe, &length)) {
         report_error("main: could not get file length of `%s`",
                      de->name);
-        return -1;
+        return FALSE;
     }
 
-    if (verbose) {
+    sn = ((uint32_t) (de->fe.sn.word1 & SN_PART1_MASK)) << 16;
+    sn += de->fe.sn.word2;
+
+    if (cb_arg->verbose) {
         printf("Leader VDA: %u\n", de->fe.leader_vda);
-        printf("Serial number: %u\n",
-               ((de->fe.sn.word1 & SN_PART1_MASK) << 16) | de->fe.sn.word2);
+        printf("Serial number: %u\n", sn);
         printf("Version: %u\n", de->fe.version);
         printf("Name: %s\n", de->name);
         printf("Length: %u\n", (unsigned int) length);
-        if (verbose > 1) {
-            print_file_info_details(&finfo);
+
+        ltm = localtime(&finfo.created);
+        printf("Created: %02d-%02d-%02d %2d:%02d:%02d\n",
+               ltm->tm_mday, ltm->tm_mon + 1,
+               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+
+        ltm = localtime(&finfo.written);
+        printf("Written: %02d-%02d-%02d %2d:%02d:%02d\n",
+               ltm->tm_mday, ltm->tm_mon + 1,
+               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+
+        ltm = localtime(&finfo.read);
+        printf("Read:    %02d-%02d-%02d %2d:%02d:%02d\n",
+               ltm->tm_mday, ltm->tm_mon + 1,
+               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+
+        printf("Propbegin: %u\n", finfo.propbegin);
+        printf("Proplen: %u\n", finfo.proplen);
+        if (finfo.has_dg) {
+            printf("num_disks = %u, num_cylinders = %u\n"
+                   "num_heads = %u, num_sectors = %u\n",
+                   finfo.dg.num_disks, finfo.dg.num_cylinders,
+                   finfo.dg.num_heads, finfo.dg.num_sectors);
         }
+        printf("Consecutive: %u\n", finfo.consecutive);
+        printf("Change SN: %u\n", finfo.change_sn);
+        printf("Last page: \n");
+        printf("  VDA: %u\n", finfo.last_page.vda);
+        printf("  PGNUM: %u\n", finfo.last_page.pgnum);
+        printf("  POS: %u\n", finfo.last_page.pos);
         printf("\n");
     } else {
-        printf("%-6u %-6u %-6u %-9u  %-38s\n",
-               de->fe.leader_vda, de->fe.sn.word2, de->fe.version,
-               (unsigned int) length, de->name);
-    }
-
-    return 1;
-}
-
-/* Main function to print the files in the directory pointed by `fe`.
- * The verbosity level is indicated by `verbose`.
- * Returns TRUE on success.
- */
-static
-int print_directory(const struct fs *fs,
-                    const struct file_entry *fe,
-                    int verbose)
-{
-    if (!verbose)
-        printf("VDA    SN     VER    SIZE       FILENAME\n");
-
-    if (!fs_scan_directory(fs, fe, &print_dir_cb, &verbose)) {
-        report_error("main: could not print directory");
-        return FALSE;
+        printf("%-6u %-6u %-6u %-6u %-10u  %-38s\n",
+               cb_arg->count,  de->fe.leader_vda,
+               sn, de->fe.version, (unsigned int) length,
+               de->name);
     }
 
     return TRUE;
 }
-
 
 /* Prints the usage information to the console output. */
 static
@@ -120,7 +107,6 @@ void usage(const char *prog_name)
     printf(" %s [options] disk\n", prog_name);
     printf("where:\n");
     printf("  -2            Use double disk\n");
-    printf("  -c level      To check the disk image\n");
     printf("  -d dirname    Lists the contents of a directory\n");
     printf("  -e filename   Extracts a given file\n");
     printf("  -v            Increase verbosity\n");
@@ -133,18 +119,17 @@ int main(int argc, char **argv)
     const char *disk_filename;
     const char *extract_filename;
     const char *dirname;
-    char *end;
     struct geometry dg;
     struct fs fs;
-    struct file_entry fe;
-    int check_level;
+    struct file_entry dir_fe;
+    struct print_dir_cb_arg cb_arg;
     int i, is_last;
+    int found;
     int verbose;
 
     disk_filename = NULL;
     extract_filename = NULL;
     dirname = NULL;
-    check_level = -1;
     verbose = 0;
 
     dg.num_disks = 1;
@@ -156,16 +141,6 @@ int main(int argc, char **argv)
         is_last = (i + 1 == argc);
         if (strcmp("-2", argv[i]) == 0) {
             dg.num_disks = 2;
-        } else if (strcmp("-c", argv[i]) == 0) {
-            if (is_last) {
-                report_error("main: please specify the check level");
-                return 1;
-            }
-            check_level = strtol(argv[++i], &end, 10);
-            if (end[0] != '\0') {
-                report_error("main: invalid level: %s", argv[i]);
-                return 1;
-            }
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -195,7 +170,6 @@ int main(int argc, char **argv)
     }
 
     fs_initvar(&fs);
-
     if (unlikely(!fs_create(&fs, dg))) {
         report_error("main: could not create disk");
         goto error;
@@ -207,18 +181,13 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (!fs_check_integrity(&fs, check_level)) {
+    if (!fs_check_integrity(&fs)) {
         report_error("main: invalid disk");
         goto error;
     }
 
     if (extract_filename != NULL) {
-        if (!fs_find_file(&fs, extract_filename, &fe, NULL)) {
-            report_error("main: could not find %s", extract_filename);
-            goto error;
-        }
-
-        if (!fs_extract_file(&fs, &fe, extract_filename, FALSE)) {
+        if (!fs_extract_file(&fs, extract_filename, extract_filename)) {
             report_error("main: could not extract %s", extract_filename);
             goto error;
         }
@@ -227,12 +196,22 @@ int main(int argc, char **argv)
     }
 
     if (dirname) {
-        if (!fs_find_file(&fs, dirname, &fe, NULL)) {
-            report_error("main: could not find %s", dirname);
+        if (!fs_resolve_name(&fs, dirname, &found, &dir_fe, NULL)) {
+            report_error("main: could not resolve `%s`", dirname);
             goto error;
         }
 
-        if (!print_directory(&fs, &fe, verbose)) goto error;
+        if (!found) {
+            report_error("main: could not find `%s`", dirname);
+            goto error;
+        }
+
+        cb_arg.count = 0;
+        cb_arg.verbose = verbose;
+        if (!fs_scan_directory(&fs, &dir_fe, &print_dir_cb, &cb_arg)) {
+            report_error("main: could not print directory");
+            return FALSE;
+        }
     }
 
     fs_destroy(&fs);

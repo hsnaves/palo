@@ -156,19 +156,12 @@ struct fs {
     uint16_t bitmap_size;         /* The size of the bitmap. */
     uint16_t free_pages;          /* Number of free pages. */
     struct serial_number last_sn; /* Last used serial number. */
+    int checked;                  /* If the filesystem was checked. */
 };
 
-/* Defines the type of the callback function for fs_scan_files().
- * The callback should return a positive number to continue scanning,
- * zero to stop scanning, and a negative number on error.
- */
-typedef int (*scan_files_cb)(const struct fs *fs,
-                             const struct file_entry *fe,
-                             void *arg);
-
 /* Defines the type of the callback function for fs_scan_directory().
- * The callback should return a positive number to continue scanning,
- * zero to stop scanning, and a negative number on error.
+ * The callback should return TRUE to continue scanning, and FALSE to
+ * stop scanning.
  */
 typedef int (*scan_directory_cb)(const struct fs *fs,
                                  const struct directory_entry *de,
@@ -206,54 +199,38 @@ int fs_load_image(struct fs *fs, const char *filename);
 int fs_save_image(const struct fs *fs, const char *filename);
 
 /* Checks the integrity of the filesystem.
- * The level of integrity to check is given by `level`.
- * If `level` is negative, the maximum level is assumed.
  * Returns TRUE on success.
  */
-int fs_check_integrity(struct fs *fs, int level);
+int fs_check_integrity(struct fs *fs);
 
-/* Converts the virtual disk address of the leader page `leader_vda` of a
- * file to a file_entry object `fe`.
+/* Obtains an open_file.
+ * The file is specified by `fe` and the open file is stored in `of`.
+ * This function starts at the leader page if `skip_leader` is set
+ * to FALSE.
  * Returns TRUE on success.
  */
-int fs_file_entry(const struct fs *fs, uint16_t leader_vda,
-                  struct file_entry *fe);
-
-/* Checks the file_entry with the data on disk.
- * The file_entry to check is in parameter `fe`.
- * Returns TRUE if it is a valid file_entry object.
- */
-int fs_check_file_entry(const struct fs *fs, const struct file_entry *fe);
-
-/* Checks the directory_entry.
- * The directory_entry to check is in parameter `de`.
- * Returns TRUE if it is a valid directory_entry object.
- */
-int fs_check_directory_entry(const struct fs *fs,
-                             const struct directory_entry *de);
+int fs_get_of(const struct fs *fs,
+              const struct file_entry *fe,
+              int skip_leader,
+              struct open_file *of);
 
 /* Opens a file for reading or writing.
- * The file is specified by `fe` and the open file is stored in `of`.
- * This function starts at the leader page.
+ * The file is specified by `name` and the open file is stored in `of`.
+ * The `mode` specifies how to open the file. The valid modes are:
+ *   "r" -> opens for reading,
+ *   "w" -> opens the file for writing.
  * Returns TRUE on success.
  */
 int fs_open(const struct fs *fs,
-            const struct file_entry *fe,
+            const char *name,
+            const char *mode,
             struct open_file *of);
 
-/* Creates a new file in the filesystem.
- * If `directory` is set to TRUE, a directory is created.
- * The open file is stored in `of`.
+/* Closes the open_file `of`.
  * Returns TRUE on success.
  */
-int fs_new_file(struct fs *fs, int directory,
-                struct open_file *of);
-
-/* Checks the open_file for errors.
- * The parameter `of` specifies the file to check.
- * Returns TRUE if the open_file has no errors.
- */
-int fs_check_of(const struct fs *fs, struct open_file *of);
+int fs_close(const struct fs *fs,
+             struct open_file *of);
 
 /* Reads `len` bytes of an open file `of` to `dst`.
  * If `dst` is NULL, the file pointer in `of` is still updated,
@@ -263,30 +240,19 @@ int fs_check_of(const struct fs *fs, struct open_file *of);
 size_t fs_read(const struct fs *fs, struct open_file *of,
                uint8_t *dst, size_t len);
 
-/* Writes `len` bytes of an open file `of` from `src`.  If `src` is
- * NULL, the file is zeroed. The parameter `extends` tells the function
- * to allocate free pages when it reaches the end of the file,
- * thereby extending the existing file.
- * Returns the number of written bytes.
- */
-size_t fs_write(struct fs *fs, struct open_file *of,
-                const uint8_t *src, size_t len, int extend);
-
-/* Trims the file to have the size matching the current position
- * in the file.
+/* Obtains the file_entry of the SysDir.
+ * The `sysdir_fe` will be populated with the corresponding SysDir
+ * file_entry.
  * Returns TRUE on success.
  */
-int fs_trim(struct fs *fs, struct open_file *of);
+int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
 
-/* Determines a file length.
- * The `fe` determines the file.
- * The file length is returned in `length`.
- * Optionally, the `end_of` returns a pointer to the end of the
- * file (if provided).
+/* Determines the file length.
+ * The `fe` specifies the file. The file length is returned in `length`.
  * Returns TRUE on success.
  */
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
-                   size_t *length, struct open_file *end_of);
+                   size_t *length);
 
 /* Obtains the file metadata at the leader page.
  * This includes the name of the file, access and modification times,
@@ -297,51 +263,34 @@ int fs_file_info(const struct fs *fs,
                  const struct file_entry *fe,
                  struct file_info *finfo);
 
-/* Finds a file in the filesystem.
- * The name of the file to find is given in `name`.
+/* Scans (lists) one directory.
+ * The directory is specified by the file_entry `dir_fe` parameter.
+ * The callback `cb` is used to list the directory. The `arg` is
+ * an extra parameter passed to the callback.
+ * Returns TRUE on success.
+ */
+int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
+                      scan_directory_cb cb, void *arg);
+
+/* Resolves a name in the filesystem.
+ * The name of the file to find is given in `name`. If the file
+ * is found, `found` will return TRUE.
  * The parameter `fe` will be populated with information about
  * the file found (such as leader page virtual disk address, etc.).
  * The parameter `dir_fe`, if provided, will be populated with
  * the information about the directory that contains the file.
  * Returns TRUE on success.
  */
-int fs_find_file(const struct fs *fs, const char *name,
-                 struct file_entry *fe, struct file_entry *dir_fe);
-
-/* Scans the files in the filesystem.
- * The callback `cb` is used to scan the filesystem. The `arg` is
- * an extra parameter passed to the callback.
- * Returns TRUE on success.
- */
-int fs_scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
-
-/* Scans one directory..
- * The directory is specified by the file_entry `fe` parameter.
- * The callback `cb` is used to scan the directory. The `arg` is
- * an extra parameter passed to the callback.
- * Returns TRUE on success.
- */
-int fs_scan_directory(const struct fs *fs, const struct file_entry *fe,
-                      scan_directory_cb cb, void *arg);
-
-/* Updates the DiskDescriptor file.
- * Returns TRUE on success.
- */
-int fs_update_descriptor(struct fs *fs);
-
-/* Updates the leader page of a file with the correct hints.
- * Returns TRUE on success.
- */
-int fs_update_leader_page(struct fs *fs, const struct file_entry *fe);
+int fs_resolve_name(const struct fs *fs, const char *name, int *found,
+                    struct file_entry *fe, struct file_entry *dir_fe);
 
 /* Extracts a file from the filesystem.
- * The `fe` contains information about the location of the file in
- * in the filesystem. The `output_filename` specifies the filename
- * of the output file to write. If it is to include the leader page
- * data, the `include_leader_page` parameter should be set to TRUE.
+ * The `name` is the name of the file in the filesystem.
+ * The `output_filename` specifies the filename of the output file to
+ * write.
  * Returns TRUE on success.
  */
-int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
-                    const char *output_filename, int include_leader_page);
+int fs_extract_file(const struct fs *fs, const char *name,
+                    const char *output_filename);
 
 #endif /* __FS_FS_H */

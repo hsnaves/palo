@@ -38,7 +38,7 @@ int check_links(const struct fs *fs)
         pg = &fs->pages[vda];
 
         if (!virtual_to_real(&fs->dg, vda, &rda)) {
-            report_error("fs: check_integrity: could not convert "
+            report_error("fs: check_links: could not convert "
                          "virtual to real disk address: %u", vda);
             return FALSE;
         }
@@ -50,7 +50,7 @@ int check_links(const struct fs *fs)
 
         if (pg->label.prev_rda != 0) {
             if (!real_to_virtual(&fs->dg, pg->label.prev_rda, &ovda)) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "invalid prev_rda = %u at VDA = %u",
                              pg->label.prev_rda, vda);
                 success = FALSE;
@@ -59,7 +59,7 @@ int check_links(const struct fs *fs)
 
             opg = &fs->pages[ovda];
             if (opg->label.file_pgnum != (pg->label.file_pgnum - 1)) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "discontiguous file_pgnum (prev) "
                              "at VDA = %u: expecting %u but got %u",
                              vda, pg->label.file_pgnum - 1,
@@ -70,7 +70,7 @@ int check_links(const struct fs *fs)
 
             if (opg->label.sn.word1 != pg->label.sn.word1
                 || opg->label.sn.word2 != pg->label.sn.word2) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "differing file serial numbers (prev) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
                              vda, pg->label.sn.word1, pg->label.sn.word2,
@@ -81,7 +81,7 @@ int check_links(const struct fs *fs)
 
             /* First page is special, so not test it. */
             if (opg->label.next_rda != rda && vda != 0) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "broken link (prev) at VDA = %u: "
                              "points to RDA %u instead of %u",
                              vda, opg->label.next_rda, rda);
@@ -90,7 +90,7 @@ int check_links(const struct fs *fs)
             }
         } else {
             if (pg->label.file_pgnum != 0) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "file_pgnum = %u is not zero at VDA = %u",
                              pg->label.file_pgnum, vda);
                 success = FALSE;
@@ -100,7 +100,7 @@ int check_links(const struct fs *fs)
 
         if (pg->label.next_rda != 0) {
             if (!real_to_virtual(&fs->dg, pg->label.next_rda, &ovda)) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "invalid next_rda = %u at VDA = %u",
                              pg->label.next_rda, vda);
                 success = FALSE;
@@ -109,7 +109,7 @@ int check_links(const struct fs *fs)
 
             opg = &fs->pages[ovda];
             if (opg->label.file_pgnum != (pg->label.file_pgnum + 1)) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "discontiguous file_pgnum (next) "
                              "at VDA = %u: expecting %u but got %u",
                              vda, pg->label.file_pgnum + 1,
@@ -120,7 +120,7 @@ int check_links(const struct fs *fs)
 
             if (opg->label.sn.word1 != pg->label.sn.word1
                 || opg->label.sn.word2 != pg->label.sn.word2) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "differing file serial numbers (next) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
                              vda, pg->label.sn.word1, pg->label.sn.word2,
@@ -131,7 +131,7 @@ int check_links(const struct fs *fs)
 
             /* First page is special, so not test it. */
             if (opg->label.prev_rda != rda && vda != 0) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_links: "
                              "broken link (next) at VDA = %u: "
                              "points to RDA %u instead of %u",
                              vda, opg->label.prev_rda, rda);
@@ -156,17 +156,16 @@ int check_basic_data(const struct fs *fs)
     int success;
 
     success = TRUE;
+    if (fs->length <= 1) {
+        report_error("fs: check_basic_data: filesystem too short");
+        success = FALSE;
+    }
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
 
-        if (!virtual_to_real(&fs->dg, vda, &rda)) {
-            report_error("fs: check_integrity: could not convert "
-                         "virtual to real disk address: %u", vda);
-            return FALSE;
-        }
-
+        virtual_to_real(&fs->dg, vda, &rda);
         if (pg->header[1] != rda || pg->header[0] != 0) {
-            report_error("fs: check_integrity: "
+            report_error("fs: check_basic_data: "
                          "invalid page header at VDA = %u: "
                          "expecting %u, 0 but got %u, %u",
                          vda, rda, pg->header[1], pg->header[0]);
@@ -179,7 +178,7 @@ int check_basic_data(const struct fs *fs)
             if (pg->label.sn.word1 != VERSION_BAD
                 || pg->label.sn.word2 != VERSION_BAD) {
 
-                report_error("fs: check_integrity: "
+                report_error("fs: check_basic_data: "
                              "invalid bad page at VDA = %u: "
                              "expecting SN %u, %u, but got %u, %u",
                              vda, VERSION_BAD, VERSION_BAD,
@@ -190,14 +189,14 @@ int check_basic_data(const struct fs *fs)
         }
 
         if (pg->label.version == 0) {
-            report_error("fs: check_integrity: "
+            report_error("fs: check_basic_data: "
                          "invalid label version = 0 at VDA = %u", vda);
             success = FALSE;
             continue;
         }
 
         if (pg->label.nbytes > PAGE_DATA_SIZE) {
-            report_error("fs: check_integrity: "
+            report_error("fs: check_basic_data: "
                          "invalid label nbytes = %u at VDA = %u",
                          pg->label.nbytes, vda);
             success = FALSE;
@@ -206,7 +205,7 @@ int check_basic_data(const struct fs *fs)
 
         if (pg->label.prev_rda == 0) {
             if (pg->label.nbytes < PAGE_DATA_SIZE) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_basic_data: "
                              "short leader page at VDA = %u: "
                              "nbytes = %u", vda, pg->label.nbytes);
                 success = FALSE;
@@ -216,7 +215,7 @@ int check_basic_data(const struct fs *fs)
 
         if (pg->label.next_rda != 0) {
             if (pg->label.nbytes < PAGE_DATA_SIZE) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_basic_data: "
                              "short last page at VDA = %u: "
                              "nbytes = %u",
                              vda, pg->label.nbytes);
@@ -225,7 +224,7 @@ int check_basic_data(const struct fs *fs)
             }
         } else {
             if (pg->label.nbytes >= PAGE_DATA_SIZE) {
-                report_error("fs: check_integrity: "
+                report_error("fs: check_basic_data: "
                              "full last page at VDA = %u", vda);
                 success = FALSE;
                 continue;
@@ -255,34 +254,36 @@ int traverse_files_cb(const struct fs *fs,
     bit = BIT(fe->leader_vda);
     tr->fs->bitmap[idx] |= (1 << bit);
 
-    if (!fs_file_info(fs, fe, &finfo)) {
-        report_error("fs: check_integrity: "
-                     "could not get file information");
-        tr->error = TRUE;
-    } else {
-        if (finfo.name_length >= NAME_LENGTH) {
-            report_error("fs: check_integrity: "
-                         "name too large");
-            tr->error = TRUE;
-        }
-        if (fe->leader_vda == 1 && !finfo.has_dg) {
-            report_error("fs: check_integrity: "
-                         "missing disk geometry in SysDir properties");
-            tr->error = TRUE;
-        } else if (fe->leader_vda == 1 && fe->leader_vda == 1) {
-            if (finfo.dg.num_disks != fs->dg.num_disks
-                || finfo.dg.num_cylinders != fs->dg.num_cylinders
-                || finfo.dg.num_heads != fs->dg.num_heads
-                || finfo.dg.num_sectors != fs->dg.num_sectors) {
+    file_info(fs, fe, &finfo);
 
-                report_error("fs: check_integrity: "
-                             "invalid disk geometry");
-                tr->error = TRUE;
-            }
+    if (finfo.name_length >= NAME_LENGTH) {
+        report_error("fs: check_files: "
+                     "name too large");
+        tr->error = TRUE;
+    }
+    if (fe->leader_vda == 1 && !finfo.has_dg) {
+        report_error("fs: check_files: "
+                     "missing disk geometry in SysDir properties");
+        tr->error = TRUE;
+    } else if (fe->leader_vda == 1 && fe->leader_vda == 1) {
+        if (finfo.dg.num_disks != fs->dg.num_disks
+            || finfo.dg.num_cylinders != fs->dg.num_cylinders
+            || finfo.dg.num_heads != fs->dg.num_heads
+            || finfo.dg.num_sectors != fs->dg.num_sectors) {
+
+            report_error("fs: check_files: "
+                         "invalid disk geometry");
+            tr->error = TRUE;
         }
     }
 
-    return 1;
+    if (!check_file_properties(fs, fe)) {
+        report_error("fs: check_files: "
+                     "invalid file properties");
+        tr->error = TRUE;
+    }
+
+    return TRUE;
 }
 
 /* Auxiliary function to fs_check_integrity().
@@ -298,12 +299,7 @@ int check_files(struct fs *fs)
     tr.error = FALSE;
     memset(fs->bitmap, 0, fs->bitmap_size * sizeof(uint16_t));
 
-    if (!fs_scan_files(fs, &traverse_files_cb, &tr)) {
-        report_error("fs: check_integrity: "
-                     "could not traverse files");
-        return FALSE;
-    }
-
+    scan_files(fs, &traverse_files_cb, &tr);
     return (!tr.error);
 }
 
@@ -326,8 +322,8 @@ int traverse_dirs_cb(const struct fs *fs,
     if (de->type == DIR_ENTRY_MISSING)
         return 1;
 
-    if (!fs_check_directory_entry(fs, de)) {
-        report_error("fs: check_integrity: "
+    if (!check_directory_entry(fs, de)) {
+        report_error("fs: check_sysdir: "
                      "directory entry %u at VDA %u",
                      tr->count, tr->dir_fe.leader_vda);
         tr->error = TRUE;
@@ -339,29 +335,34 @@ int traverse_dirs_cb(const struct fs *fs,
     /* Mark this file as seen. */
     tr->fs->bitmap[idx] &= ~(1 << bit);
 
+    /* TODO: Check for repeated entries in the directory. */
+
+    /* Check if already went into this directory
+     * to avoid infinite recursion.
+     */
     if ((de->fe.sn.word1 & SN_DIRECTORY) && (not_seen)) {
-        /* Check if already went into this directory
-         * to avoid infinite recursion.
-         */
         child_tr.fs = tr->fs;
         child_tr.dir_fe = de->fe;
         child_tr.count = 0;
+        child_tr.error = FALSE;
 
-        if (!fs_scan_directory(fs, &de->fe, &traverse_dirs_cb,
-                               &child_tr)) {
-            report_error("fs: check_integrity: "
-                         "could not scan sub-directory: "
+        if (!check_directory_contents(fs, &de->fe)) {
+            report_error("fs: check_sysdir: "
+                         "invalid sub-directory: "
                          "directory entry %u at VDA %u",
                          tr->count, tr->dir_fe.leader_vda);
             tr->error = TRUE;
         }
 
+        scan_directory(fs, &de->fe, &traverse_dirs_cb, &child_tr);
+
         if (child_tr.error) {
+            /* Propagate errors up. */
             tr->error = TRUE;
         }
     }
 
-    return 1;
+    return TRUE;
 }
 
 /* Auxiliary function to fs_check_integrity().
@@ -371,36 +372,32 @@ int traverse_dirs_cb(const struct fs *fs,
 static
 int check_sysdir(struct fs *fs)
 {
-    struct file_entry root_fe;
+    struct file_entry sysdir_fe;
+    struct directory_entry sysdir_de;
     struct traverse_dirs_result tr;
     unsigned int num_missing;
     uint16_t idx, bit;
 
-    if (!fs_file_entry(fs, 1, &root_fe)) {
-        report_error("fs: check_integrity: "
-                     "error finding SysDir at page 1");
+    get_file_entry(fs, 1, &sysdir_fe);
+    if (!check_file_entry(fs, &sysdir_fe)) {
+        report_error("fs: check_sysdir: "
+                     "no leader page at page 1");
         return FALSE;
     }
 
-    idx = IDX(1);
-    bit = BIT(1);
-    if (!(fs->bitmap[idx] & (1 << bit))) {
-        report_error("fs: check_integrity: "
-                     "bitmap error at page 1");
-        return FALSE;
-    }
-    fs->bitmap[idx] &= ~(1 << bit);
+    /* Fake directory entry containing the SysDir. */
+    sysdir_de.fe = sysdir_fe;
+    sysdir_de.type = DIR_ENTRY_VALID;
+    sysdir_de.length = (DIR_OFF_NAME / 2) + 4;
+    sysdir_de.name_length = 6;
+    strcpy(sysdir_de.name, "SysDir");
 
     tr.fs = fs;
-    tr.dir_fe = root_fe;
+    tr.dir_fe = sysdir_fe;
     tr.count = 0;
     tr.error = FALSE;
-    if (!fs_scan_directory(fs, &root_fe,
-                           &traverse_dirs_cb, &tr)) {
-        report_error("fs: check_integrity: "
-                     "could not traverse SysDir");
-        return FALSE;
-    }
+
+    traverse_dirs_cb(fs, &sysdir_de, &tr);
     if (tr.error) return FALSE;
 
     num_missing = 0;
@@ -414,7 +411,7 @@ int check_sysdir(struct fs *fs)
     }
 
     if (num_missing > 0) {
-        report_error("fs: check_integrity: "
+        report_error("fs: check_sysdir: "
                      "%u missing files", num_missing);
     }
 
@@ -434,30 +431,20 @@ int check_descriptor(const struct fs *fs)
     uint8_t buffer[32];
     uint16_t diskbt_size;
     size_t nbytes;
+    int found;
 
-    if (!fs_find_file(fs, "DiskDescriptor", &fe, NULL)) {
-        report_error("fs: check_integrity: "
-                     "could not find DiskDescriptor");
+    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL);
+    if (!found) {
+        report_error("fs: check_descriptor: "
+                     "DiskDescriptor not found");
         return FALSE;
     }
 
-    if (!fs_open(fs, &fe, &of)) {
-        report_error("fs: check_integrity: "
-                     "could not open DiskDescriptor");
-        return FALSE;
-    }
-    /* Skip the leader page. */
-    nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
-    if (nbytes != PAGE_DATA_SIZE || of.error) {
-        report_error("fs: check_integrity: "
-                     "error while reading leader page");
-        return FALSE;
-    }
+    get_of(fs, &fe, TRUE, &of);
 
-
-    nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
-    if (nbytes != sizeof(buffer) || of.error) {
-        report_error("fs: check_integrity: "
+    nbytes = _read(fs, &of, buffer, sizeof(buffer));
+    if (nbytes != sizeof(buffer)) {
+        report_error("fs: check_descriptor: "
                      "could not read DiskDescriptor");
         return FALSE;
     }
@@ -470,13 +457,13 @@ int check_descriptor(const struct fs *fs)
         || dg.num_heads != fs->dg.num_heads
         || dg.num_sectors != fs->dg.num_sectors) {
 
-        report_error("fs: check_integrity: "
+        report_error("fs: check_descriptor: "
                      "invalid disk geometry");
         return FALSE;
     }
 
     if (diskbt_size != fs->bitmap_size) {
-        report_error("fs: check_integrity: "
+        report_error("fs: check_descriptor: "
                      "invalid disk bitmap size");
         return FALSE;
     }
@@ -484,36 +471,31 @@ int check_descriptor(const struct fs *fs)
     return TRUE;
 }
 
-int fs_check_integrity(struct fs *fs, int level)
+int fs_check_integrity(struct fs *fs)
 {
-    if (level < 0) level = 5;
+    fs->checked = FALSE;
 
-    if (level <= 0) goto check_okay;
     if (!check_links(fs))
         return FALSE;
 
-    if (level <= 1) goto check_okay;
     if (!check_basic_data(fs))
         return FALSE;
 
-    if (level <= 2) goto check_okay;
     if (!check_files(fs))
         return FALSE;
 
-    if (level <= 3) goto check_okay;
     if (!check_sysdir(fs))
         return FALSE;
 
-    if (level <= 4) goto check_okay;
     if (!check_descriptor(fs))
         return FALSE;
 
-check_okay:
-    fs_update_disk_metadata(fs);
+    update_disk_metadata(fs);
+    fs->checked = TRUE;
     return TRUE;
 }
 
-int fs_check_file_entry(const struct fs *fs, const struct file_entry *fe)
+int check_file_entry(const struct fs *fs, const struct file_entry *fe)
 {
     const struct page *pg;
 
@@ -577,15 +559,15 @@ int fs_check_file_entry(const struct fs *fs, const struct file_entry *fe)
     return TRUE;
 }
 
-int fs_check_directory_entry(const struct fs *fs,
-                             const struct directory_entry *de)
+int check_directory_entry(const struct fs *fs,
+                          const struct directory_entry *de)
 {
     uint16_t len;
 
     if (de->type == DIR_ENTRY_MISSING)
         return TRUE;
 
-    if (!fs_check_file_entry(fs, &de->fe)) {
+    if (!check_file_entry(fs, &de->fe)) {
         report_error("fs: check_directory_entry: "
                      "file_entry does not match");
         return FALSE;
@@ -610,7 +592,95 @@ int fs_check_directory_entry(const struct fs *fs,
     return TRUE;
 }
 
-int fs_check_of(const struct fs *fs, struct open_file *of)
+int check_file_properties(const struct fs *fs,
+                          const struct file_entry *fe)
+{
+    uint8_t buffer[PAGE_DATA_SIZE];
+    const uint8_t *data;
+    uint8_t type, length;
+    size_t i, nbytes;
+
+    read_leader_page(fs, fe, buffer);
+    if ((buffer[LD_OFF_PROPBEGIN] == 0)
+        && (buffer[LD_OFF_PROPLEN] == 0)) return TRUE;
+
+    if (2 * buffer[LD_OFF_PROPBEGIN] != LD_OFF_PROPS) {
+        report_error("fs: check_file_properties: "
+                     "PROPBEGIN = %u != %u",
+                     2 * buffer[LD_OFF_PROPBEGIN], LD_OFF_PROPS);
+        return FALSE;
+    }
+
+    nbytes = 2 * buffer[LD_OFF_PROPLEN];
+    if (nbytes > (LD_OFF_SPARE - LD_OFF_PROPS)) {
+        report_error("fs: check_file_properties: "
+                     "invalid PROPLEN = %u",
+                     buffer[LD_OFF_PROPLEN]);
+        return FALSE;
+    }
+
+    data = &buffer[LD_OFF_PROPS];
+
+    i = 0;
+    while (i < nbytes) {
+        type = data[i++];
+        UNUSED(type);
+
+        if (i == nbytes) {
+            report_error("fs: check_file_properties: missing length");
+            return FALSE;
+        }
+        length = data[i++];
+
+        if (2 * length + i > nbytes) {
+            report_error("fs: check_file_properties: overflow");
+            return FALSE;
+        }
+        i += 2 * length;
+    }
+
+    return TRUE;
+}
+
+int check_directory_contents(const struct fs *fs,
+                             const struct file_entry *dir_fe)
+{
+    struct open_file of;
+    uint16_t w;
+    uint8_t buffer[2];
+    size_t to_read, nbytes;
+
+    if (!check_file_entry(fs, dir_fe)) {
+        report_error("fs: check_directory_contents: "
+                     "file_entry does not match");
+        return FALSE;
+    }
+
+    get_of(fs, dir_fe, TRUE, &of);
+
+    while (TRUE) {
+        nbytes = _read(fs, &of, buffer, 2);
+
+        if (nbytes == 0) break;
+        if (nbytes != 2) goto error_short;
+
+        w = read_word_be(buffer, 0);
+        to_read = 2 * ((size_t) (w & DIR_ENTRY_LEN_MASK));
+
+        nbytes = _read(fs, &of, NULL, to_read - 2);
+        if (nbytes != to_read - 2) goto error_short;
+    }
+
+    return TRUE;
+
+error_short:
+    report_error("fs: check_directory_contents: "
+                 "entry too short");
+    return FALSE;
+}
+
+
+int check_of(const struct fs *fs, struct open_file *of)
 {
     const struct page *pg;
     uint16_t vda;

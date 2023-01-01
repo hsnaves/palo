@@ -60,6 +60,7 @@ int fs_create(struct fs *fs, struct geometry dg)
     fs->free_pages = 0xFFFF;
     fs->last_sn.word1 = 0;
     fs->last_sn.word2 = 0;
+    fs->checked = FALSE;
 
     return TRUE;
 }
@@ -79,6 +80,7 @@ int fs_load_image(struct fs *fs, const char *filename)
         return FALSE;
     }
 
+    fs->checked = FALSE;
     meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
@@ -188,8 +190,8 @@ error:
     return FALSE;
 }
 
-int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
-                    const char *output_filename, int include_leader_page)
+int fs_extract_file(const struct fs *fs, const char *name,
+                    const char *output_filename)
 {
     uint8_t buffer[PAGE_DATA_SIZE];
     struct open_file of;
@@ -197,7 +199,13 @@ int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
     size_t nbytes;
     size_t ret;
 
-    if (!fs_open(fs, fe, &of)) {
+    if (!fs->checked) {
+        report_error("fs: extract_file: "
+                     "filesystem not checked");
+        return FALSE;
+    }
+
+    if (!fs_open(fs, name, "r", &of)) {
         report_error("fs: extract_file: "
                      "could not open file");
         return FALSE;
@@ -210,23 +218,11 @@ int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
         return FALSE;
     }
 
-    if (!include_leader_page) {
-        /* Skip the leader page. */
-        nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
-        if (nbytes != PAGE_DATA_SIZE || of.error) {
-            report_error("fs: extract_file: "
-                         "error while discarding leader page");
-            fclose(fp);
-            return FALSE;
-        }
-    }
-
     while (TRUE) {
         nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
         if (of.error) {
             report_error("fs: extract_file: error while reading");
-            fclose(fp);
-            return FALSE;
+            goto error_read;
         }
 
         if (nbytes > 0) {
@@ -234,8 +230,7 @@ int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
             if (ret != nbytes) {
                 report_error("fs: extract_file: error while writing "
                              "`%s`", output_filename);
-                fclose(fp);
-                return FALSE;
+                goto error_read;
             }
         }
 
@@ -243,5 +238,11 @@ int fs_extract_file(const struct fs *fs, const struct file_entry *fe,
     }
 
     fclose(fp);
+    fs_close(fs, &of);
     return TRUE;
+
+error_read:
+    fclose(fp);
+    fs_close(fs, &of);
+    return FALSE;
 }

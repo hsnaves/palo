@@ -8,37 +8,38 @@
 
 /* Functions. */
 
-int fs_file_entry(const struct fs *fs, uint16_t leader_vda,
-                  struct file_entry *fe)
+void get_file_entry(const struct fs *fs, uint16_t leader_vda,
+                    struct file_entry *fe)
 {
     const struct page *pg;
-
-    if (leader_vda >= fs->length) {
-        report_error("fs: file_entry: "
-                     "invalid VDA: %u", leader_vda);
-        return FALSE;
-    }
-
     pg = &fs->pages[leader_vda];
     fe->sn = pg->label.sn;
     fe->version = pg->label.version;
     fe->blank = 0;
     fe->leader_vda = leader_vda;
-
-    return TRUE;
 }
 
-int fs_open(const struct fs *fs,
-            const struct file_entry *fe,
-            struct open_file *of)
+void get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
 {
-    if (fe->leader_vda >= fs->length) {
-        report_error("fs: open: invalid VDA: %u",
-                     fe->leader_vda);
-        of->error = TRUE;
+    get_file_entry(fs, 1, sysdir_fe);
+}
+
+int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
+{
+    if (!fs->checked) {
+        report_error("fs: sysdir: filesystem not checked");
         return FALSE;
     }
 
+    get_sysdir(fs, sysdir_fe);
+    return TRUE;
+}
+
+void get_of(const struct fs *fs,
+            const struct file_entry *fe,
+            int skip_leader,
+            struct open_file *of)
+{
     of->fe = *fe;
     of->pos.pgnum = 1;
     of->pos.pos = 0;
@@ -46,25 +47,40 @@ int fs_open(const struct fs *fs,
 
     of->eof = FALSE;
     of->error = FALSE;
-    return TRUE;
+
+    if (skip_leader)
+        advance_page(fs, of);
 }
 
-int fs_new_file(struct fs *fs, int directory,
-                struct open_file *of)
+int fs_get_of(const struct fs *fs,
+              const struct file_entry *fe,
+              int skip_leader,
+              struct open_file *of)
 {
-    struct page *pg;
-    uint16_t vda;
-
-    if (!fs_find_free_page(fs, &vda)) {
-        report_error("fs: new_file: "
-                     "could not find free page");
+    if (!fs->checked) {
+        report_error("fs: get_of: filesystem not checked");
         return FALSE;
     }
 
-    pg = &fs->pages[vda];
+    if (!check_file_entry(fs, fe)) {
+        report_error("fs: get_of: invalid file_entry fe");
+        return FALSE;
+    }
+
+    get_of(fs, fe, skip_leader, of);
+    return TRUE;
+}
+
+void new_file(struct fs *fs, uint16_t leader_vda, int directory,
+              struct open_file *of)
+{
+    struct page *pg;
+
+    pg = &fs->pages[leader_vda];
     pg->label.prev_rda = 0;
     pg->label.next_rda = 0;
     pg->label.unused = 0;
+    /* Leader page is full. */
     pg->label.nbytes = PAGE_DATA_SIZE;
     pg->label.file_pgnum = 0;
     pg->label.version = 1;
@@ -72,81 +88,53 @@ int fs_new_file(struct fs *fs, int directory,
     if (directory) {
         pg->label.sn.word1 |= SN_DIRECTORY;
     }
-    fs_increment_serial_number(fs);
+    increment_serial_number(fs);
 
-    if (!fs_file_entry(fs, vda, &of->fe)) {
-        report_error("fs: new_file: "
-                     "could not get file entry");
-        return FALSE;
-    }
-    of->pos.pgnum = 1;
+    get_file_entry(fs, leader_vda, &of->fe);
+    of->pos.pgnum = 0;
     of->pos.pos = 0;
     of->pos.vda = of->fe.leader_vda;
 
     of->eof = FALSE;
     of->error = FALSE;
-    return TRUE;
 }
 
-int fs_advance_page(const struct fs *fs, struct open_file *of)
+void advance_page(const struct fs *fs, struct open_file *of)
 {
     const struct page *pg;
     uint16_t vda, rda;
 
-    if (!fs_check_of(fs, of)) {
-        report_error("fs: advance_page: error on file");
-        return FALSE;
-    }
-
-    /* Checks if reached the end of the file. */
-    if (of->eof) return TRUE;
+    /* Check for error or end of file. */
+    if (of->error || of->eof) return;
 
     vda = of->pos.vda;
     pg = &fs->pages[vda];
 
-    if (of->pos.pos >= pg->label.nbytes) {
-        /* Go to the next page. */
-        rda = pg->label.next_rda;
-        if (!real_to_virtual(&fs->dg, rda, &vda)) {
-            of->error = TRUE;
-            report_error("fs: advance_page: could not convert real "
-                         "to virtual disk address");
-            return FALSE;
-        }
+    /* Go to the next page. */
+    rda = pg->label.next_rda;
+    real_to_virtual(&fs->dg, rda, &vda);
 
-        if (vda != 0) {
-            /* If there is a valid next page. */
-            if (vda >= fs->length) {
-                of->error = TRUE;
-                report_error("fs: advance_page: invalid VDA %u "
-                             "for next page", of->pos.vda);
-                return FALSE;
-            }
-            of->pos.vda = vda;
-            of->pos.pos = 0;
-            of->pos.pgnum += 1;
-        } else {
-            /* Reached the end of file. */
-            of->eof = TRUE;
-        }
+    if (vda != 0) {
+        /* If there is a valid next page. */
+        of->pos.vda = vda;
+        of->pos.pos = 0;
+        of->pos.pgnum += 1;
+    } else {
+        /* Reached the end of file. */
+        of->eof = TRUE;
     }
-
-    return TRUE;
 }
 
-size_t fs_read(const struct fs *fs, struct open_file *of,
-               uint8_t *dst, size_t len)
+size_t _read(const struct fs *fs, struct open_file *of,
+             uint8_t *dst, size_t len)
 {
     const struct page *pg;
     uint16_t vda, nbytes;
-    size_t pos;
+    size_t offset;
 
-    if (!fs_check_of(fs, of)) {
-        report_error("fs: read: error on file");
-        return FALSE;
-    }
+    if (of->error) return 0;
 
-    pos = 0;
+    offset = 0;
     while ((len > 0) && (!of->eof)) {
         vda = of->pos.vda;
         pg = &fs->pages[vda];
@@ -157,41 +145,50 @@ size_t fs_read(const struct fs *fs, struct open_file *of,
             if (nbytes > len) nbytes = len;
 
             if (dst) {
-                memcpy(&dst[pos], &pg->data[of->pos.pos],
+                memcpy(&dst[offset], &pg->data[of->pos.pos],
                        nbytes);
             }
 
             of->pos.pos += nbytes;
-            pos += nbytes;
+            offset += nbytes;
             len -= nbytes;
         }
 
         if (len == 0)
             break;
 
-        if (!fs_advance_page(fs, of)) {
-            report_error("fs: read: could not advance "
-                         "to the next page");
-            break;
-        }
+        advance_page(fs, of);
     }
 
-    return pos;
+    return offset;
 }
 
-size_t fs_write(struct fs *fs, struct open_file *of,
-                const uint8_t *src, size_t len, int extend)
+size_t fs_read(const struct fs *fs, struct open_file *of,
+               uint8_t *dst, size_t len)
+{
+    if (!fs->checked) {
+        report_error("fs: read: filesystem not checked");
+        return 0;
+    }
+
+    if (!check_of(fs, of)) {
+        report_error("fs: read: open_file not valid");
+        return 0;
+    }
+
+    return _read(fs, of, dst, len);
+}
+
+size_t _write(struct fs *fs, struct open_file *of,
+              const uint8_t *src, size_t len, int extend)
 {
     struct page *pg, *npg;
     uint16_t vda, nbytes;
-    size_t pos;
+    size_t offset;
 
-    if (!fs_check_of(fs, of)) {
-        report_error("fs: write: error on file");
-        return FALSE;
-    }
+    if (of->error) return 0;
 
-    pos = 0;
+    offset = 0;
     while ((len > 0) && (!of->eof)) {
         vda = of->pos.vda;
         pg = &fs->pages[vda];
@@ -202,28 +199,22 @@ size_t fs_write(struct fs *fs, struct open_file *of,
             if (nbytes > len) nbytes = len;
 
             if (src) {
-                memcpy(&pg->data[of->pos.pos], &src[pos], nbytes);
+                memcpy(&pg->data[of->pos.pos], &src[offset], nbytes);
             }
 
             of->pos.pos += nbytes;
-            pos += nbytes;
+            offset += nbytes;
             len -= nbytes;
         }
 
         if (of->pos.pos < pg->label.nbytes)
             break;
 
-        /* Go to the next page. */
-        if (!fs_advance_page(fs, of)) {
-            report_error("fs: write: could not advance "
-                         "to the next page");
-            break;
-        }
-
-        /* If there is a valid next page. */
+        /* First check if there is a next page. */
+        advance_page(fs, of);
         if (!of->eof) continue;
 
-        /* Reached the end of file. */
+        /* Otherwise, reached the end of file. */
         if (!extend) break;
 
         of->eof = FALSE;
@@ -237,28 +228,15 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         }
 
         /* Otherwise, allocate a new page. */
-        if (!fs_find_free_page(fs, &vda)) {
+        if (!find_free_page(fs, &vda)) {
             of->error = TRUE;
             report_error("fs: write: disk full");
             break;
         }
 
         npg = &fs->pages[vda];
-        if (!virtual_to_real(&fs->dg, pg->page_vda,
-                             &npg->label.prev_rda)) {
-            of->error = TRUE;
-            report_error("fs: write: could not convert virtual "
-                         "to real disk address");
-            break;
-        }
-
-        if (!virtual_to_real(&fs->dg, npg->page_vda,
-                             &pg->label.next_rda)) {
-            of->error = TRUE;
-            report_error("fs: write: could not convert virtual "
-                         "to real disk address");
-            break;
-        }
+        virtual_to_real(&fs->dg, pg->page_vda, &npg->label.prev_rda);
+        virtual_to_real(&fs->dg, npg->page_vda, &pg->label.next_rda);
 
         nbytes = len;
         if (nbytes > PAGE_DATA_SIZE)
@@ -274,35 +252,68 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         of->pos.pgnum += 1;
     }
 
-    return pos;
+    return offset;
 }
 
-int fs_trim(struct fs *fs, struct open_file *of)
+void trim(struct fs *fs, struct open_file *of)
 {
     struct page *pg, *first_pg;
 
-    if (!fs_advance_page(fs, of)) {
-        report_error("fs: trim: could not advance first page");
-        return FALSE;
-    }
+    if (of->error) return;
 
     first_pg = &fs->pages[of->pos.vda];
+    if (of->pos.pos >= PAGE_DATA_SIZE) {
+        advance_page(fs, of);
+        first_pg = &fs->pages[of->pos.vda];
+    }
     first_pg->label.nbytes = of->pos.pos;
-
-    if (of->eof) return TRUE;
+    if (of->eof) return;
 
     while (TRUE) {
-        if (!fs_advance_page(fs, of)) {
-            report_error("fs: trim: could not advance page");
-            first_pg->label.next_rda = 0;
-            return FALSE;
-        }
+        advance_page(fs, of);
         if (of->eof) break;
         pg = &fs->pages[of->pos.vda];
         pg->label.version = VERSION_FREE;
-        of->pos.pos = pg->label.nbytes;
     }
 
     first_pg->label.next_rda = 0;
+}
+
+int fs_open(const struct fs *fs,
+            const char *name,
+            const char *mode,
+            struct open_file *of)
+{
+    struct file_entry fe, dir_fe;
+    int found;
+
+    if (!fs->checked) {
+        report_error("fs: open: filesystem not checked");
+        return FALSE;
+    }
+
+    resolve_name(fs, name, &found, &fe, &dir_fe);
+    if (strcmp(mode, "r") == 0) {
+        if (!found) {
+            report_error("fs: open: file `%s` not found", name);
+            return FALSE;
+        }
+        get_of(fs, &fe, TRUE, of);
+    } else if (strcmp(mode, "w") == 0) {
+        /* TODO: Implement this. */
+    } else {
+        report_error("fs: open: invalid mode `%s`", mode);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+int fs_close(const struct fs *fs,
+             struct open_file *of)
+{
+    /* TODO: Implement this. */
+    UNUSED(fs);
+    of->eof = TRUE;
     return TRUE;
 }
