@@ -29,6 +29,21 @@
 #define DIR_ENTRY_VALID                   1U
 #define DIR_ENTRY_MISSING                 0U
 
+/* Error constants. */
+#define ERROR_NO_ERROR                     0
+#define ERROR_UNKNOWN                     -1
+#define ERROR_FS_UNCHECKED                -2
+#define ERROR_INVALID_OF                  -3
+#define ERROR_INVALID_FE                  -4
+#define ERROR_DISK_FULL                   -5
+#define ERROR_DIR_FULL                    -6
+#define ERROR_FILE_NOT_FOUND              -7
+#define ERROR_DIR_NOT_FOUND               -8
+#define ERROR_INVALID_NAME                -9
+#define ERROR_INVALID_MODE               -10
+#define ERROR_RESOLVE_ERROR              -11
+#define ERROR_END                        -12
+
 /* Data structures and types. */
 
 /* The serial number of a file.
@@ -80,7 +95,9 @@ struct open_file {
     struct file_entry fe;         /* The file_entry information. */
     struct file_position pos;     /* The file_position information. */
     int eof;                      /* If it reached the end of file. */
-    int error;                    /* Indicates the file has error. */
+    int error;                    /* Indicates the error, according
+                                   * to the ERROR constants.
+                                   */
     int modified;                 /* Indicates that file was modified. */
 };
 
@@ -153,11 +170,20 @@ struct fs {
                                    * in pages.
                                    */
 
+    uint16_t *ref_count;          /* A reference count on how
+                                   * many directories point to the
+                                   * corresponding pages.
+                                   */
     uint16_t *bitmap;             /* Disk usage bitmap. */
     uint16_t bitmap_size;         /* The size of the bitmap. */
     uint16_t free_pages;          /* Number of free pages. */
     struct serial_number last_sn; /* Last used serial number. */
     int checked;                  /* If the filesystem was checked. */
+
+    struct directory_entry *de;   /* Temporary area for sorting. */
+    size_t num_de;                /* Number of allocated directory
+                                   * entries in `de`.
+                                   */
 };
 
 /* Defines the type of the callback function for fs_scan_directory().
@@ -199,6 +225,11 @@ int fs_load_image(struct fs *fs, const char *filename);
  */
 int fs_save_image(const struct fs *fs, const char *filename);
 
+/* Translates the error to a string.
+ * Returns the string representation of the error.
+ */
+const char *fs_error(int error);
+
 /* Checks the integrity of the filesystem.
  * Returns TRUE on success.
  */
@@ -227,7 +258,7 @@ int fs_get_of(const struct fs *fs,
  * The `mode` specifies how to open the file. The valid modes are:
  *   "r" -> opens for reading,
  *   "w" -> opens the file for writing.
- * Returns TRUE on success.
+ * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_open(struct fs *fs,
             const char *name,
@@ -235,10 +266,9 @@ int fs_open(struct fs *fs,
             struct open_file *of);
 
 /* Closes the open_file `of`.
- * Returns TRUE on success.
+ * Returns TRUE on success. Any errors are written to `of->error`.
  */
-int fs_close(struct fs *fs,
-             struct open_file *of);
+int fs_close(struct fs *fs, struct open_file *of);
 
 /* Reads `len` bytes of an open file `of` to `dst`.
  * If `dst` is NULL, the file pointer in `of` is still updated,
@@ -256,6 +286,12 @@ size_t fs_read(const struct fs *fs, struct open_file *of,
  */
 size_t fs_write(struct fs *fs, struct open_file *of,
                 const uint8_t *src, size_t len, int extend);
+
+/* Truncates the given file.
+ * The file to be truncated is given by the parameter `of`.
+ * Returns TRUE on success.
+ */
+int fs_truncate(struct fs *fs, struct open_file *of);
 
 /* Determines the file length.
  * The `fe` specifies the file. The file length is returned in `length`.
@@ -289,10 +325,18 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
  * the file found (such as leader page virtual disk address, etc.).
  * The parameter `dir_fe`, if provided, will be populated with
  * the information about the directory that contains the file.
+ * If the file was not found, the `suffix` will be populated with
+ * the unresolved suffix.
  * Returns TRUE on success.
  */
 int fs_resolve_name(const struct fs *fs, const char *name, int *found,
-                    struct file_entry *fe, struct file_entry *dir_fe);
+                    struct file_entry *fe, struct file_entry *dir_fe,
+                    const char **suffix);
+
+/* Updates the DiskDescriptor file.
+ * Returns TRUE on success.
+ */
+int fs_update_disk_descriptor(struct fs *fs);
 
 /* Extracts a file from the filesystem.
  * The `name` is the name of the file in the filesystem.

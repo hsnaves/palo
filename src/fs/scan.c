@@ -87,51 +87,16 @@ void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
 {
     struct directory_entry de;
     struct open_file of;
-    uint16_t w;
-    uint8_t buffer[128];
-    size_t to_read, nbytes;
     int ret;
 
-    get_of(fs, dir_fe, TRUE, &of);
-
+    fs_get_of(fs, dir_fe, TRUE, &of);
     while (TRUE) {
-        nbytes = _read(fs, &of, buffer, 2);
+        ret = read_of_directory_entry(fs, &of, &de);
 
-        if (nbytes == 0) break;
-        if (nbytes != 2)
+        if (ret == 0) break;
+        if (ret < 0)
             /* Ignore errors. */
             return;
-
-        w = read_word_be(buffer, 0);
-        de.type = (w >> DIR_ENTRY_TYPE_SHIFT);
-
-        de.length = (w & DIR_ENTRY_LEN_MASK);
-        to_read = 2 * ((size_t) de.length);
-
-        if (to_read > sizeof(buffer)) {
-            nbytes = _read(fs, &of, &buffer[2], sizeof(buffer) - 2);
-            if (nbytes != sizeof(buffer) - 2)
-                /* Ignore errors. */
-                return;
-
-            to_read -= sizeof(buffer);
-
-            /* Discard the remaining data. */
-            nbytes = _read(fs, &of, NULL, to_read);
-            if (nbytes != to_read)
-                /* Ignore errors. */
-                return;
-        } else {
-            nbytes = _read(fs, &of, &buffer[2], to_read - 2);
-            if (nbytes != to_read - 2)
-                /* Ignore errors. */
-                return;
-        }
-
-        read_file_entry(buffer, DIR_OFF_FILE_ENTRY, &de.fe);
-
-        de.name_length = buffer[DIR_OFF_NAME];
-        read_name(buffer, DIR_OFF_NAME, de.name);
 
         ret = cb(fs, &de, arg);
         if (!ret) break;
@@ -187,16 +152,19 @@ int resolve_name_cb(const struct fs *fs,
     return TRUE;
 }
 
-void resolve_name(const struct fs *fs, const char *name, int *found,
-                  struct file_entry *fe, struct file_entry *dir_fe,
-                  const char **suffix)
+int fs_resolve_name(const struct fs *fs, const char *name, int *found,
+                    struct file_entry *fe, struct file_entry *dir_fe,
+                    const char **suffix)
 {
     struct resolve_result res;
     struct file_entry sysdir_fe;
     struct file_entry _fe, _dir_fe;
     size_t pos, npos;
 
-    get_sysdir(fs, &sysdir_fe);
+    if (!fs->checked)
+        return FALSE;
+
+    fs_get_sysdir(fs, &sysdir_fe);
 
     pos = 0;
     _fe = _dir_fe = sysdir_fe;
@@ -227,7 +195,7 @@ void resolve_name(const struct fs *fs, const char *name, int *found,
             if (suffix) {
                 *suffix = res.name;
             }
-            return;
+            return TRUE;
         }
 
         _dir_fe = _fe;
@@ -243,16 +211,5 @@ void resolve_name(const struct fs *fs, const char *name, int *found,
     }
 
     *found = TRUE;
-}
-
-int fs_resolve_name(const struct fs *fs, const char *name, int *found,
-                    struct file_entry *fe, struct file_entry *dir_fe)
-{
-    if (!fs->checked) {
-        report_error("fs: resolve_name: filesystem not checked");
-        return FALSE;
-    }
-
-    resolve_name(fs, name, found, fe, dir_fe, NULL);
     return TRUE;
 }

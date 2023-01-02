@@ -228,7 +228,7 @@ int main(int argc, char **argv)
     }
 
     if (dirname) {
-        if (!fs_resolve_name(&fs, dirname, &found, &dir_fe, NULL)) {
+        if (!fs_resolve_name(&fs, dirname, &found, &dir_fe, NULL, NULL)) {
             report_error("main: could not resolve `%s`", dirname);
             goto error;
         }

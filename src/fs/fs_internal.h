@@ -69,7 +69,7 @@ typedef int (*scan_files_cb)(const struct fs *fs,
 
 /* Converts a real address to a virtual address.
  * The real address is in `rda` and the virtual address is returned
- * in the `vda` parameter. For the conversion the geometry is specified
+ * in the `vda` parameter. For the conversion, the geometry is specified
  * in `dg`.
  * Returns TRUE on success.
  */
@@ -77,7 +77,7 @@ int real_to_virtual(const struct geometry *dg, uint16_t rda, uint16_t *vda);
 
 /* Converts a virtual address to a real address.
  * The virtual address is in `vda` and the real address is returned
- * in the `rda` parameter. For the conversion the geometry is specified
+ * in the `rda` parameter. For the conversion, the geometry is specified
  * in `dg`.
  * Returns TRUE on success.
  */
@@ -117,8 +117,8 @@ void read_serial_number(const uint8_t *data, size_t offset,
 
 /* Writes a serial_number object.
  * The destination data is given by `data`, and the offset where
- * the serial_number is in `offset`. The serial_number to be written is in
- * `sn`.
+ * the serial_number is in `offset`. The serial_number to be written
+ * is in `sn`.
  */
 void write_serial_number(uint8_t *data, size_t offset,
                          const struct serial_number *sn);
@@ -140,18 +140,35 @@ void write_file_entry(uint8_t *data, size_t offset,
 
 /* Reads a file_position data.
  * The source data is given by `data`, and the offset where
- * the file_position is in `offset`. The file_position is stored in `pos`.
+ * the file_position is in `offset`. The file_position is stored
+ * in `pos`.
  */
 void read_file_position(const uint8_t *data, size_t offset,
                         struct file_position *pos);
 
 /* Writes a file_position data.
  * The destination data is given by `data`, and the offset where
- * the file_position is in `offset`. The file_position to be written is in
- * `pos`.
+ * the file_position is in `offset`. The file_position to be written
+ * is in `pos`.
  */
 void write_file_position(uint8_t *data, size_t offset,
                          const struct file_position *pos);
+
+/* Reads a directory_entry data.
+ * The source data is given by `data`, and the offset where
+ * the directory_entry is in `offset`. The directory_entry is stored
+ * in `de`.
+ */
+void read_directory_entry(const uint8_t *data, size_t offset,
+                          struct directory_entry *de);
+
+/* Writes the directory_entry data.
+ * The destination data is given by `data`, and the offset where
+ * the directory_entry is in `offset`. The directory_entry to be written
+ * is in `de`.
+ */
+void write_directory_entry(uint8_t *data, size_t offset,
+                           const struct directory_entry *de);
 
 /* Reads the geometry data.
  * The source data is given by `data`, and the offset where
@@ -162,7 +179,7 @@ void read_geometry(const uint8_t *data, size_t offset,
 
 /* Writes the geometry data.
  * The destination data is given by `data`, and the offset where
- * the geomtry is in `offset`. The geometry to be written is in
+ * the geometry is in `offset`. The geometry to be written is in
  * `dg`.
  */
 void write_geometry(uint8_t *data, size_t offset,
@@ -190,29 +207,9 @@ void write_alto_time(uint8_t *data, size_t offset, time_t time);
  */
 int check_file_entry(const struct fs *fs, const struct file_entry *fe);
 
-/* Checks the directory_entry.
- * The directory_entry to check is in parameter `de`.
- * Returns TRUE if it is a valid directory_entry object.
- */
-int check_directory_entry(const struct fs *fs,
-                          const struct directory_entry *de);
-
-/* Checks the file properties of a given file.
- * The parameter `fe` specifies the file.
- * Returns TRUE if the properties are valid.
- */
-int check_file_properties(const struct fs *fs,
-                          const struct file_entry *fe);
-
-/* Checks if the contents of the directory are valid.
- * The parameter `dir_fe` specifies the directory.
- * Returns TRUE if the directory contents are valid.
- */
-int check_directory_contents(const struct fs *fs,
-                             const struct file_entry *dir_fe);
-
 /* Checks the open_file for errors.
  * The parameter `of` specifies the file to check.
+ * The error is populated in `of->error`.
  * Returns TRUE if the open_file has no errors.
  */
 int check_of(const struct fs *fs, struct open_file *of);
@@ -220,6 +217,26 @@ int check_of(const struct fs *fs, struct open_file *of);
 
 /* dir.c */
 
+
+/* Reads a directory_entry from an open_file `of`.
+ * The directory_entry is stored in `de`.
+ * Returns a positive number when an entry is successfully read.
+ * Otherwise it either returns zero when the end-of-file is reached
+ * or a negative number on error.
+ */
+int read_of_directory_entry(const struct fs *fs,
+                            struct open_file *of,
+                            struct directory_entry *de);
+
+/* Writes the contents of a directory_entry to the open_file `of`.
+ * The directory_entry parameter is `de`. The parameter `extends` is passed
+ * to write_of() to indicate that the file can be extended.
+ * Returns TRUE if the directory_entry was successfully written.
+ */
+int write_of_directory_entry(struct fs *fs,
+                             struct open_file *of,
+                             const struct directory_entry *de,
+                             int extend);
 
 /* Compresses the entries in a directory.
  * The parameter `dir_fe` specifies the directory.
@@ -256,73 +273,15 @@ void update_disk_metadata(struct fs *fs);
  * The virtual disk address is returned in `free_vda`.
  * Returns TRUE on success.
  */
-int find_free_page(struct fs *fs, uint16_t *free_vda);
+int allocate_page(struct fs *fs, uint16_t *free_vda);
 
-/* Updates the DiskDescriptor file.
- * Returns TRUE on success.
+/* Returns multiple page to the filesystem.
+ * The virtual disk address of the first page is in `vda`.
+ * If `follow` is set to TRUE, this function traverses all
+ * pages linked by the `next_rda` field in the page label,
+ * until the last page.
  */
-int update_disk_descriptor(struct fs *fs);
-
-
-/* file.c */
-
-
-/* Converts the virtual disk address of the leader page `leader_vda` of a
- * file to a file_entry object `fe`.
- */
-void get_file_entry(const struct fs *fs, uint16_t leader_vda,
-                    struct file_entry *fe);
-
-/* Obtains the file_entry object of the SysDir.
- * The file_entry is stored in `sysdir_fe`.
- */
-void get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
-
-/* Creates a new file_entry in the filesystem.
- * The `leader_vda` parameter specifies the VDA of the leader page.
- * If `directory` is set to TRUE, a directory is created.
- * The created file_entry is stored in `fe`.
- * Returns TRUE on success.
- */
-void new_file_entry(struct fs *fs, uint16_t leader_vda, int directory,
-                    struct file_entry *fe);
-
-/* Obtains an open_file.
- * The file is specified by `fe` and the open file is stored in `of`.
- * This function starts at the leader page if `skip_leader` is set
- * to FALSE.
- */
-void get_of(const struct fs *fs,
-            const struct file_entry *fe,
-            int skip_leader,
-            struct open_file *of);
-
-/* Advances to the next page.
- * The open_file to advance is given in parameter `of`.
- */
-void advance_page(const struct fs *fs, struct open_file *of);
-
-/* Reads `len` bytes of an open file `of` to `dst`.
- * If `dst` is NULL, the file pointer in `of` is still updated,
- * but no actual bytes are copied.
- * Returns the number of bytes read.
- */
-size_t _read(const struct fs *fs, struct open_file *of,
-             uint8_t *dst, size_t len);
-
-/* Writes `len` bytes of an open file `of` from `src`.  If `src` is
- * NULL, the file is zeroed. The parameter `extends` tells the function
- * to allocate free pages when it reaches the end of the file,
- * thereby extending the existing file.
- * Returns the number of written bytes.
- */
-size_t _write(struct fs *fs, struct open_file *of,
-              const uint8_t *src, size_t len, int extend);
-
-/* Trims the file to have the size matching the current position
- * in the file.
- */
-void trim(struct fs *fs, struct open_file *of);
+void free_pages(struct fs *fs, uint16_t vda, int follow);
 
 
 /* meta.c */
@@ -392,19 +351,5 @@ void scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
 void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
                     scan_directory_cb cb, void *arg);
 
-/* Resolves a name in the filesystem.
- * The name of the file to find is given in `name`. If the file
- * is found, `found` will return TRUE.
- * The parameter `fe` will be populated with information about
- * the file found (such as leader page virtual disk address, etc.).
- * The parameter `dir_fe`, if provided, will be populated with
- * the information about the directory that contains the file.
- * If the file was not found, the `suffix` will be populated with
- * the unresolved suffix.
- * Returns TRUE on success.
- */
-void resolve_name(const struct fs *fs, const char *name, int *found,
-                  struct file_entry *fe, struct file_entry *dir_fe,
-                  const char **suffix);
 
 #endif /* __FS_FS_INTERNAL_H */

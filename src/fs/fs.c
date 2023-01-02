@@ -13,7 +13,9 @@
 void fs_initvar(struct fs *fs)
 {
     fs->pages = NULL;
+    fs->ref_count = NULL;
     fs->bitmap = NULL;
+    fs->de = NULL;
 }
 
 void fs_destroy(struct fs *fs)
@@ -21,8 +23,14 @@ void fs_destroy(struct fs *fs)
     if (fs->pages) free((void *) fs->pages);
     fs->pages = NULL;
 
+    if (fs->ref_count) free((void *) fs->ref_count);
+    fs->ref_count = NULL;
+
     if (fs->bitmap) free((void *) fs->bitmap);
     fs->bitmap = NULL;
+
+    if (fs->de) free((void *) fs->de);
+    fs->de = NULL;
 }
 
 int fs_create(struct fs *fs, struct geometry dg)
@@ -48,10 +56,13 @@ int fs_create(struct fs *fs, struct geometry dg)
     size = ((size_t) fs->length) * sizeof(struct page);
     fs->pages = (struct page *) malloc(size);
 
+    size = ((size_t) fs->length) * sizeof(uint16_t);
+    fs->ref_count = (uint16_t *) malloc(size);
+
     size = ((size_t) fs->bitmap_size) * sizeof(uint16_t);
     fs->bitmap = (uint16_t *) malloc(size);
 
-    if (unlikely(!fs->pages || !fs->bitmap)) {
+    if (unlikely(!fs->pages || !fs->ref_count || !fs->bitmap)) {
         report_error("fs: create: memory exhausted");
         fs_destroy(fs);
         return FALSE;
@@ -61,6 +72,7 @@ int fs_create(struct fs *fs, struct geometry dg)
     fs->last_sn.word1 = 0;
     fs->last_sn.word2 = 0;
     fs->checked = FALSE;
+    fs->num_de = 0;
 
     return TRUE;
 }
@@ -190,6 +202,28 @@ error:
     return FALSE;
 }
 
+const char *fs_error(int error)
+{
+    static const char *errors[] = {
+        "no error",
+        "unknown error",
+        "filesystem unchecked",
+        "invalid open_file",
+        "invalid file_entry",
+        "disk full",
+        "directory full",
+        "file not found",
+        "directory not found",
+        "invalid name",
+        "invalid mode",
+        "resolve error",
+    };
+    if (error > 0) error = 0;
+    if (error <= ERROR_END) error = ERROR_UNKNOWN;
+
+    return errors[-error];
+}
+
 int fs_extract_file(struct fs *fs, const char *name,
                     const char *output_filename)
 {
@@ -199,15 +233,10 @@ int fs_extract_file(struct fs *fs, const char *name,
     size_t nbytes;
     size_t ret;
 
-    if (!fs->checked) {
-        report_error("fs: extract_file: "
-                     "filesystem not checked");
-        return FALSE;
-    }
-
     if (!fs_open(fs, name, "r", &of)) {
         report_error("fs: extract_file: "
-                     "could not open file");
+                     "could not open file: %s",
+                     fs_error(of.error));
         return FALSE;
     }
 
@@ -220,8 +249,10 @@ int fs_extract_file(struct fs *fs, const char *name,
 
     while (TRUE) {
         nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
-        if (of.error) {
-            report_error("fs: extract_file: error while reading");
+        if (of.error < 0) {
+            report_error("fs: extract_file: "
+                         "error while reading: %s",
+                         fs_error(of.error));
             goto error_read;
         }
 
@@ -256,15 +287,10 @@ int fs_insert_file(struct fs *fs, const char *input_filename,
     size_t nbytes;
     size_t ret;
 
-    if (!fs->checked) {
-        report_error("fs: insert_file: "
-                     "filesystem not checked");
-        return FALSE;
-    }
-
     if (!fs_open(fs, name, "w", &of)) {
         report_error("fs: insert_file: "
-                     "could not open file");
+                     "could not open file: %s",
+                     fs_error(of.error));
         return FALSE;
     }
 
@@ -280,8 +306,10 @@ int fs_insert_file(struct fs *fs, const char *input_filename,
         if (nbytes == 0) break;
 
         ret = fs_write(fs, &of, buffer, nbytes, TRUE);
-        if (of.error || (ret != nbytes)) {
-            report_error("fs: insert_file: error while writing");
+        if ((ret != nbytes) || (of.error < 0)) {
+            report_error("fs: insert_file: "
+                         "error while writing: %s",
+                         fs_error(of.error));
             goto error_write;
         }
     }

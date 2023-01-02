@@ -15,8 +15,12 @@ void read_leader_page(const struct fs *fs,
 {
     struct open_file of;
 
-    get_of(fs, fe, FALSE, &of);
-    _read(fs, &of, data, PAGE_DATA_SIZE);
+    fs_get_of(fs, fe, FALSE, &of);
+    fs_read(fs, &of, data, PAGE_DATA_SIZE);
+    if (of.error < 0) {
+        report_error("fs: read_leader_page: "
+                     "error while reading leader page");
+    }
 }
 
 size_t file_length(const struct fs *fs, const struct file_entry *fe,
@@ -25,12 +29,17 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
     struct open_file of;
     size_t l, nbytes;
 
-    get_of(fs, fe, TRUE, &of);
+    fs_get_of(fs, fe, TRUE, &of);
 
     l = 0;
     while (!of.eof) {
-        nbytes = _read(fs, &of, NULL, PAGE_DATA_SIZE);
+        nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
         l += nbytes;
+    }
+
+    if (of.error < 0) {
+        report_error("fs: file_length: "
+                     "error while reading file");
     }
 
     if (end_of) *end_of = of;
@@ -40,15 +49,11 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
                    size_t *length)
 {
-    if (!fs->checked) {
-        report_error("fs: file_length: filesystem not checked");
+    if (!fs->checked)
         return FALSE;
-    }
 
-    if (!check_file_entry(fs, fe)) {
-        report_error("fs: file_length: invalid file_entry fe");
+    if (!check_file_entry(fs, fe))
         return FALSE;
-    }
 
     *length = file_length(fs, fe, NULL);
     return TRUE;
@@ -69,13 +74,7 @@ int file_prop_cb(const struct fs *fs,
     UNUSED(fe);
     finfo = (struct file_info *) arg;
 
-    if (type == 1) {
-        if (length != 5) {
-            report_error("fs: file_info: "
-                         "invalid property length");
-            return -1;
-        }
-
+    if (type == 1 && length == 5) {
         read_geometry(data, 0, &finfo->dg);
         finfo->has_dg = TRUE;
     }
@@ -112,15 +111,11 @@ int fs_file_info(const struct fs *fs,
                  const struct file_entry *fe,
                  struct file_info *finfo)
 {
-    if (!fs->checked) {
-        report_error("fs: file_info: filesystem not checked");
+    if (!fs->checked)
         return FALSE;
-    }
 
-    if (!check_file_entry(fs, fe)) {
-        report_error("fs: file_info: invalid file_entry fe");
+    if (!check_file_entry(fs, fe))
         return FALSE;
-    }
 
     file_info(fs, fe, finfo);
     return TRUE;
@@ -138,8 +133,13 @@ void write_raw_leader_page(struct fs *fs,
 {
     struct open_file of;
 
-    get_of(fs, fe, FALSE, &of);
-    _write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
+    fs_get_of(fs, fe, FALSE, &of);
+    fs_write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
+
+    if (of.error < 0) {
+        report_error("fs: write_raw_leader_page: "
+                     "error while writing file");
+    }
 }
 
 void write_leader_page(struct fs *fs,

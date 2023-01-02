@@ -154,6 +154,30 @@ void write_file_position(uint8_t *data, size_t offset,
     write_word_be(data, offset + 4, pos->pos);
 }
 
+void read_directory_entry(const uint8_t *data, size_t offset,
+                          struct directory_entry *de)
+{
+    uint16_t w;
+    w = read_word_be(data, offset);
+    de->type = (w >> DIR_ENTRY_TYPE_SHIFT);
+    de->length = (w & DIR_ENTRY_LEN_MASK);
+    read_file_entry(data, offset + DIR_OFF_FILE_ENTRY, &de->fe);
+    de->name_length = data[offset + DIR_OFF_NAME];
+    read_name(data, offset + DIR_OFF_NAME, de->name);
+}
+
+void write_directory_entry(uint8_t *data, size_t offset,
+                           const struct directory_entry *de)
+{
+    uint16_t w;
+    w = (de->type << DIR_ENTRY_TYPE_SHIFT);
+    w += (de->length & DIR_ENTRY_LEN_MASK);
+    write_word_be(data, offset, w);
+    write_file_entry(data, offset + DIR_OFF_FILE_ENTRY, &de->fe);
+    write_name(data, offset + DIR_OFF_NAME, de->name);
+    data[offset + DIR_OFF_NAME] = de->name_length;
+}
+
 void read_geometry(const uint8_t *data, size_t offset,
                    struct geometry *dg)
 {

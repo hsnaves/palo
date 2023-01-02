@@ -22,12 +22,138 @@ struct traverse_dirs_result {
     int error;                    /* If found an error. */
 };
 
-/* Auxiliary function to fs_check_integrity()
- * Checks that the pages are linked together correctly.
+/* Functions. */
+
+/* Checks the directory_entry.
+ * The directory_entry to check is in parameter `de`.
+ * Returns TRUE if it is a valid directory_entry object.
+ */
+static
+int check_directory_entry(const struct fs *fs,
+                          const struct directory_entry *de)
+{
+    uint16_t len;
+
+    if (de->type == DIR_ENTRY_MISSING)
+        return TRUE;
+
+    if (!check_file_entry(fs, &de->fe)) {
+        report_error("fs: check_directory_entry: "
+                     "file_entry does not match");
+        return FALSE;
+    }
+
+    len = 2 * de->length;
+    if (len <= DIR_OFF_NAME) {
+        report_error("fs: check_directory_entry: "
+                     "length of name (%u) is too short",
+                     de->length);
+        return FALSE;
+    }
+
+    if ((de->name_length + DIR_OFF_NAME) > len) {
+        report_error("fs: check_directory_entry: "
+                     "string buffer overflow: "
+                     "name_length = %u, len = %u",
+                     de->name_length, len);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/* Checks the structure of the file properties is valid for a given file.
+ * The parameter `fe` specifies the file.
+ * Returns TRUE if the structure is valid.
+ */
+static
+int check_prop_structure(const struct fs *fs,
+                         const struct file_entry *fe)
+{
+    uint8_t buffer[PAGE_DATA_SIZE];
+    const uint8_t *data;
+    uint8_t type, length;
+    size_t i, nbytes;
+
+    read_leader_page(fs, fe, buffer);
+    if ((buffer[LD_OFF_PROPBEGIN] == 0)
+        && (buffer[LD_OFF_PROPLEN] == 0)) return TRUE;
+
+    if (2 * buffer[LD_OFF_PROPBEGIN] != LD_OFF_PROPS) {
+        report_error("fs: check_prop_structure: "
+                     "PROPBEGIN = %u != %u",
+                     2 * buffer[LD_OFF_PROPBEGIN], LD_OFF_PROPS);
+        return FALSE;
+    }
+
+    nbytes = 2 * buffer[LD_OFF_PROPLEN];
+    if (nbytes > (LD_OFF_SPARE - LD_OFF_PROPS)) {
+        report_error("fs: check_prop_structure: "
+                     "invalid PROPLEN = %u",
+                     buffer[LD_OFF_PROPLEN]);
+        return FALSE;
+    }
+
+    data = &buffer[LD_OFF_PROPS];
+
+    i = 0;
+    while (i < nbytes) {
+        type = data[i++];
+        UNUSED(type);
+
+        if (i == nbytes) {
+            report_error("fs: check_prop_structure: missing length");
+            return FALSE;
+        }
+        length = data[i++];
+
+        if (2 * length + i > nbytes) {
+            report_error("fs: check_prop_structure: overflow");
+            return FALSE;
+        }
+        i += 2 * length;
+    }
+
+    return TRUE;
+}
+
+/* Checks if the structure of the directory is valid.
+ * The parameter `dir_fe` specifies the directory.
+ * Returns TRUE if the directory structure is valid.
+ */
+static
+int check_directory_structure(const struct fs *fs,
+                              const struct file_entry *dir_fe)
+{
+    struct open_file of;
+    struct directory_entry de;
+    int ret;
+
+    if (!check_file_entry(fs, dir_fe)) {
+        report_error("fs: check_directory_structure: "
+                     "file_entry does not match");
+        return FALSE;
+    }
+
+    fs_get_of(fs, dir_fe, TRUE, &of);
+    while (TRUE) {
+        ret = read_of_directory_entry(fs, &of, &de);
+        if (ret == 0) break;
+        if (ret < 0) {
+            report_error("fs: check_directory_structure: "
+                         "directory_entry too short");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+/* Checks that the pages are linked together correctly.
  * Returns TRUE on success.
  */
 static
-int check_links(const struct fs *fs)
+int check_page_links(const struct fs *fs)
 {
     const struct page *pg, *opg;
     uint16_t vda, rda, ovda;
@@ -144,12 +270,11 @@ int check_links(const struct fs *fs)
     return success;
 }
 
-/* Auxiliary function to fs_check_integrity().
- * Checks some basic filesystem data.
+/* Checks some basic filesystem data.
  * Returns TRUE on success.
  */
 static
-int check_basic_data(const struct fs *fs)
+int check_basic_filesystem_data(const struct fs *fs)
 {
     const struct page *pg;
     uint16_t vda, rda;
@@ -157,7 +282,8 @@ int check_basic_data(const struct fs *fs)
 
     success = TRUE;
     if (fs->length <= 1) {
-        report_error("fs: check_basic_data: filesystem too short");
+        report_error("fs: check_basic_filesystem_data: "
+                     "filesystem too short");
         success = FALSE;
     }
     for (vda = 0; vda < fs->length; vda++) {
@@ -165,7 +291,7 @@ int check_basic_data(const struct fs *fs)
 
         virtual_to_real(&fs->dg, vda, &rda);
         if (pg->header[1] != rda || pg->header[0] != 0) {
-            report_error("fs: check_basic_data: "
+            report_error("fs: check_basic_filesystem_data: "
                          "invalid page header at VDA = %u: "
                          "expecting %u, 0 but got %u, %u",
                          vda, rda, pg->header[1], pg->header[0]);
@@ -178,7 +304,7 @@ int check_basic_data(const struct fs *fs)
             if (pg->label.sn.word1 != VERSION_BAD
                 || pg->label.sn.word2 != VERSION_BAD) {
 
-                report_error("fs: check_basic_data: "
+                report_error("fs: check_basic_filesystem_data: "
                              "invalid bad page at VDA = %u: "
                              "expecting SN %u, %u, but got %u, %u",
                              vda, VERSION_BAD, VERSION_BAD,
@@ -189,14 +315,14 @@ int check_basic_data(const struct fs *fs)
         }
 
         if (pg->label.version == 0) {
-            report_error("fs: check_basic_data: "
+            report_error("fs: check_basic_filesystem_data: "
                          "invalid label version = 0 at VDA = %u", vda);
             success = FALSE;
             continue;
         }
 
         if (pg->label.nbytes > PAGE_DATA_SIZE) {
-            report_error("fs: check_basic_data: "
+            report_error("fs: check_basic_filesystem_data: "
                          "invalid label nbytes = %u at VDA = %u",
                          pg->label.nbytes, vda);
             success = FALSE;
@@ -205,7 +331,7 @@ int check_basic_data(const struct fs *fs)
 
         if (pg->label.prev_rda == 0) {
             if (pg->label.nbytes < PAGE_DATA_SIZE) {
-                report_error("fs: check_basic_data: "
+                report_error("fs: check_basic_filesystem_data: "
                              "short leader page at VDA = %u: "
                              "nbytes = %u", vda, pg->label.nbytes);
                 success = FALSE;
@@ -215,7 +341,7 @@ int check_basic_data(const struct fs *fs)
 
         if (pg->label.next_rda != 0) {
             if (pg->label.nbytes < PAGE_DATA_SIZE) {
-                report_error("fs: check_basic_data: "
+                report_error("fs: check_basic_filesystem_data: "
                              "short last page at VDA = %u: "
                              "nbytes = %u",
                              vda, pg->label.nbytes);
@@ -224,7 +350,7 @@ int check_basic_data(const struct fs *fs)
             }
         } else {
             if (pg->label.nbytes >= PAGE_DATA_SIZE) {
-                report_error("fs: check_basic_data: "
+                report_error("fs: check_basic_filesystem_data: "
                              "full last page at VDA = %u", vda);
                 success = FALSE;
                 continue;
@@ -277,7 +403,7 @@ int traverse_files_cb(const struct fs *fs,
         }
     }
 
-    if (!check_file_properties(fs, fe)) {
+    if (!check_prop_structure(fs, fe)) {
         report_error("fs: check_files: "
                      "invalid file properties");
         tr->error = TRUE;
@@ -286,8 +412,7 @@ int traverse_files_cb(const struct fs *fs,
     return TRUE;
 }
 
-/* Auxiliary function to fs_check_integrity().
- * Checks all the files and their metadata.
+/* Checks all the files and their metadata.
  * Returns TRUE on success.
  */
 static
@@ -346,7 +471,7 @@ int traverse_dirs_cb(const struct fs *fs,
         child_tr.count = 0;
         child_tr.error = FALSE;
 
-        if (!check_directory_contents(fs, &de->fe)) {
+        if (!check_directory_structure(fs, &de->fe)) {
             report_error("fs: check_sysdir: "
                          "invalid sub-directory: "
                          "directory entry %u at VDA %u",
@@ -365,8 +490,7 @@ int traverse_dirs_cb(const struct fs *fs,
     return TRUE;
 }
 
-/* Auxiliary function to fs_check_integrity().
- * Checks SysDir and its sub-directories.
+/* Checks SysDir and its sub-directories (recursively).
  * Returns TRUE on success.
  */
 static
@@ -378,7 +502,7 @@ int check_sysdir(struct fs *fs)
     unsigned int num_missing;
     uint16_t idx, bit;
 
-    get_file_entry(fs, 1, &sysdir_fe);
+    fs_get_sysdir(fs, &sysdir_fe);
     if (!check_file_entry(fs, &sysdir_fe)) {
         report_error("fs: check_sysdir: "
                      "no leader page at page 1");
@@ -418,33 +542,27 @@ int check_sysdir(struct fs *fs)
     return TRUE;
 }
 
-/* Auxiliary function to fs_check_integrity().
- * Checks the disk geometry.
+/* Checks the DiskDescriptor file.
  * Returns TRUE on success.
  */
 static
-int check_descriptor(const struct fs *fs)
+int check_disk_descriptor(struct fs *fs)
 {
-    struct file_entry fe;
     struct open_file of;
     struct geometry dg;
     uint8_t buffer[32];
     uint16_t diskbt_size;
     size_t nbytes;
-    int found;
 
-    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL, NULL);
-    if (!found) {
-        report_error("fs: check_descriptor: "
+    if (!fs_open(fs, "DiskDescriptor", "r", &of)) {
+        report_error("fs: check_disk_descriptor: "
                      "DiskDescriptor not found");
         return FALSE;
     }
 
-    get_of(fs, &fe, TRUE, &of);
-
-    nbytes = _read(fs, &of, buffer, sizeof(buffer));
+    nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
     if (nbytes != sizeof(buffer)) {
-        report_error("fs: check_descriptor: "
+        report_error("fs: check_disk_descriptor: "
                      "could not read DiskDescriptor");
         return FALSE;
     }
@@ -457,13 +575,13 @@ int check_descriptor(const struct fs *fs)
         || dg.num_heads != fs->dg.num_heads
         || dg.num_sectors != fs->dg.num_sectors) {
 
-        report_error("fs: check_descriptor: "
+        report_error("fs: check_disk_descriptor: "
                      "invalid disk geometry");
         return FALSE;
     }
 
     if (diskbt_size != fs->bitmap_size) {
-        report_error("fs: check_descriptor: "
+        report_error("fs: check_disk_descriptor: "
                      "invalid disk bitmap size");
         return FALSE;
     }
@@ -473,26 +591,29 @@ int check_descriptor(const struct fs *fs)
 
 int fs_check_integrity(struct fs *fs)
 {
-    fs->checked = FALSE;
+    fs->checked = TRUE;
 
-    if (!check_links(fs))
-        return FALSE;
+    if (!check_page_links(fs))
+        goto check_error;
 
-    if (!check_basic_data(fs))
-        return FALSE;
+    if (!check_basic_filesystem_data(fs))
+        goto check_error;
 
     if (!check_files(fs))
-        return FALSE;
+        goto check_error;
 
     if (!check_sysdir(fs))
-        return FALSE;
+        goto check_error;
 
-    if (!check_descriptor(fs))
-        return FALSE;
+    if (!check_disk_descriptor(fs))
+        goto check_error;
 
     update_disk_metadata(fs);
-    fs->checked = TRUE;
     return TRUE;
+
+check_error:
+    fs->checked = FALSE;
+    return FALSE;
 }
 
 int check_file_entry(const struct fs *fs, const struct file_entry *fe)
@@ -500,200 +621,44 @@ int check_file_entry(const struct fs *fs, const struct file_entry *fe)
     const struct page *pg;
 
     if (fe->leader_vda >= fs->length) {
-        report_error("fs: check_file_entry: "
-                     "invalid VDA: %u", fe->leader_vda);
         return FALSE;
     }
 
-    if (fe->version == VERSION_FREE) {
-        report_error("fs: check_file_entry: "
-                     "free page at VDA %u", fe->leader_vda);
-        return FALSE;
-    }
-
-    if (fe->version == VERSION_BAD) {
-        report_error("fs: check_file_entry: "
-                     "bad page at VDA %u", fe->leader_vda);
-        return FALSE;
-    }
-
-    if (fe->version == 0) {
-        report_error("fs: check_file_entry: "
-                     "invalid version at VDA %u", fe->leader_vda);
+    if (fe->version == VERSION_FREE || fe->version == 0
+        || fe->version == VERSION_BAD) {
         return FALSE;
     }
 
     pg = &fs->pages[fe->leader_vda];
-
     if (pg->label.file_pgnum != 0) {
-        report_error("fs: check_file_entry: "
-                     "not the first page at VDA %u: %u",
-                     fe->leader_vda, pg->label.file_pgnum);
         return FALSE;
     }
 
     if (fe->sn.word1 != pg->label.sn.word1
         || fe->sn.word2 != pg->label.sn.word2) {
-        report_error("fs: check_file_entry: "
-                     "SN does not match at VDA %u: "
-                     "expecting %u, %u on disk, but got %u, %u",
-                     fe->leader_vda, fe->sn.word1, fe->sn.word2,
-                     pg->label.sn.word1, pg->label.sn.word2);
         return FALSE;
     }
 
     if (fe->version != pg->label.version) {
-        report_error("fs: check_file_entry: "
-                     "version does not match at VDA %u: "
-                     "expecting %u on disk, but got %u",
-                     fe->leader_vda, fe->version,
-                     pg->label.version);
+        return FALSE;
     }
 
     if (fe->blank != 0) {
-        report_error("fs: check_file_entry: "
-                     "blank = %u is not zero at VDA %u: ",
-                     fe->blank, fe->leader_vda);
-    }
-
-    return TRUE;
-}
-
-int check_directory_entry(const struct fs *fs,
-                          const struct directory_entry *de)
-{
-    uint16_t len;
-
-    if (de->type == DIR_ENTRY_MISSING)
-        return TRUE;
-
-    if (!check_file_entry(fs, &de->fe)) {
-        report_error("fs: check_directory_entry: "
-                     "file_entry does not match");
-        return FALSE;
-    }
-
-    len = 2 * de->length;
-    if (len <= DIR_OFF_NAME) {
-        report_error("fs: check_directory_entry: "
-                     "length of name (%u) is too short",
-                     de->length);
-        return FALSE;
-    }
-
-    if ((de->name_length + DIR_OFF_NAME) > len) {
-        report_error("fs: check_directory_entry: "
-                     "string buffer overflow: "
-                     "name_length = %u, len = %u",
-                     de->name_length, len);
         return FALSE;
     }
 
     return TRUE;
 }
-
-int check_file_properties(const struct fs *fs,
-                          const struct file_entry *fe)
-{
-    uint8_t buffer[PAGE_DATA_SIZE];
-    const uint8_t *data;
-    uint8_t type, length;
-    size_t i, nbytes;
-
-    read_leader_page(fs, fe, buffer);
-    if ((buffer[LD_OFF_PROPBEGIN] == 0)
-        && (buffer[LD_OFF_PROPLEN] == 0)) return TRUE;
-
-    if (2 * buffer[LD_OFF_PROPBEGIN] != LD_OFF_PROPS) {
-        report_error("fs: check_file_properties: "
-                     "PROPBEGIN = %u != %u",
-                     2 * buffer[LD_OFF_PROPBEGIN], LD_OFF_PROPS);
-        return FALSE;
-    }
-
-    nbytes = 2 * buffer[LD_OFF_PROPLEN];
-    if (nbytes > (LD_OFF_SPARE - LD_OFF_PROPS)) {
-        report_error("fs: check_file_properties: "
-                     "invalid PROPLEN = %u",
-                     buffer[LD_OFF_PROPLEN]);
-        return FALSE;
-    }
-
-    data = &buffer[LD_OFF_PROPS];
-
-    i = 0;
-    while (i < nbytes) {
-        type = data[i++];
-        UNUSED(type);
-
-        if (i == nbytes) {
-            report_error("fs: check_file_properties: missing length");
-            return FALSE;
-        }
-        length = data[i++];
-
-        if (2 * length + i > nbytes) {
-            report_error("fs: check_file_properties: overflow");
-            return FALSE;
-        }
-        i += 2 * length;
-    }
-
-    return TRUE;
-}
-
-int check_directory_contents(const struct fs *fs,
-                             const struct file_entry *dir_fe)
-{
-    struct open_file of;
-    uint16_t w, type;
-    uint8_t buffer[2];
-    size_t to_read, nbytes;
-
-    if (!check_file_entry(fs, dir_fe)) {
-        report_error("fs: check_directory_contents: "
-                     "file_entry does not match");
-        return FALSE;
-    }
-
-    get_of(fs, dir_fe, TRUE, &of);
-
-    while (TRUE) {
-        nbytes = _read(fs, &of, buffer, 2);
-
-        if (nbytes == 0) break;
-        if (nbytes != 2) goto error_short;
-
-        w = read_word_be(buffer, 0);
-        type = (w >> DIR_ENTRY_TYPE_SHIFT);
-        to_read = 2 * ((size_t) (w & DIR_ENTRY_LEN_MASK));
-
-        if ((to_read > 128) && (type == DIR_ENTRY_VALID)) {
-            report_error("fs: check_directory_contents: "
-                         "directory_entry too large");
-            return FALSE;
-        }
-
-        nbytes = _read(fs, &of, NULL, to_read - 2);
-        if (nbytes != to_read - 2) goto error_short;
-    }
-
-    return TRUE;
-
-error_short:
-    report_error("fs: check_directory_contents: "
-                 "directory_entry too short");
-    return FALSE;
-}
-
 
 int check_of(const struct fs *fs, struct open_file *of)
 {
     const struct page *pg;
     uint16_t vda;
 
-    if (of->error) {
-        report_error("fs: check_of: error on file");
+    if (of->error < 0) return FALSE;
+
+    if (!fs->checked) {
+        of->error = ERROR_FS_UNCHECKED;
         return FALSE;
     }
 
@@ -702,18 +667,13 @@ int check_of(const struct fs *fs, struct open_file *of)
 
     vda = of->pos.vda;
     if (vda >= fs->length) {
-        of->error = TRUE;
-        report_error("fs: check_of: invalid VDA: %u", vda);
+        of->error = ERROR_INVALID_OF;
         return FALSE;
     }
 
     pg = &fs->pages[vda];
     if (of->pos.pos > pg->label.nbytes) {
-        of->error = TRUE;
-        report_error("fs: check_of: "
-                     "inconsistent offset in page %u: "
-                     "pos = %u, nbytes = %u",
-                     vda, of->pos.pos, pg->label.nbytes);
+        of->error = ERROR_INVALID_OF;
         return FALSE;
     }
 
