@@ -113,7 +113,7 @@ int update_disk_descriptor(struct fs *fs)
 
     update_disk_metadata(fs);
 
-    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL);
+    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL, NULL);
     if (!found) {
         report_error("fs: update_disk_descriptor: "
                      "could not find DiskDescriptor");

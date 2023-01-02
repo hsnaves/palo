@@ -320,7 +320,7 @@ int traverse_dirs_cb(const struct fs *fs,
     tr->count++;
 
     if (de->type == DIR_ENTRY_MISSING)
-        return 1;
+        return TRUE;
 
     if (!check_directory_entry(fs, de)) {
         report_error("fs: check_sysdir: "
@@ -433,7 +433,7 @@ int check_descriptor(const struct fs *fs)
     size_t nbytes;
     int found;
 
-    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL);
+    resolve_name(fs, "DiskDescriptor", &found, &fe, NULL, NULL);
     if (!found) {
         report_error("fs: check_descriptor: "
                      "DiskDescriptor not found");
@@ -646,7 +646,7 @@ int check_directory_contents(const struct fs *fs,
                              const struct file_entry *dir_fe)
 {
     struct open_file of;
-    uint16_t w;
+    uint16_t w, type;
     uint8_t buffer[2];
     size_t to_read, nbytes;
 
@@ -665,7 +665,14 @@ int check_directory_contents(const struct fs *fs,
         if (nbytes != 2) goto error_short;
 
         w = read_word_be(buffer, 0);
+        type = (w >> DIR_ENTRY_TYPE_SHIFT);
         to_read = 2 * ((size_t) (w & DIR_ENTRY_LEN_MASK));
+
+        if ((to_read > 128) && (type == DIR_ENTRY_VALID)) {
+            report_error("fs: check_directory_contents: "
+                         "directory_entry too large");
+            return FALSE;
+        }
 
         nbytes = _read(fs, &of, NULL, to_read - 2);
         if (nbytes != to_read - 2) goto error_short;
@@ -675,7 +682,7 @@ int check_directory_contents(const struct fs *fs,
 
 error_short:
     report_error("fs: check_directory_contents: "
-                 "entry too short");
+                 "directory_entry too short");
     return FALSE;
 }
 

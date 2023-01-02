@@ -190,7 +190,7 @@ error:
     return FALSE;
 }
 
-int fs_extract_file(const struct fs *fs, const char *name,
+int fs_extract_file(struct fs *fs, const char *name,
                     const char *output_filename)
 {
     uint8_t buffer[PAGE_DATA_SIZE];
@@ -242,6 +242,55 @@ int fs_extract_file(const struct fs *fs, const char *name,
     return TRUE;
 
 error_read:
+    fclose(fp);
+    fs_close(fs, &of);
+    return FALSE;
+}
+
+int fs_insert_file(struct fs *fs, const char *input_filename,
+                   const char *name)
+{
+    uint8_t buffer[PAGE_DATA_SIZE];
+    struct open_file of;
+    FILE *fp;
+    size_t nbytes;
+    size_t ret;
+
+    if (!fs->checked) {
+        report_error("fs: insert_file: "
+                     "filesystem not checked");
+        return FALSE;
+    }
+
+    if (!fs_open(fs, name, "w", &of)) {
+        report_error("fs: insert_file: "
+                     "could not open file");
+        return FALSE;
+    }
+
+    fp = fopen(input_filename, "rb");
+    if (!fp) {
+        report_error("fs: insert_file: could not open `%s` "
+                     "for reading", input_filename);
+        return FALSE;
+    }
+
+    while (TRUE) {
+        nbytes = fread(buffer, 1, sizeof(buffer), fp);
+        if (nbytes == 0) break;
+
+        ret = fs_write(fs, &of, buffer, nbytes, TRUE);
+        if (of.error || (ret != nbytes)) {
+            report_error("fs: insert_file: error while writing");
+            goto error_write;
+        }
+    }
+
+    fclose(fp);
+    fs_close(fs, &of);
+    return TRUE;
+
+error_write:
     fclose(fp);
     fs_close(fs, &of);
     return FALSE;

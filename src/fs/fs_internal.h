@@ -218,6 +218,28 @@ int check_directory_contents(const struct fs *fs,
 int check_of(const struct fs *fs, struct open_file *of);
 
 
+/* dir.c */
+
+
+/* Compresses the entries in a directory.
+ * The parameter `dir_fe` specifies the directory.
+ * The `used_length` and `empty_length` return statistics about the
+ * usage of the directory file. Those statistics are measured in words.
+ */
+void compress_directory(struct fs *fs,
+                        const struct file_entry *dir_fe,
+                        size_t *used_length, size_t *empty_length);
+
+/* Adds one entry to the directory.
+ * The parameter `dir_fe` specifies the directory.
+ * The `de` is the directory_entry to be added.
+ * Returns TRUE if the entry was added successfully.
+ */
+int add_directory_entry(struct fs *fs,
+                        const struct file_entry *dir_fe,
+                        const struct directory_entry *de);
+
+
 /* disk.c */
 
 
@@ -256,6 +278,15 @@ void get_file_entry(const struct fs *fs, uint16_t leader_vda,
  */
 void get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
 
+/* Creates a new file_entry in the filesystem.
+ * The `leader_vda` parameter specifies the VDA of the leader page.
+ * If `directory` is set to TRUE, a directory is created.
+ * The created file_entry is stored in `fe`.
+ * Returns TRUE on success.
+ */
+void new_file_entry(struct fs *fs, uint16_t leader_vda, int directory,
+                    struct file_entry *fe);
+
 /* Obtains an open_file.
  * The file is specified by `fe` and the open file is stored in `of`.
  * This function starts at the leader page if `skip_leader` is set
@@ -265,15 +296,6 @@ void get_of(const struct fs *fs,
             const struct file_entry *fe,
             int skip_leader,
             struct open_file *of);
-
-/* Creates a new file in the filesystem.
- * The `leader_vda` parameter specifies the VDA of the leader page.
- * If `directory` is set to TRUE, a directory is created.
- * The open file is stored in `of`.
- * Returns TRUE on success.
- */
-void new_file(struct fs *fs, uint16_t leader_vda, int directory,
-              struct open_file *of);
 
 /* Advances to the next page.
  * The open_file to advance is given in parameter `of`.
@@ -377,9 +399,12 @@ void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
  * the file found (such as leader page virtual disk address, etc.).
  * The parameter `dir_fe`, if provided, will be populated with
  * the information about the directory that contains the file.
+ * If the file was not found, the `suffix` will be populated with
+ * the unresolved suffix.
  * Returns TRUE on success.
  */
 void resolve_name(const struct fs *fs, const char *name, int *found,
-                  struct file_entry *fe, struct file_entry *dir_fe);
+                  struct file_entry *fe, struct file_entry *dir_fe,
+                  const char **suffix);
 
 #endif /* __FS_FS_INTERNAL_H */

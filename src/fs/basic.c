@@ -88,8 +88,8 @@ void write_name(uint8_t *data, size_t offset,
         return;
     }
 
-    data[offset] = (uint8_t) slen;
-    memcpy(&data[offset + 1], name, slen - 1);
+    data[offset] = (uint8_t) (slen + 1);
+    memcpy(&data[offset + 1], name, slen);
 }
 
 uint16_t read_word_be(const uint8_t *data, size_t offset)

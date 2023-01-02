@@ -81,6 +81,7 @@ struct open_file {
     struct file_position pos;     /* The file_position information. */
     int eof;                      /* If it reached the end of file. */
     int error;                    /* Indicates the file has error. */
+    int modified;                 /* Indicates that file was modified. */
 };
 
 /* Structure representing a filesystem page (sector). */
@@ -203,6 +204,13 @@ int fs_save_image(const struct fs *fs, const char *filename);
  */
 int fs_check_integrity(struct fs *fs);
 
+/* Obtains the file_entry of the SysDir.
+ * The `sysdir_fe` will be populated with the corresponding SysDir
+ * file_entry.
+ * Returns TRUE on success.
+ */
+int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
+
 /* Obtains an open_file.
  * The file is specified by `fe` and the open file is stored in `of`.
  * This function starts at the leader page if `skip_leader` is set
@@ -221,7 +229,7 @@ int fs_get_of(const struct fs *fs,
  *   "w" -> opens the file for writing.
  * Returns TRUE on success.
  */
-int fs_open(const struct fs *fs,
+int fs_open(struct fs *fs,
             const char *name,
             const char *mode,
             struct open_file *of);
@@ -229,7 +237,7 @@ int fs_open(const struct fs *fs,
 /* Closes the open_file `of`.
  * Returns TRUE on success.
  */
-int fs_close(const struct fs *fs,
+int fs_close(struct fs *fs,
              struct open_file *of);
 
 /* Reads `len` bytes of an open file `of` to `dst`.
@@ -240,12 +248,14 @@ int fs_close(const struct fs *fs,
 size_t fs_read(const struct fs *fs, struct open_file *of,
                uint8_t *dst, size_t len);
 
-/* Obtains the file_entry of the SysDir.
- * The `sysdir_fe` will be populated with the corresponding SysDir
- * file_entry.
- * Returns TRUE on success.
+/* Writes `len` bytes of an open file `of` from `src`.  If `src` is
+ * NULL, the file is zeroed. The parameter `extends` tells the function
+ * to allocate free pages when it reaches the end of the file,
+ * thereby extending the existing file.
+ * Returns the number of written bytes.
  */
-int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
+size_t fs_write(struct fs *fs, struct open_file *of,
+                const uint8_t *src, size_t len, int extend);
 
 /* Determines the file length.
  * The `fe` specifies the file. The file length is returned in `length`.
@@ -290,7 +300,16 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
  * write.
  * Returns TRUE on success.
  */
-int fs_extract_file(const struct fs *fs, const char *name,
+int fs_extract_file(struct fs *fs, const char *name,
                     const char *output_filename);
+
+/* Inserts a file into the filesystem.
+ * The `input_filename` specifies the filename of the input file to
+ * read.
+ * The `name` is the name of the file in the filesystem.
+ * Returns TRUE on success.
+ */
+int fs_insert_file(struct fs *fs, const char *input_filename,
+                   const char *name);
 
 #endif /* __FS_FS_H */

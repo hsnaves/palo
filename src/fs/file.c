@@ -1,6 +1,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include "fs/fs.h"
 #include "fs/fs_internal.h"
@@ -35,18 +36,41 @@ int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
     return TRUE;
 }
 
+void new_file_entry(struct fs *fs, uint16_t leader_vda,
+                    int directory, struct file_entry *fe)
+{
+    struct page *pg;
+
+    pg = &fs->pages[leader_vda];
+    pg->label.prev_rda = 0;
+    pg->label.next_rda = 0;
+    pg->label.unused = 0;
+    /* Leader page is full. */
+    pg->label.nbytes = PAGE_DATA_SIZE;
+    pg->label.file_pgnum = 0;
+    pg->label.version = 1;
+    pg->label.sn = fs->last_sn;
+    if (directory) {
+        pg->label.sn.word1 |= SN_DIRECTORY;
+    }
+    increment_serial_number(fs);
+
+    get_file_entry(fs, leader_vda, fe);
+}
+
 void get_of(const struct fs *fs,
             const struct file_entry *fe,
             int skip_leader,
             struct open_file *of)
 {
     of->fe = *fe;
-    of->pos.pgnum = 1;
+    of->pos.pgnum = 0;
     of->pos.pos = 0;
     of->pos.vda = of->fe.leader_vda;
 
     of->eof = FALSE;
     of->error = FALSE;
+    of->modified = FALSE;
 
     if (skip_leader)
         advance_page(fs, of);
@@ -71,34 +95,6 @@ int fs_get_of(const struct fs *fs,
     return TRUE;
 }
 
-void new_file(struct fs *fs, uint16_t leader_vda, int directory,
-              struct open_file *of)
-{
-    struct page *pg;
-
-    pg = &fs->pages[leader_vda];
-    pg->label.prev_rda = 0;
-    pg->label.next_rda = 0;
-    pg->label.unused = 0;
-    /* Leader page is full. */
-    pg->label.nbytes = PAGE_DATA_SIZE;
-    pg->label.file_pgnum = 0;
-    pg->label.version = 1;
-    pg->label.sn = fs->last_sn;
-    if (directory) {
-        pg->label.sn.word1 |= SN_DIRECTORY;
-    }
-    increment_serial_number(fs);
-
-    get_file_entry(fs, leader_vda, &of->fe);
-    of->pos.pgnum = 0;
-    of->pos.pos = 0;
-    of->pos.vda = of->fe.leader_vda;
-
-    of->eof = FALSE;
-    of->error = FALSE;
-}
-
 void advance_page(const struct fs *fs, struct open_file *of)
 {
     const struct page *pg;
@@ -121,6 +117,7 @@ void advance_page(const struct fs *fs, struct open_file *of)
         of->pos.pgnum += 1;
     } else {
         /* Reached the end of file. */
+        of->pos.pos = pg->label.nbytes;
         of->eof = TRUE;
     }
 }
@@ -189,7 +186,9 @@ size_t _write(struct fs *fs, struct open_file *of,
     if (of->error) return 0;
 
     offset = 0;
-    while ((len > 0) && (!of->eof)) {
+    while (!of->eof) {
+        of->modified = TRUE;
+
         vda = of->pos.vda;
         pg = &fs->pages[vda];
 
@@ -200,6 +199,8 @@ size_t _write(struct fs *fs, struct open_file *of,
 
             if (src) {
                 memcpy(&pg->data[of->pos.pos], &src[offset], nbytes);
+            } else {
+                memset(&pg->data[of->pos.pos], 0, nbytes);
             }
 
             of->pos.pos += nbytes;
@@ -207,7 +208,7 @@ size_t _write(struct fs *fs, struct open_file *of,
             len -= nbytes;
         }
 
-        if (of->pos.pos < pg->label.nbytes)
+        if (len == 0 && of->pos.pos < PAGE_DATA_SIZE)
             break;
 
         /* First check if there is a next page. */
@@ -255,12 +256,29 @@ size_t _write(struct fs *fs, struct open_file *of,
     return offset;
 }
 
+size_t fs_write(struct fs *fs, struct open_file *of,
+                const uint8_t *src, size_t len, int extend)
+{
+    if (!fs->checked) {
+        report_error("fs: write: filesystem not checked");
+        return 0;
+    }
+
+    if (!check_of(fs, of)) {
+        report_error("fs: write: open_file not valid");
+        return 0;
+    }
+
+    return _write(fs, of, src, len, extend);
+}
+
 void trim(struct fs *fs, struct open_file *of)
 {
     struct page *pg, *first_pg;
 
     if (of->error) return;
 
+    of->modified = TRUE;
     first_pg = &fs->pages[of->pos.vda];
     if (of->pos.pos >= PAGE_DATA_SIZE) {
         advance_page(fs, of);
@@ -277,22 +295,60 @@ void trim(struct fs *fs, struct open_file *of)
     }
 
     first_pg->label.next_rda = 0;
+    of->eof = FALSE;
+    of->pos.pos = first_pg->label.nbytes;
+    of->pos.vda = first_pg->page_vda;
+    of->pos.pgnum = first_pg->label.file_pgnum;
 }
 
-int fs_open(const struct fs *fs,
+/* Validates a filename.
+ * The parameter `name` contains the filename to validate.
+ * Returns TRUE if the name is valid.
+ */
+static
+int validate_name(const char *name)
+{
+    size_t i;
+
+    i = 0;
+    while (TRUE) {
+        if (name[i] == '\0') break;
+        if (name[i] == '<' || name[i] == '>') {
+            report_error("fs: validate_name: "
+                         "invalid character in name `%s`",
+                         name);
+            return FALSE;
+        }
+        i++;
+    }
+    if (i >= NAME_LENGTH - 1) {
+        report_error("fs: validate_name: "
+                     "name `%s` too long",
+                     name);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+int fs_open(struct fs *fs,
             const char *name,
             const char *mode,
             struct open_file *of)
 {
     struct file_entry fe, dir_fe;
+    struct directory_entry de;
+    struct file_info finfo;
+    const char *suffix;
+    uint16_t leader_vda;
     int found;
 
+    of->error = TRUE;
     if (!fs->checked) {
         report_error("fs: open: filesystem not checked");
         return FALSE;
     }
 
-    resolve_name(fs, name, &found, &fe, &dir_fe);
+    resolve_name(fs, name, &found, &fe, &dir_fe, &suffix);
     if (strcmp(mode, "r") == 0) {
         if (!found) {
             report_error("fs: open: file `%s` not found", name);
@@ -300,7 +356,50 @@ int fs_open(const struct fs *fs,
         }
         get_of(fs, &fe, TRUE, of);
     } else if (strcmp(mode, "w") == 0) {
-        /* TODO: Implement this. */
+        if (!found) {
+            if (!validate_name(suffix)) {
+                report_error("fs: open: bad filename");
+                return FALSE;
+            }
+
+            if (!find_free_page(fs, &leader_vda)) {
+                report_error("fs: open: disk full");
+                return FALSE;
+            }
+
+            new_file_entry(fs, leader_vda, FALSE, &fe);
+
+            finfo.name_length = 1 + strlen(suffix);
+            strncpy(finfo.name, suffix, sizeof(finfo.name) - 1);
+            finfo.name[sizeof(finfo.name) - 1] = '\0';
+            time(&finfo.created);
+            finfo.written = finfo.created;
+            finfo.read = finfo.created;
+            finfo.propbegin = 0;
+            finfo.proplen = 0;
+            finfo.consecutive = FALSE;
+            finfo.change_sn = FALSE;
+            finfo.has_dg = FALSE;
+            finfo.fe = fe;
+            finfo.last_page.vda = leader_vda;
+            finfo.last_page.pgnum = 0;
+            finfo.last_page.pos = 0;
+            write_leader_page(fs, &fe, &finfo);
+
+            de.type = DIR_ENTRY_VALID;
+            de.length = (finfo.name_length / 2) + 1 + (DIR_OFF_NAME / 2);
+            de.fe = fe;
+            de.name_length = finfo.name_length;
+            memcpy(de.name, finfo.name, NAME_LENGTH);
+            if (!add_directory_entry(fs, &dir_fe, &de)) {
+                report_error("fs: open: no space in directory");
+                return FALSE;
+            }
+        }
+        get_of(fs, &fe, TRUE, of);
+        trim(fs, of);
+        of->eof = FALSE;
+        _write(fs, of, NULL, 0, TRUE);
     } else {
         report_error("fs: open: invalid mode `%s`", mode);
         return FALSE;
@@ -309,11 +408,23 @@ int fs_open(const struct fs *fs,
     return TRUE;
 }
 
-int fs_close(const struct fs *fs,
+int fs_close(struct fs *fs,
              struct open_file *of)
 {
-    /* TODO: Implement this. */
-    UNUSED(fs);
+    if (!fs->checked) {
+        report_error("fs: close: filesystem not checked");
+        return FALSE;
+    }
+
+    if (!check_of(fs, of)) {
+        report_error("fs: close: open_file not valid");
+        return 0;
+    }
+
+    if (of->modified) {
+        update_leader_page(fs, &of->fe);
+        update_disk_descriptor(fs);
+    }
     of->eof = TRUE;
     return TRUE;
 }

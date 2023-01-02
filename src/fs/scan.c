@@ -188,7 +188,8 @@ int resolve_name_cb(const struct fs *fs,
 }
 
 void resolve_name(const struct fs *fs, const char *name, int *found,
-                  struct file_entry *fe, struct file_entry *dir_fe)
+                  struct file_entry *fe, struct file_entry *dir_fe,
+                  const char **suffix)
 {
     struct resolve_result res;
     struct file_entry sysdir_fe;
@@ -220,6 +221,12 @@ void resolve_name(const struct fs *fs, const char *name, int *found,
         scan_directory(fs, &_fe, &resolve_name_cb, &res);
         if (!res.found) {
             *found = FALSE;
+            if (dir_fe) {
+                *dir_fe = _fe;
+            }
+            if (suffix) {
+                *suffix = res.name;
+            }
             return;
         }
 
@@ -246,6 +253,6 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
         return FALSE;
     }
 
-    resolve_name(fs, name, found, fe, dir_fe);
+    resolve_name(fs, name, found, fe, dir_fe, NULL);
     return TRUE;
 }
