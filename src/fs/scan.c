@@ -143,7 +143,8 @@ int resolve_name_cb(const struct fs *fs,
     }
 
     res = (struct resolve_result *) arg;
-    if (strncmp(de->name, res->name, res->name_length) == 0) {
+    if ((strncmp(de->name, res->name, res->name_length) == 0)
+        && (res->name_length == de->name_length)) {
         res->fe = de->fe;
         res->found = TRUE;
         /* Stop the search in this directory. */

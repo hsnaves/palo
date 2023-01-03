@@ -58,8 +58,15 @@ int virtual_to_real(const struct geometry *dg, uint16_t vda, uint16_t *rda)
 void read_name(const uint8_t *data, size_t offset,
                char name[NAME_LENGTH])
 {
-    memcpy(name, &data[offset + 1], NAME_LENGTH - 1);
+    size_t slen;
+
+    slen = data[offset];
+    if (slen > NAME_LENGTH - 1)
+        slen = NAME_LENGTH - 1;
+
     name[NAME_LENGTH - 1] = '\0';
+    memcpy(name, &data[offset + 1], NAME_LENGTH - 1);
+    name[slen] = '\0';
 }
 
 void write_name(uint8_t *data, size_t offset,
@@ -70,8 +77,8 @@ void write_name(uint8_t *data, size_t offset,
     memcpy(&data[offset + 1], name, NAME_LENGTH - 1);
 
     slen = strlen(name);
-    if (slen >= NAME_LENGTH - 1)
-        slen = NAME_LENGTH - 2;
+    if (slen > NAME_LENGTH - 1)
+        slen = NAME_LENGTH - 1;
 
     data[offset] = (uint8_t) slen;
 }

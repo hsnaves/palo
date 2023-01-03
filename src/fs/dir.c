@@ -217,6 +217,7 @@ int walk_dir_cb(const struct fs *fs,
                 void *arg)
 {
     struct walk_dir_cb_arg *c_arg;
+    size_t slen;
 
     UNUSED(fs);
     c_arg = (struct walk_dir_cb_arg *) arg;
@@ -227,7 +228,9 @@ int walk_dir_cb(const struct fs *fs,
     }
 
     if (c_arg->remove_name) {
-        if (strcmp(c_arg->remove_name, de->name) == 0) {
+        slen = strlen(c_arg->remove_name);
+        if ((strncmp(c_arg->remove_name, de->name, slen) == 0)
+            && (slen == de->name_length)) {
             c_arg->removed = TRUE;
             c_arg->rm_de = *de;
             c_arg->empty_length += (size_t) de->length;

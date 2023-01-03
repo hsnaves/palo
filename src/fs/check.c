@@ -734,7 +734,7 @@ int check_disk_descriptor(const struct fs *fs)
     uint16_t diskbt_size;
     size_t nbytes;
 
-    if (!fs_open_ro(fs, "DiskDescriptor", &of)) {
+    if (!fs_open_ro(fs, "DiskDescriptor.", &of)) {
         report_error("fs: check_disk_descriptor: "
                      "DiskDescriptor not found");
         goto error_check;

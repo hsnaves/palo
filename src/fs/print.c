@@ -120,7 +120,7 @@ int print_dir_cb(const struct fs *fs,
         fprintf(fp, "  PGNUM: %u\n", finfo.last_page.pgnum);
         fprintf(fp, "  POS: %u\n", finfo.last_page.pos);
     } else {
-        fprintf(fp, "%-6u %-6u %-6u %-6u %-10u  %-38s\n",
+        fprintf(fp, "%-6u %-6u %-6u %-6u %-10u  %-39s\n",
                 cb_arg->count,  de->fe.leader_vda,
                 sn, de->fe.version, (unsigned int) length,
                 de->name);

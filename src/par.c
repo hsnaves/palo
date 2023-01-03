@@ -173,6 +173,9 @@ int main(int argc, char **argv)
             report_error("main: could not copy");
             goto error;
         }
+
+        printf("copied `%s` to `%s` successfully\n",
+               c_src_name, c_dst_name);
     }
 
     if (r_name != NULL) {
@@ -182,6 +185,8 @@ int main(int argc, char **argv)
                          r_name, fs_error(error));
             goto error;
         }
+        printf("removed `%s` successfully\n",
+               r_name);
     }
 
     if (dir_name) {

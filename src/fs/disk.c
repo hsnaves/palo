@@ -225,7 +225,7 @@ int fs_update_disk_descriptor(struct fs *fs, int *error)
 
     update_disk_metadata(fs);
 
-    if (!fs_open(fs, "DiskDescriptor", "w+", &of))
+    if (!fs_open(fs, "DiskDescriptor.", "w+", &of))
         goto update_error;
 
     memset(buffer, 0, sizeof(buffer));
