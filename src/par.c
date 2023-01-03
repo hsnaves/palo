@@ -6,98 +6,7 @@
 #include "fs/fs.h"
 #include "common/utils.h"
 
-/* Data structures and types. */
-
-/* Argument passed to print_dir_cb(). */
-struct print_dir_cb_arg {
-    unsigned int count;           /* Directory entry count. */
-    int verbose;                  /* To print verbose information. */
-};
-
 /* Functions. */
-
-/* Callback to print the files in the directory. */
-static
-int print_dir_cb(const struct fs *fs,
-                 const struct directory_entry *de,
-                 void *arg)
-{
-    struct file_info finfo;
-    struct print_dir_cb_arg *cb_arg;
-    uint32_t sn;
-    struct tm *ltm;
-    size_t length;
-
-    cb_arg = ((struct print_dir_cb_arg *) arg);
-    cb_arg->count++;
-
-    if (!cb_arg->verbose && (cb_arg->count == 1)) {
-        printf("N      VDA    SN     VER    SIZE        FILENAME\n");
-    }
-
-    if (de->type == DIR_ENTRY_MISSING) return TRUE;
-
-    if (!fs_file_info(fs, &de->fe, &finfo)) {
-        report_error("main: could not get file information of `%s`",
-                     de->name);
-        return FALSE;
-    }
-
-    if (!fs_file_length(fs, &de->fe, &length)) {
-        report_error("main: could not get file length of `%s`",
-                     de->name);
-        return FALSE;
-    }
-
-    sn = ((uint32_t) (de->fe.sn.word1 & SN_PART1_MASK)) << 16;
-    sn += de->fe.sn.word2;
-
-    if (cb_arg->verbose) {
-        printf("Leader VDA: %u\n", de->fe.leader_vda);
-        printf("Serial number: %u\n", sn);
-        printf("Version: %u\n", de->fe.version);
-        printf("Name: %s\n", de->name);
-        printf("Length: %u\n", (unsigned int) length);
-
-        ltm = localtime(&finfo.created);
-        printf("Created: %02d-%02d-%02d %2d:%02d:%02d\n",
-               ltm->tm_mday, ltm->tm_mon + 1,
-               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-
-        ltm = localtime(&finfo.written);
-        printf("Written: %02d-%02d-%02d %2d:%02d:%02d\n",
-               ltm->tm_mday, ltm->tm_mon + 1,
-               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-
-        ltm = localtime(&finfo.read);
-        printf("Read:    %02d-%02d-%02d %2d:%02d:%02d\n",
-               ltm->tm_mday, ltm->tm_mon + 1,
-               ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-
-        printf("Propbegin: %u\n", finfo.propbegin);
-        printf("Proplen: %u\n", finfo.proplen);
-        if (finfo.has_dg) {
-            printf("num_disks = %u, num_cylinders = %u\n"
-                   "num_heads = %u, num_sectors = %u\n",
-                   finfo.dg.num_disks, finfo.dg.num_cylinders,
-                   finfo.dg.num_heads, finfo.dg.num_sectors);
-        }
-        printf("Consecutive: %u\n", finfo.consecutive);
-        printf("Change SN: %u\n", finfo.change_sn);
-        printf("Last page: \n");
-        printf("  VDA: %u\n", finfo.last_page.vda);
-        printf("  PGNUM: %u\n", finfo.last_page.pgnum);
-        printf("  POS: %u\n", finfo.last_page.pos);
-        printf("\n");
-    } else {
-        printf("%-6u %-6u %-6u %-6u %-10u  %-38s\n",
-               cb_arg->count,  de->fe.leader_vda,
-               sn, de->fe.version, (unsigned int) length,
-               de->name);
-    }
-
-    return TRUE;
-}
 
 /* Prints the usage information to the console output. */
 static
@@ -124,7 +33,6 @@ int main(int argc, char **argv)
     struct geometry dg;
     struct fs fs;
     struct file_entry dir_fe;
-    struct print_dir_cb_arg cb_arg;
     int i, is_last, is_second_last;
     int found, modified;
     int verbose;
@@ -238,9 +146,7 @@ int main(int argc, char **argv)
             goto error;
         }
 
-        cb_arg.count = 0;
-        cb_arg.verbose = verbose;
-        if (!fs_scan_directory(&fs, &dir_fe, &print_dir_cb, &cb_arg)) {
+        if (!fs_print_directory(&fs, &dir_fe, verbose, stdout)) {
             report_error("main: could not print directory");
             return FALSE;
         }

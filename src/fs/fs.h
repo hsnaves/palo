@@ -9,6 +9,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <time.h>
 
 /* Constants. */
@@ -355,5 +356,15 @@ int fs_extract_file(struct fs *fs, const char *name,
  */
 int fs_insert_file(struct fs *fs, const char *input_filename,
                    const char *name);
+
+/* Prints the contents of a directory to `fp`.
+ * The directory is specified by the parameter `dir_fe`.
+ * To print more information, the `verbose` parameter should be set
+ * to TRUE.
+ * Returns TRUE on success.
+ */
+int fs_print_directory(const struct fs *fs,
+                       const struct file_entry *dir_fe,
+                       int verbose, FILE *fp);
 
 #endif /* __FS_FS_H */

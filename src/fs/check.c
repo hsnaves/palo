@@ -620,6 +620,10 @@ int check_file_entry(const struct fs *fs, const struct file_entry *fe)
 {
     const struct page *pg;
 
+    if (!fs->checked) {
+        return FALSE;
+    }
+
     if (fe->leader_vda >= fs->length) {
         return FALSE;
     }

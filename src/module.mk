@@ -3,7 +3,7 @@ PMU_OBJS := common/allocator.o common/table.o common/utils.o \
  microcode/microcode.o pmu.o
 
 PAR_OBJS := fs/basic.o fs/check.o fs/dir.o fs/disk.o fs/file.o fs/fs.o \
- fs/meta.o fs/scan.o common/utils.o par.o
+ fs/meta.o fs/scan.o fs/print.o common/utils.o par.o
 
 PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
  simulator/display.o simulator/ethernet.o simulator/keyboard.o \
@@ -13,10 +13,11 @@ PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
 OBJS := common/allocator.o common/table.o common/utils.o \
  assembler/assembler.o parser/lexer.o parser/parser.o \
  microcode/microcode.o pmu.o fs/basic.o fs/check.o fs/dir.o fs/disk.o \
- fs/file.o fs/fs.o fs/meta.o fs/scan.o par.o simulator/simulator.o \
- simulator/disk.o simulator/display.o simulator/ethernet.o \
- simulator/keyboard.o simulator/mouse.o simulator/utils.o \
- simulator/rom.o microcode/nova.o gui/gui.o debugger/debugger.o palos.o
+ fs/file.o fs/fs.o fs/meta.o fs/scan.o fs/print.o par.o \
+ simulator/simulator.o simulator/disk.o simulator/display.o \
+ simulator/ethernet.o simulator/keyboard.o simulator/mouse.o \
+ simulator/utils.o simulator/rom.o microcode/nova.o gui/gui.o \
+ debugger/debugger.o palos.o
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
@@ -40,6 +41,7 @@ fs/disk.o: fs/disk.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/file.o: fs/file.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/meta.o: fs/meta.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/fs.o: fs/fs.c fs/fs.h common/utils.h
+fs/print.o: fs/print.c fs/fs.h common/utils.h
 fs/scan.o: fs/scan.c fs/fs.h fs/fs_internal.h common/utils.h
 par.o: par.c fs/fs.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \

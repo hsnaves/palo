@@ -49,9 +49,6 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
                    size_t *length)
 {
-    if (!fs->checked)
-        return FALSE;
-
     if (!check_file_entry(fs, fe))
         return FALSE;
 
