@@ -97,6 +97,7 @@ void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
         if (!cb(fs, &de, arg))
             break;
     }
+    fs_close_ro(fs, &of);
 }
 
 int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
@@ -105,6 +106,8 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
     struct open_file of;
 
     fs_get_of(fs, dir_fe, TRUE, TRUE, &of);
+    fs_close_ro(fs, &of);
+
     if (of.error >= 0) {
         if (!(dir_fe->sn.word1 & SN_DIRECTORY)) {
             of.error = ERROR_NOT_DIRECTORY;

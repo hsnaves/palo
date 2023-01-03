@@ -236,11 +236,13 @@ int compress_directory(struct fs *fs,
     c_arg.used_length = 0;
     c_arg.empty_length = 0;
     c_arg.has_error = FALSE;
-    fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
-    if (c_arg.of.error < 0) {
-        report_error("fs: compress_directory: "
-                     "%s", fs_error(c_arg.of.error));
-        return FALSE;
+    if (do_compress) {
+        fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
+        if (c_arg.of.error < 0) {
+            report_error("fs: compress_directory: "
+                         "%s", fs_error(c_arg.of.error));
+            return FALSE;
+        }
     }
 
     scan_directory(fs, dir_fe, &compress_dir_cb, &c_arg);
@@ -250,16 +252,23 @@ int compress_directory(struct fs *fs,
     if (c_arg.has_error) {
         report_error("fs: compress_directory: "
                      "could not compress");
+        fs_close(fs, &c_arg.of);
         return FALSE;
     }
-    if ((c_arg.empty_length == 0) || (!do_compress))
-        return TRUE;
+    if (!do_compress) return TRUE;
 
-    if (!append_empty_entries(fs, &c_arg.of, c_arg.empty_length)) {
-        report_error("fs: compress_directory: "
-                     "%s", fs_error(c_arg.of.error));
-        return FALSE;
+    if (c_arg.empty_length > 0) {
+        if (!append_empty_entries(fs, &c_arg.of,
+                                  c_arg.empty_length)) {
+
+            report_error("fs: compress_directory: "
+                         "%s", fs_error(c_arg.of.error));
+            fs_close(fs, &c_arg.of);
+            return FALSE;
+        }
     }
+
+    fs_close(fs, &c_arg.of);
     return TRUE;
 }
 
@@ -297,11 +306,13 @@ int add_directory_entry(struct fs *fs,
     if (!append_empty_entries(fs, &of, empty_length))
         goto error_add;
 
+    fs_close(fs, &of);
     return TRUE;
 
 error_add:
     /* This should never happen. */
     report_error("fs: add_directory_entry: "
                  "%s", fs_error(of.error));
+    fs_close(fs, &of);
     return FALSE;
 }

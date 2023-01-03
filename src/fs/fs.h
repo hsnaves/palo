@@ -246,7 +246,7 @@ int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
  * This function starts at the leader page if `skip_leader` is set
  * to FALSE. To open in read-only mode the parameter `read_only`
  * should be set to TRUE.
- * Returns TRUE on success.
+ * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_get_of(const struct fs *fs,
               const struct file_entry *fe,
@@ -276,10 +276,27 @@ int fs_open(struct fs *fs,
  */
 int fs_close(struct fs *fs, struct open_file *of);
 
+/* Opens the file in read-only mode.
+ * The same parameters of fs_open() apply here, except `mode`, which
+ * is assumed to be "r". This function is useful because the `fs`
+ * reference is const.
+ * Returns TRUE on success. Any errors are written to `of->error`.
+ */
+int fs_open_ro(const struct fs *fs,
+               const char *name,
+               struct open_file *of);
+
+/* Closes the open_file `of`, which was opened in read-only mode.
+ * As in fs_open_ro(), the reference of `fs` is const.
+ * Returns TRUE on success. Any errors are written to `of->error`.
+ */
+int fs_close_ro(const struct fs *fs, struct open_file *of);
+
 /* Reads `len` bytes of an open file `of` to `dst`.
  * If `dst` is NULL, the file pointer in `of` is still updated,
  * but no actual bytes are copied.
- * Returns the number of bytes read.
+ * Returns the number of bytes read. Any errors are written to
+ * `of->error`.
  */
 size_t fs_read(const struct fs *fs, struct open_file *of,
                uint8_t *dst, size_t len);
@@ -288,14 +305,15 @@ size_t fs_read(const struct fs *fs, struct open_file *of,
  * NULL, the file is zeroed. The parameter `extends` tells the function
  * to allocate free pages when it reaches the end of the file,
  * thereby extending the existing file.
- * Returns the number of written bytes.
+ * Returns the number of written bytes. Any errors are written to
+ * `of->error`.
  */
 size_t fs_write(struct fs *fs, struct open_file *of,
                 const uint8_t *src, size_t len, int extend);
 
 /* Truncates the given file.
  * The file to be truncated is given by the parameter `of`.
- * Returns TRUE on success.
+ * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_truncate(struct fs *fs, struct open_file *of);
 
@@ -358,7 +376,7 @@ int fs_update_disk_descriptor(struct fs *fs, int *error);
  * write.
  * Returns TRUE on success.
  */
-int fs_extract_file(struct fs *fs, const char *name,
+int fs_extract_file(const struct fs *fs, const char *name,
                     const char *output_filename);
 
 /* Inserts a file into the filesystem.

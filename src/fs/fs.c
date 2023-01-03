@@ -221,7 +221,7 @@ const char *fs_error(int error)
     return errors[-error];
 }
 
-int fs_extract_file(struct fs *fs, const char *name,
+int fs_extract_file(const struct fs *fs, const char *name,
                     const char *output_filename)
 {
     uint8_t buffer[PAGE_DATA_SIZE];
@@ -230,7 +230,7 @@ int fs_extract_file(struct fs *fs, const char *name,
     size_t nbytes;
     size_t ret;
 
-    if (!fs_open(fs, name, "r", &of)) {
+    if (!fs_open_ro(fs, name, &of)) {
         report_error("fs: extract_file: "
                      "could not open file: %s",
                      fs_error(of.error));
@@ -241,6 +241,7 @@ int fs_extract_file(struct fs *fs, const char *name,
     if (!fp) {
         report_error("fs: extract_file: could not open `%s` "
                      "for writing", output_filename);
+        fs_close_ro(fs, &of);
         return FALSE;
     }
 
@@ -266,12 +267,12 @@ int fs_extract_file(struct fs *fs, const char *name,
     }
 
     fclose(fp);
-    fs_close(fs, &of);
+    fs_close_ro(fs, &of);
     return TRUE;
 
 error_read:
     fclose(fp);
-    fs_close(fs, &of);
+    fs_close_ro(fs, &of);
     return FALSE;
 }
 
@@ -295,6 +296,7 @@ int fs_insert_file(struct fs *fs, const char *input_filename,
     if (!fp) {
         report_error("fs: insert_file: could not open `%s` "
                      "for reading", input_filename);
+        fs_close(fs, &of);
         return FALSE;
     }
 

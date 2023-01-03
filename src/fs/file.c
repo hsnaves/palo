@@ -267,6 +267,41 @@ int fs_close(struct fs *fs, struct open_file *of)
     return TRUE;
 }
 
+int fs_open_ro(const struct fs *fs,
+               const char *name,
+               struct open_file *of)
+{
+    struct file_entry fe;
+    int found;
+
+    of->error = ERROR_UNKNOWN;
+    if (!fs->checked) {
+        of->error = ERROR_FS_UNCHECKED;;
+        return FALSE;
+    }
+
+    if (!fs_resolve_name(fs, name, &found, &fe, NULL, NULL)) {
+        /* Can only fail if the filesystem is unchecked. */
+        of->error = ERROR_FS_UNCHECKED;
+        return FALSE;
+    }
+
+    if (!found) {
+        of->error = ERROR_FILE_NOT_FOUND;
+        return FALSE;
+    }
+    return fs_get_of(fs, &fe, TRUE, TRUE, of);
+}
+
+int fs_close_ro(const struct fs *fs, struct open_file *of)
+{
+    if (!check_of(fs, of))
+        return FALSE;
+
+    of->eof = TRUE;
+    return TRUE;
+}
+
 size_t fs_read(const struct fs *fs, struct open_file *of,
                uint8_t *dst, size_t len)
 {

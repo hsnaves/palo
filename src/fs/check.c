@@ -152,11 +152,13 @@ int check_directory_structure(const struct fs *fs,
         if (of.error < 0) {
             report_error("fs: check_directory_structure: "
                          "%s", fs_error(of.error));
+            fs_close_ro(fs, &of);
             return FALSE;
         }
         if (!ret) break;
     }
 
+    fs_close_ro(fs, &of);
     return TRUE;
 }
 
@@ -707,7 +709,7 @@ int check_unique(struct fs *fs)
  * Returns TRUE on success.
  */
 static
-int check_disk_descriptor(struct fs *fs)
+int check_disk_descriptor(const struct fs *fs)
 {
     struct open_file of;
     struct geometry dg;
@@ -715,17 +717,17 @@ int check_disk_descriptor(struct fs *fs)
     uint16_t diskbt_size;
     size_t nbytes;
 
-    if (!fs_open(fs, "DiskDescriptor", "r", &of)) {
+    if (!fs_open_ro(fs, "DiskDescriptor", &of)) {
         report_error("fs: check_disk_descriptor: "
                      "DiskDescriptor not found");
-        return FALSE;
+        goto error_check;
     }
 
     nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
     if (nbytes != sizeof(buffer)) {
         report_error("fs: check_disk_descriptor: "
                      "could not read DiskDescriptor");
-        return FALSE;
+        goto error_check;
     }
 
     read_geometry(buffer, DESCR_OFF_GEOMETRY, &dg);
@@ -738,16 +740,21 @@ int check_disk_descriptor(struct fs *fs)
 
         report_error("fs: check_disk_descriptor: "
                      "invalid disk geometry");
-        return FALSE;
+        goto error_check;
     }
 
     if (diskbt_size != fs->bitmap_size) {
         report_error("fs: check_disk_descriptor: "
                      "invalid disk bitmap size");
-        return FALSE;
+        goto error_check;
     }
 
+    fs_close_ro(fs, &of);
     return TRUE;
+
+error_check:
+    fs_close_ro(fs, &of);
+    return FALSE;
 }
 
 int fs_check_integrity(struct fs *fs)
