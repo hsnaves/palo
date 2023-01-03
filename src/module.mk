@@ -1,23 +1,25 @@
-PMU_OBJS := common/allocator.o common/table.o common/utils.o \
- assembler/assembler.o parser/lexer.o parser/parser.o \
- microcode/microcode.o pmu.o
-
-PAR_OBJS := fs/basic.o fs/check.o fs/dir.o fs/disk.o fs/file.o fs/fs.o \
- fs/meta.o fs/scan.o fs/print.o common/utils.o par.o
-
-PALOS_OBJS := common/utils.o simulator/simulator.o simulator/disk.o \
+ASSEMBLER_OBJS := assembler/assembler.o
+COMMON_OBJS := common/allocator.o common/table.o common/utils.o
+DEBUGGER_OBJS := debugger/debugger.o
+FS_OBJS := fs/basic.o fs/check.o fs/dir.o fs/disk.o fs/file.o fs/fs.o \
+ fs/meta.o fs/scan.o fs/print.o
+GUI_OBJS := gui/gui.o
+MICROCODE_OBJS := microcode/microcode.o microcode/nova.o
+PARSER_OBJS := parser/parser.o parser/lexer.o
+SIMULATOR_OBJS := simulator/simulator.o simulator/disk.o \
  simulator/display.o simulator/ethernet.o simulator/keyboard.o \
- simulator/mouse.o simulator/utils.o simulator/rom.o gui/gui.o \
- debugger/debugger.o microcode/microcode.o microcode/nova.o palos.o
+ simulator/mouse.o simulator/utils.o simulator/rom.o
 
-OBJS := common/allocator.o common/table.o common/utils.o \
- assembler/assembler.o parser/lexer.o parser/parser.o \
- microcode/microcode.o pmu.o fs/basic.o fs/check.o fs/dir.o fs/disk.o \
- fs/file.o fs/fs.o fs/meta.o fs/scan.o fs/print.o par.o \
- simulator/simulator.o simulator/disk.o simulator/display.o \
- simulator/ethernet.o simulator/keyboard.o simulator/mouse.o \
- simulator/utils.o simulator/rom.o microcode/nova.o gui/gui.o \
- debugger/debugger.o palos.o
+
+PMU_OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(PARSER_OBJS) \
+ microcode/microcode.o pmu.o
+PAR_OBJS := $(FS_OBJS) common/utils.o par.o
+PALOS_OBJS := $(DEBUGGER_OBJS) $(GUI_OBJS) $(MICROCODE_OBJS) \
+ $(SIMULATOR_OBJS) common/utils.o palos.o
+OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(DEBUGGER_OBJS) $(FS_OBJS) \
+ $(GUI_OBJS) $(MICROCODE_OBJS) $(PARSER_OBJS) $(SIMULATOR_OBJS) \
+ pmu.o par.o palos.o
+
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
