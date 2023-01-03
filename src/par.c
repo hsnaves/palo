@@ -19,6 +19,7 @@ void usage(const char *prog_name)
     printf("  -d dirname        Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
+    printf("  -r                Operate in read only mode\n");
     printf("  -v                Increase verbosity\n");
     printf("  --help            Print this help\n");
 }
@@ -34,8 +35,8 @@ int main(int argc, char **argv)
     struct fs fs;
     struct file_entry dir_fe;
     int i, is_last, is_second_last;
-    int found, modified;
-    int verbose;
+    int found, modified, read_only;
+    int verbose, error;
 
     disk_filename = NULL;
     e_filename = NULL;
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
     i_name = NULL;
     dirname = NULL;
     modified = FALSE;
+    read_only = FALSE;
     verbose = 0;
 
     dg.num_disks = 1;
@@ -78,8 +80,10 @@ int main(int argc, char **argv)
             }
             i_filename = argv[++i];
             i_name = argv[++i];
+        } else if (strcmp("-r", argv[i]) == 0) {
+            read_only = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
-            verbose++;
+            verbose = TRUE;
         } else if (strcmp("--help", argv[i]) == 0
                    || strcmp("-h", argv[i]) == 0) {
             usage(argv[0]);
@@ -152,7 +156,12 @@ int main(int argc, char **argv)
         }
     }
 
-    if (modified) {
+    if (modified && !read_only) {
+        if (!fs_update_disk_descriptor(&fs, &error)) {
+            report_error("main: could not update disk descriptor: %s",
+                         fs_error(error));
+            goto error;
+        }
         if (!fs_save_image(&fs, disk_filename)) {
             report_error("main: could not save disk image");
             goto error;

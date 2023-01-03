@@ -1,5 +1,6 @@
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "fs/fs.h"
@@ -8,18 +9,28 @@
 
 /* Data structures and types. */
 
-/* Auxiliary data structure used by traverse_files_cb(). */
-struct traverse_files_result {
-    struct fs *fs;                /* A non-const reference. */
-    int error;                    /* If found an error. */
+/* Auxiliary data structure used by check_files_cb(). */
+struct check_files_cb_arg {
+    int has_error;                /* If found an error. */
 };
 
-/* Auxiliary data structure used by traverse_dirs_cb(). */
-struct traverse_dirs_result {
+/* Auxiliary data structure used by check_dirs_cb(). */
+struct check_dirs_cb_arg {
     struct fs *fs;                /* A non-const reference. */
     struct file_entry dir_fe;     /* Current directory. */
     unsigned int count;           /* The entry count so far. */
-    int error;                    /* If found an error. */
+    int has_error;                /* If found an error. */
+};
+
+/* Auxiliary data structure used by check_unique_cb(). */
+struct check_unique_cb_arg {
+    uint16_t num_files;           /* Total number of files. */
+    uint16_t num_missing_files;   /* Total number of missing files. */
+    uint16_t dir_count;           /* Directory count. */
+    uint16_t max_dir_count;       /* The maximum directory count. */
+    struct serial_number *sns;    /* The serial numbers. */
+    struct directory_entry *des;  /* The directory entries. */
+    int has_error;                /* If found an error. */
 };
 
 /* Functions. */
@@ -362,35 +373,27 @@ int check_basic_filesystem_data(const struct fs *fs)
 }
 
 /* Auxiliary callback used by check_files().
- * The `arg` parameter is a pointer to a traverse_files_result structure.
+ * The `arg` parameter is a pointer to a check_files_cb_arg structure.
  */
 static
-int traverse_files_cb(const struct fs *fs,
-                      const struct file_entry *fe,
-                      void *arg)
+int check_files_cb(const struct fs *fs,
+                   const struct file_entry *fe,
+                   void *arg)
 {
-    struct traverse_files_result *tr;
+    struct check_files_cb_arg *cb_arg;
     struct file_info finfo;
-    uint16_t idx, bit;
 
-    tr = (struct traverse_files_result *) arg;
-
-    /* Mark the existence of the file in the bitmap. */
-    idx = IDX(fe->leader_vda);
-    bit = BIT(fe->leader_vda);
-    tr->fs->bitmap[idx] |= (1 << bit);
+    cb_arg = (struct check_files_cb_arg *) arg;
 
     file_info(fs, fe, &finfo);
-
     if (finfo.name_length >= NAME_LENGTH) {
-        report_error("fs: check_files: "
-                     "name too large");
-        tr->error = TRUE;
+        report_error("fs: check_files: name too large");
+        cb_arg->has_error = TRUE;
     }
     if (fe->leader_vda == 1 && !finfo.has_dg) {
         report_error("fs: check_files: "
                      "missing disk geometry in SysDir properties");
-        tr->error = TRUE;
+        cb_arg->has_error = TRUE;
     } else if (fe->leader_vda == 1 && fe->leader_vda == 1) {
         if (finfo.dg.num_disks != fs->dg.num_disks
             || finfo.dg.num_cylinders != fs->dg.num_cylinders
@@ -399,14 +402,14 @@ int traverse_files_cb(const struct fs *fs,
 
             report_error("fs: check_files: "
                          "invalid disk geometry");
-            tr->error = TRUE;
+            cb_arg->has_error = TRUE;
         }
     }
 
     if (!check_prop_structure(fs, fe)) {
         report_error("fs: check_files: "
                      "invalid file properties");
-        tr->error = TRUE;
+        cb_arg->has_error = TRUE;
     }
 
     return TRUE;
@@ -418,72 +421,62 @@ int traverse_files_cb(const struct fs *fs,
 static
 int check_files(struct fs *fs)
 {
-    struct traverse_files_result tr;
+    struct check_files_cb_arg cb_arg;
 
-    tr.fs = fs;
-    tr.error = FALSE;
-    memset(fs->bitmap, 0, fs->bitmap_size * sizeof(uint16_t));
-
-    scan_files(fs, &traverse_files_cb, &tr);
-    return (!tr.error);
+    cb_arg.has_error = FALSE;
+    scan_files(fs, &check_files_cb, &cb_arg);
+    return (!cb_arg.has_error);
 }
 
-/* Auxiliary callback used by check_sysdir().
- * The `arg` parameter is a pointer to a traverse_dirs_result structure.
+/* Auxiliary callback used by check_dirs().
+ * The `arg` parameter is a pointer to a check_dirs_cb_arg structure.
  */
 static
-int traverse_dirs_cb(const struct fs *fs,
-                     const struct directory_entry *de,
-                     void *arg)
+int check_dirs_cb(const struct fs *fs,
+                  const struct directory_entry *de,
+                  void *arg)
 {
-    struct traverse_dirs_result *tr;
-    struct traverse_dirs_result child_tr;
-    uint16_t idx, bit;
+    struct check_dirs_cb_arg *cb_arg;
+    struct check_dirs_cb_arg child_arg;
     int not_seen;
 
-    tr = (struct traverse_dirs_result *) arg;
-    tr->count++;
+    cb_arg = (struct check_dirs_cb_arg *) arg;
+    cb_arg->count++;
 
     if (de->type == DIR_ENTRY_MISSING)
         return TRUE;
 
     if (!check_directory_entry(fs, de)) {
-        report_error("fs: check_sysdir: "
+        report_error("fs: check_dirs: "
                      "directory entry %u at VDA %u",
-                     tr->count, tr->dir_fe.leader_vda);
-        tr->error = TRUE;
+                     cb_arg->count, cb_arg->dir_fe.leader_vda);
+        cb_arg->has_error = TRUE;
     }
 
-    idx = IDX(de->fe.leader_vda);
-    bit = BIT(de->fe.leader_vda);
-    not_seen = (tr->fs->bitmap[idx] & (1 << bit));
-    /* Mark this file as seen. */
-    tr->fs->bitmap[idx] &= ~(1 << bit);
-
-    /* TODO: Check for repeated entries in the directory. */
+    not_seen = (cb_arg->fs->ref_count[de->fe.leader_vda]++ == 0);
 
     /* Check if already went into this directory
      * to avoid infinite recursion.
      */
     if ((de->fe.sn.word1 & SN_DIRECTORY) && (not_seen)) {
-        child_tr.fs = tr->fs;
-        child_tr.dir_fe = de->fe;
-        child_tr.count = 0;
-        child_tr.error = FALSE;
+        child_arg.fs = cb_arg->fs;
+        child_arg.dir_fe = de->fe;
+        child_arg.count = 0;
+        child_arg.has_error = FALSE;
 
         if (!check_directory_structure(fs, &de->fe)) {
-            report_error("fs: check_sysdir: "
+            report_error("fs: check_dirs: "
                          "invalid sub-directory: "
                          "directory entry %u at VDA %u",
-                         tr->count, tr->dir_fe.leader_vda);
-            tr->error = TRUE;
+                         cb_arg->count, cb_arg->dir_fe.leader_vda);
+            cb_arg->has_error = TRUE;
         }
 
-        scan_directory(fs, &de->fe, &traverse_dirs_cb, &child_tr);
+        scan_directory(fs, &de->fe, &check_dirs_cb, &child_arg);
 
-        if (child_tr.error) {
+        if (child_arg.has_error) {
             /* Propagate errors up. */
-            tr->error = TRUE;
+            cb_arg->has_error = TRUE;
         }
     }
 
@@ -494,17 +487,15 @@ int traverse_dirs_cb(const struct fs *fs,
  * Returns TRUE on success.
  */
 static
-int check_sysdir(struct fs *fs)
+int check_dirs(struct fs *fs)
 {
     struct file_entry sysdir_fe;
     struct directory_entry sysdir_de;
-    struct traverse_dirs_result tr;
-    unsigned int num_missing;
-    uint16_t idx, bit;
+    struct check_dirs_cb_arg cb_arg;
 
     fs_get_sysdir(fs, &sysdir_fe);
     if (!check_file_entry(fs, &sysdir_fe, TRUE)) {
-        report_error("fs: check_sysdir: "
+        report_error("fs: check_dirs: "
                      "no leader page at page 1");
         return FALSE;
     }
@@ -516,30 +507,198 @@ int check_sysdir(struct fs *fs)
     sysdir_de.name_length = 6;
     strcpy(sysdir_de.name, "SysDir");
 
-    tr.fs = fs;
-    tr.dir_fe = sysdir_fe;
-    tr.count = 0;
-    tr.error = FALSE;
+    cb_arg.fs = fs;
+    cb_arg.dir_fe = sysdir_fe;
+    cb_arg.count = 0;
+    cb_arg.has_error = FALSE;
 
-    traverse_dirs_cb(fs, &sysdir_de, &tr);
-    if (tr.error) return FALSE;
+    memset(fs->ref_count, 0, fs->length * sizeof(uint16_t));
+    check_dirs_cb(fs, &sysdir_de, &cb_arg);
+    if (cb_arg.has_error) return FALSE;
 
-    num_missing = 0;
-    for (idx = 0; idx < fs->bitmap_size; idx++) {
-        if (fs->bitmap[idx] == 0) continue;
-        for (bit = 0; bit < 16; bit++) {
-            if (fs->bitmap[idx] & (1 << bit)) {
-                num_missing++;
+    return TRUE;
+}
+
+/* Auxiliary callback used by check_unique_cb().
+ * The `arg` parameter is a pointer to a check_unique_cb_arg structure.
+ */
+static
+int check_unique_dir_cb(const struct fs *fs,
+                        const struct directory_entry *de,
+                        void *arg)
+{
+    struct check_unique_cb_arg *cb_arg;
+
+    UNUSED(fs);
+    cb_arg = (struct check_unique_cb_arg *) arg;
+    if (de->type == DIR_ENTRY_MISSING)
+        return TRUE;
+
+    if (cb_arg->des) {
+        cb_arg->des[cb_arg->dir_count] = *de;
+    }
+    cb_arg->dir_count++;
+    return TRUE;
+}
+
+/* Auxiliary function used by qsort() to sort an array
+ * of directory_entry objects.
+ */
+static
+int cmp_directory_entry(const void *p1, const void *p2)
+{
+    const struct directory_entry *de1;
+    const struct directory_entry *de2;
+
+    de1 = (const struct directory_entry *) p1;
+    de2 = (const struct directory_entry *) p2;
+
+    if (de1->type != DIR_ENTRY_VALID) return -1;
+    if (de2->type != DIR_ENTRY_VALID) return 1;
+
+    return strcmp(de1->name, de2->name);
+}
+
+/* Auxiliary callback used by check_unique().
+ * The `arg` parameter is a pointer to a check_unique_cb_arg structure.
+ */
+static
+int check_unique_cb(const struct fs *fs,
+                    const struct file_entry *fe,
+                    void *arg)
+{
+    struct check_unique_cb_arg *cb_arg;
+    struct serial_number *sn;
+    uint16_t idx;
+
+    cb_arg = (struct check_unique_cb_arg *) arg;
+    if (cb_arg->sns) {
+        sn = &cb_arg->sns[cb_arg->num_files];
+        sn->word1 = fe->sn.word1 & SN_PART1_MASK;
+        sn->word2 = fe->sn.word2;
+    }
+    cb_arg->num_files++;
+
+    if (fs->ref_count[fe->leader_vda] == 0) {
+        cb_arg->num_missing_files++;
+    }
+
+    if (fe->sn.word1 & SN_DIRECTORY) {
+        cb_arg->dir_count = 0;
+        scan_directory(fs, fe, &check_unique_dir_cb, arg);
+        if (cb_arg->max_dir_count < cb_arg->dir_count) {
+            cb_arg->max_dir_count = cb_arg->dir_count;
+        }
+
+        if (cb_arg->des && (cb_arg->dir_count > 1)) {
+            qsort(cb_arg->des,
+                  cb_arg->dir_count,
+                  sizeof(struct directory_entry),
+                  &cmp_directory_entry);
+
+            for (idx = 0; idx < cb_arg->dir_count - 1; idx++) {
+                if (cmp_directory_entry(&cb_arg->des[idx],
+                                        &cb_arg->des[idx + 1]) == 0) {
+
+                    report_error("fs: check_unique: "
+                                 "repeated directory_entry in LDA: %u",
+                                 fe->leader_vda);
+                    cb_arg->has_error = TRUE;
+                    break;
+                }
             }
         }
     }
 
-    if (num_missing > 0) {
-        report_error("fs: check_sysdir: "
-                     "%u missing files", num_missing);
+    return TRUE;
+}
+
+/* Auxiliary function used by qsort() to sort an array
+ * of serial_number objects.
+ */
+static
+int cmp_serial_number(const void *p1, const void *p2)
+{
+    const struct serial_number *sn1;
+    const struct serial_number *sn2;
+
+    sn1 = (const struct serial_number *) p1;
+    sn2 = (const struct serial_number *) p2;
+
+    if (sn1->word1 < sn2->word1) return -1;
+    if (sn1->word1 > sn2->word1) return 1;
+    if (sn1->word2 < sn2->word2) return -1;
+    if (sn1->word2 > sn2->word2) return 1;
+
+    return 0;
+}
+
+/* Checks for unique serial numbers and unique names in directories.
+ * Returns TRUE on success.
+ */
+static
+int check_unique(struct fs *fs)
+{
+    struct check_unique_cb_arg cb_arg;
+    uint16_t idx;
+    size_t size;
+
+    cb_arg.num_files = 0;
+    cb_arg.num_missing_files = 0;
+    cb_arg.dir_count = 0;
+    cb_arg.max_dir_count = 0;
+    cb_arg.sns = NULL;
+    cb_arg.des = NULL;
+    cb_arg.has_error = FALSE;
+    scan_files(fs, &check_unique_cb, &cb_arg);
+
+    if (cb_arg.num_missing_files) {
+        report_error("fs: check_unique: %u missing files",
+                     cb_arg.num_missing_files);
     }
 
-    return TRUE;
+    size = cb_arg.num_files * sizeof(struct serial_number);
+    cb_arg.sns = (struct serial_number *) malloc(size);
+
+    size = cb_arg.max_dir_count * sizeof(struct directory_entry);
+    cb_arg.des = (struct directory_entry *) malloc(size);
+
+    if (unlikely(!cb_arg.sns || !cb_arg.des)) {
+        if (cb_arg.sns) free((void *) cb_arg.sns);
+        if (cb_arg.des) free((void *) cb_arg.des);
+
+        report_error("fs: check_unique: memory exhausted");
+        return FALSE;
+    }
+
+    cb_arg.num_files = 0;
+    cb_arg.num_missing_files = 0;
+    cb_arg.dir_count = 0;
+    cb_arg.max_dir_count = 0;
+    cb_arg.has_error = FALSE;
+    scan_files(fs, &check_unique_cb, &cb_arg);
+
+    if (cb_arg.num_files > 1) {
+        qsort(cb_arg.sns,
+              cb_arg.num_files,
+              sizeof(struct serial_number),
+              &cmp_serial_number);
+
+        for (idx = 0; idx < cb_arg.num_files - 1; idx++) {
+            if (cmp_serial_number(&cb_arg.sns[idx],
+                                  &cb_arg.sns[idx + 1]) == 0) {
+                report_error("fs: check_unique: "
+                             "repeated serial_number: %u, %u",
+                             cb_arg.sns[idx].word1,
+                             cb_arg.sns[idx].word2);
+                cb_arg.has_error = TRUE;
+            }
+        }
+    }
+
+    free((void *) cb_arg.sns);
+    free((void *) cb_arg.des);
+    return !cb_arg.has_error;
 }
 
 /* Checks the DiskDescriptor file.
@@ -602,7 +761,10 @@ int fs_check_integrity(struct fs *fs)
     if (!check_files(fs))
         goto check_error;
 
-    if (!check_sysdir(fs))
+    if (!check_dirs(fs))
+        goto check_error;
+
+    if (!check_unique(fs))
         goto check_error;
 
     if (!check_disk_descriptor(fs))
