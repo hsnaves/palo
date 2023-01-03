@@ -180,11 +180,6 @@ struct fs {
     uint16_t free_pages;          /* Number of free pages. */
     struct serial_number last_sn; /* Last used serial number. */
     int checked;                  /* If the filesystem was checked. */
-
-    struct directory_entry *de;   /* Temporary area for sorting. */
-    size_t num_de;                /* Number of allocated directory
-                                   * entries in `de`.
-                                   */
 };
 
 /* Defines the type of the callback function for fs_scan_directory().

@@ -203,9 +203,13 @@ void write_alto_time(uint8_t *data, size_t offset, time_t time);
 
 /* Checks the file_entry with the data on disk.
  * The file_entry to check is in parameter `fe`.
+ * If the parameter `verbose` is set to TRUE, error messages are
+ * printed to the standard error.
  * Returns TRUE if it is a valid file_entry object.
  */
-int check_file_entry(const struct fs *fs, const struct file_entry *fe);
+int check_file_entry(const struct fs *fs,
+                     const struct file_entry *fe,
+                     int verbose);
 
 /* Checks the open_file for errors.
  * The parameter `of` specifies the file to check.
@@ -270,12 +274,19 @@ void increment_serial_number(struct fs *fs);
 void update_disk_metadata(struct fs *fs);
 
 /* Finds a free page within the filesystem.
- * The virtual disk address is returned in `free_vda`.
+ * The virtual disk address is returned in `free_vda`. The parameter
+ * `last_vda`, if provided, contains a pointer to the last vda of the
+ * current file. This parameter is used to allocate contiguous regions
+ * on the disk. If provided, this function tries to allocate the page
+ * next to `last_vda`, if it is free. When `last_vda` is not provided,
+ * this function allocates the first page of the largest contiguous
+ * free region available.
  * Returns TRUE on success.
  */
-int allocate_page(struct fs *fs, uint16_t *free_vda);
+int allocate_page(struct fs *fs, uint16_t *free_vda,
+                  const uint16_t *last_vda);
 
-/* Returns multiple page to the filesystem.
+/* Returns multiple pages to the filesystem.
  * The virtual disk address of the first page is in `vda`.
  * If `follow` is set to TRUE, this function traverses all
  * pages linked by the `next_rda` field in the page label,

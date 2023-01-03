@@ -111,7 +111,7 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
         return FALSE;
     }
 
-    if (!check_file_entry(fs, dir_fe)) {
+    if (!check_file_entry(fs, dir_fe, FALSE)) {
         report_error("fs: scan_directory: invalid dir_fe");
         return FALSE;
     }

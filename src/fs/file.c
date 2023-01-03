@@ -144,7 +144,7 @@ int fs_get_of(const struct fs *fs,
         return FALSE;
     }
 
-    if (!check_file_entry(fs, fe)) {
+    if (!check_file_entry(fs, fe, FALSE)) {
         of->error = ERROR_INVALID_FE;
         return FALSE;
     }
@@ -207,7 +207,7 @@ int fs_open(struct fs *fs,
                 return FALSE;
             }
 
-            if (!allocate_page(fs, &leader_vda)) {
+            if (!allocate_page(fs, &leader_vda, NULL)) {
                 of->error = ERROR_DISK_FULL;
                 return FALSE;
             }
@@ -369,7 +369,7 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         }
 
         /* Otherwise, allocate a new page. */
-        if (!allocate_page(fs, &vda)) {
+        if (!allocate_page(fs, &vda, &pg->page_vda)) {
             of->error = ERROR_DISK_FULL;
             break;
         }

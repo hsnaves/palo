@@ -15,7 +15,6 @@ void fs_initvar(struct fs *fs)
     fs->pages = NULL;
     fs->ref_count = NULL;
     fs->bitmap = NULL;
-    fs->de = NULL;
 }
 
 void fs_destroy(struct fs *fs)
@@ -28,9 +27,6 @@ void fs_destroy(struct fs *fs)
 
     if (fs->bitmap) free((void *) fs->bitmap);
     fs->bitmap = NULL;
-
-    if (fs->de) free((void *) fs->de);
-    fs->de = NULL;
 }
 
 int fs_create(struct fs *fs, struct geometry dg)
@@ -72,7 +68,6 @@ int fs_create(struct fs *fs, struct geometry dg)
     fs->last_sn.word1 = 0;
     fs->last_sn.word2 = 0;
     fs->checked = FALSE;
-    fs->num_de = 0;
 
     return TRUE;
 }

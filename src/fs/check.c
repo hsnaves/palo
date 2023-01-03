@@ -37,7 +37,7 @@ int check_directory_entry(const struct fs *fs,
     if (de->type == DIR_ENTRY_MISSING)
         return TRUE;
 
-    if (!check_file_entry(fs, &de->fe)) {
+    if (!check_file_entry(fs, &de->fe, TRUE)) {
         report_error("fs: check_directory_entry: "
                      "file_entry does not match");
         return FALSE;
@@ -129,7 +129,7 @@ int check_directory_structure(const struct fs *fs,
     struct directory_entry de;
     int ret;
 
-    if (!check_file_entry(fs, dir_fe)) {
+    if (!check_file_entry(fs, dir_fe, TRUE)) {
         report_error("fs: check_directory_structure: "
                      "file_entry does not match");
         return FALSE;
@@ -503,7 +503,7 @@ int check_sysdir(struct fs *fs)
     uint16_t idx, bit;
 
     fs_get_sysdir(fs, &sysdir_fe);
-    if (!check_file_entry(fs, &sysdir_fe)) {
+    if (!check_file_entry(fs, &sysdir_fe, TRUE)) {
         report_error("fs: check_sysdir: "
                      "no leader page at page 1");
         return FALSE;
@@ -616,7 +616,9 @@ check_error:
     return FALSE;
 }
 
-int check_file_entry(const struct fs *fs, const struct file_entry *fe)
+int check_file_entry(const struct fs *fs,
+                     const struct file_entry *fe,
+                     int verbose)
 {
     const struct page *pg;
 
@@ -625,29 +627,63 @@ int check_file_entry(const struct fs *fs, const struct file_entry *fe)
     }
 
     if (fe->leader_vda >= fs->length) {
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "invalid leader VDA: %u", fe->leader_vda);
+        }
         return FALSE;
     }
 
     if (fe->version == VERSION_FREE || fe->version == 0
         || fe->version == VERSION_BAD) {
+
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "invalid version at VDA %u: %u",
+                         fe->leader_vda, fe->version);
+        }
         return FALSE;
     }
 
     pg = &fs->pages[fe->leader_vda];
     if (pg->label.file_pgnum != 0) {
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "file_pgnum = %u != 0 at VDA %u",
+                         pg->label.file_pgnum, fe->leader_vda);
+        }
         return FALSE;
     }
 
     if (fe->sn.word1 != pg->label.sn.word1
         || fe->sn.word2 != pg->label.sn.word2) {
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "serial number %u, %u does not match %u, %u "
+                         "at VDA %u",
+                         fe->sn.word1, fe->sn.word2,
+                         pg->label.sn.word1, pg->label.sn.word2,
+                         fe->leader_vda);
+        }
         return FALSE;
     }
 
     if (fe->version != pg->label.version) {
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "version %u does not match %u at VDA %u",
+                         fe->version, pg->label.version,
+                         fe->leader_vda);
+        }
         return FALSE;
     }
 
     if (fe->blank != 0) {
+        if (verbose) {
+            report_error("fs: check_file_entry: "
+                         "blank = %u != 0 at VDA %u",
+                         fe->blank, fe->leader_vda);
+        }
         return FALSE;
     }
 

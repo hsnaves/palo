@@ -49,7 +49,7 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
                    size_t *length)
 {
-    if (!check_file_entry(fs, fe))
+    if (!check_file_entry(fs, fe, FALSE))
         return FALSE;
 
     *length = file_length(fs, fe, NULL);
@@ -111,7 +111,7 @@ int fs_file_info(const struct fs *fs,
     if (!fs->checked)
         return FALSE;
 
-    if (!check_file_entry(fs, fe))
+    if (!check_file_entry(fs, fe, FALSE))
         return FALSE;
 
     file_info(fs, fe, finfo);

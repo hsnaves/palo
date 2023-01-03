@@ -9,6 +9,48 @@
 
 /* Functions. */
 
+/* Counts the number of leading zeros in the binary representation
+ * of the word `w`.
+ * Returns the number of zeros.
+ */
+static
+unsigned int count_leading_zeros(uint16_t w)
+{
+    unsigned int count;
+
+    /* Shortcut for the case w = 0. */
+    if (w == 0) return 16;
+    count = 0;
+
+    /* Use binary search on the bits. */
+    if ((w & 0xFF00) == 0) {
+        count += 8;
+    } else {
+        w >>= 8;
+    }
+
+    if ((w & 0x00F0) == 0) {
+        count += 4;
+    } else {
+        w >>= 4;
+    }
+
+    if ((w & 0x000C) == 0) {
+        count += 2;
+    } else {
+        w >>= 2;
+    }
+
+    if ((w & 0x0002) == 0) {
+        count += 1;
+    } else {
+        w >>= 1;
+    }
+
+    if (w == 0) count++;
+    return count;
+}
+
 void increment_serial_number(struct fs *fs)
 {
    fs->last_sn.word2++;
@@ -59,47 +101,92 @@ void update_disk_metadata(struct fs *fs)
     increment_serial_number(fs);
 }
 
-int allocate_page(struct fs *fs, uint16_t *free_vda)
+int allocate_page(struct fs *fs, uint16_t *free_vda,
+                  const uint16_t *last_vda)
 {
     const struct page *pg;
     uint16_t idx, bit;
-    uint16_t vda;
+    unsigned int count, best, lz;
+    uint16_t vda, best_vda, w;
 
-    while (TRUE) {
-        if (fs->free_pages == 0)
-            return FALSE;
+    if (fs->free_pages == 0)
+        return FALSE;
 
-        for (idx = 0; idx < fs->bitmap_size; idx++) {
-            if (fs->bitmap[idx] != 0xFFFF) break;
+    if (last_vda) {
+        /* Try to allocate consecutively. */
+        vda = (*last_vda) + 1;
+        idx = IDX(vda);
+        bit = BIT(vda);
+
+        if (!(fs->bitmap[idx] & (1 << bit))) {
+            fs->bitmap[idx] |= (1 << bit);
+            fs->free_pages--;
+            *free_vda = vda;
+            return TRUE;
         }
-
-        if (idx == fs->bitmap_size) {
-            report_error("fs: allocate_page: inconsistent metadata");
-            update_disk_metadata(fs);
-            continue;
-        }
-
-        for (bit = 0; bit < 16; bit++) {
-            if (!(fs->bitmap[idx] & (1 << bit)))
-                break;
-        }
-
-        fs->bitmap[idx] |= (1 << bit);
-        fs->free_pages--;
-
-        vda = VDA(idx, bit);
-        pg = &fs->pages[vda];
-        if (pg->label.version != VERSION_FREE) {
-            report_error("fs: allocate_page: inconsistent metadata");
-            update_disk_metadata(fs);
-            continue;
-        }
-
-        *free_vda = vda;
-        return TRUE;
     }
 
-    return FALSE;
+    /* Now search for the largest contiguous sub-block of free pages. */
+    count = 0;
+    vda = VDA(0, 15);
+    best = count;
+    best_vda = vda;
+    for (idx = 0; idx < fs->bitmap_size; idx++) {
+        w = fs->bitmap[idx];
+
+        if (count == 0) {
+            /* Shortcut. */
+            if (w == 0xFFFF) continue;
+            vda = VDA(idx, 15);
+        }
+
+        bit = 16;
+        while (bit > 0) {
+            if (w & 0x8000) {
+                if (count > best) {
+                    best = count;
+                    best_vda = vda;
+                }
+                bit--;
+                w <<= 1;
+                w |= 1;
+
+                count = 0;
+                if (w == 0xFFFF) {
+                    /* Shortcut. */
+                    break;
+                }
+                /* here bit > 0 necessarily */
+                vda = VDA(idx, bit - 1);
+            } else {
+                lz = count_leading_zeros(w);
+                count += lz;
+                w <<= lz;
+                w |= (1 << lz) - 1;
+                bit -= lz;
+            }
+        }
+    }
+
+    if (best == 0) {
+        report_error("fs: allocate_page: inconsistent metadata");
+        update_disk_metadata(fs);
+        return allocate_page(fs, free_vda, last_vda);
+    }
+
+    vda = best_vda;
+    idx = IDX(vda);
+    bit = BIT(vda);
+    fs->bitmap[idx] |= (1 << bit);
+    fs->free_pages--;
+    pg = &fs->pages[vda];
+    if (pg->label.version != VERSION_FREE) {
+        report_error("fs: allocate_page: inconsistent metadata");
+        update_disk_metadata(fs);
+        return allocate_page(fs, free_vda, last_vda);
+    }
+    *free_vda = vda;
+    return TRUE;
 }
 
 void free_pages(struct fs *fs, uint16_t vda, int follow)
