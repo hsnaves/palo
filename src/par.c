@@ -113,6 +113,10 @@ int main(int argc, char **argv)
             usage(argv[0]);
             return 0;
         } else {
+            if (argv[i][0] == '-' && strlen(argv[i]) > 1) {
+                report_error("main: invalid disk filename `%s`", argv[i]);
+                return 1;
+            }
             disk_filename = argv[i];
         }
     }
