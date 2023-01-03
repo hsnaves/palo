@@ -18,8 +18,10 @@ void read_leader_page(const struct fs *fs,
     fs_get_of(fs, fe, FALSE, &of);
     fs_read(fs, &of, data, PAGE_DATA_SIZE);
     if (of.error < 0) {
+        /* This should not happen. */
         report_error("fs: read_leader_page: "
-                     "error while reading leader page");
+                     "%s", fs_error(of.error));
+        memset(data, 0, PAGE_DATA_SIZE);
     }
 }
 
@@ -29,31 +31,37 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
     struct open_file of;
     size_t l, nbytes;
 
-    fs_get_of(fs, fe, TRUE, &of);
-
     l = 0;
+    fs_get_of(fs, fe, TRUE, &of);
+    if (of.error < 0) goto error_length;
+
     while (!of.eof) {
         nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
         l += nbytes;
     }
 
-    if (of.error < 0) {
-        report_error("fs: file_length: "
-                     "error while reading file");
-    }
+    if (of.error < 0) goto error_length;
 
+    if (end_of) *end_of = of;
+    return l;
+
+error_length:
+    /* This should not happen. */
+    report_error("fs: file_length: %s", fs_error(of.error));
     if (end_of) *end_of = of;
     return l;
 }
 
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
-                   size_t *length)
+                   size_t *length, int *error)
 {
-    if (!check_file_entry(fs, fe, FALSE))
-        return FALSE;
+    struct open_file end_of;
+    *length = file_length(fs, fe, &end_of);
+    if (error) {
+        *error = end_of.error;
+    }
 
-    *length = file_length(fs, fe, NULL);
-    return TRUE;
+    return (end_of.error >= 0);
 }
 
 /* Auxiliary callback used by file_info().
@@ -106,12 +114,18 @@ void file_info(const struct fs *fs,
 
 int fs_file_info(const struct fs *fs,
                  const struct file_entry *fe,
-                 struct file_info *finfo)
+                 struct file_info *finfo,
+                 int *error)
 {
-    if (!fs->checked)
-        return FALSE;
+    struct open_file of;
 
-    if (!check_file_entry(fs, fe, FALSE))
+    /* Test for errors. */
+    fs_get_of(fs, fe, FALSE, &of);
+    if (error) {
+        *error = of.error;
+    }
+
+    if (of.error < 0)
         return FALSE;
 
     file_info(fs, fe, finfo);
@@ -134,8 +148,9 @@ void write_raw_leader_page(struct fs *fs,
     fs_write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
 
     if (of.error < 0) {
+        /* This should never happen. */
         report_error("fs: write_raw_leader_page: "
-                     "error while writing file");
+                     "%s", fs_error(of.error));
     }
 }
 

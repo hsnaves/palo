@@ -17,12 +17,6 @@ void get_file_entry(const struct fs *fs, uint16_t leader_vda,
                     struct file_entry *fe)
 {
     const struct page *pg;
-    if (leader_vda >= fs->length) {
-        report_error("fs: get_file_entry: invalid leader VDA: %u",
-                     leader_vda);
-        memset(fe, 0, sizeof(struct file_entry));
-        return;
-    }
     pg = &fs->pages[leader_vda];
     fe->sn = pg->label.sn;
     fe->version = pg->label.version;
@@ -40,13 +34,6 @@ void new_file_entry(struct fs *fs, uint16_t leader_vda,
                     int directory, struct file_entry *fe)
 {
     struct page *pg;
-
-    if (leader_vda >= fs->length) {
-        report_error("fs: new_file_entry: invalid leader VDA: %u",
-                     leader_vda);
-        memset(fe, 0, sizeof(struct file_entry));
-        return;
-    }
 
     pg = &fs->pages[leader_vda];
     pg->label.prev_rda = 0;
@@ -183,7 +170,8 @@ int fs_open(struct fs *fs,
     }
 
     if (!fs_resolve_name(fs, name, &found, &fe, &dir_fe, &suffix)) {
-        of->error = ERROR_RESOLVE_ERROR;
+        /* Can only fail if the filesystem is unchecked. */
+        of->error = ERROR_FS_UNCHECKED;
         return FALSE;
     }
 
@@ -245,7 +233,7 @@ int fs_open(struct fs *fs,
                 return FALSE;
             }
 
-            if (!add_directory_entry(fs, &dir_fe, &de)) {
+            if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
                 of->error = ERROR_DIR_FULL;
                 free_pages(fs, leader_vda, TRUE);
                 return FALSE;

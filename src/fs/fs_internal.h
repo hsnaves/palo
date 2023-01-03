@@ -224,41 +224,38 @@ int check_of(const struct fs *fs, struct open_file *of);
 
 /* Reads a directory_entry from an open_file `of`.
  * The directory_entry is stored in `de`.
- * Returns a positive number when an entry is successfully read.
- * Otherwise it either returns zero when the end-of-file is reached
- * or a negative number on error.
+ * Returns TRUE if an entry was fetched.
  */
-int read_of_directory_entry(const struct fs *fs,
-                            struct open_file *of,
-                            struct directory_entry *de);
-
-/* Writes the contents of a directory_entry to the open_file `of`.
- * The directory_entry parameter is `de`. The parameter `extends` is passed
- * to write_of() to indicate that the file can be extended.
- * Returns TRUE if the directory_entry was successfully written.
- */
-int write_of_directory_entry(struct fs *fs,
-                             struct open_file *of,
-                             const struct directory_entry *de,
-                             int extend);
+int fetch_directory_entry(const struct fs *fs,
+                          struct open_file *of,
+                          struct directory_entry *de);
 
 /* Compresses the entries in a directory.
- * The parameter `dir_fe` specifies the directory.
+ * The parameter `dir_fe` specifies the directory. The parameter
+ * `do_compress`, when set to TRUE, will indicate that the function
+ * should actually compress the directory, otherwise, only a dry-run
+ * will be performed.
  * The `used_length` and `empty_length` return statistics about the
  * usage of the directory file. Those statistics are measured in words.
+ * Returns TRUE on success.
  */
-void compress_directory(struct fs *fs,
-                        const struct file_entry *dir_fe,
-                        size_t *used_length, size_t *empty_length);
+int compress_directory(struct fs *fs,
+                       const struct file_entry *dir_fe,
+                       int do_compress,
+                       size_t *used_length,
+                       size_t *empty_length);
 
 /* Adds one entry to the directory.
- * The parameter `dir_fe` specifies the directory.
- * The `de` is the directory_entry to be added.
+ * The parameter `dir_fe` specifies the directory.  The `de` is the
+ * directory_entry to be added. The parameter `do_add` is set to TRUE
+ * when the entry is to be added. Otherwise, only a dry-run will be
+ * performed.
  * Returns TRUE if the entry was added successfully.
  */
 int add_directory_entry(struct fs *fs,
                         const struct file_entry *dir_fe,
-                        const struct directory_entry *de);
+                        const struct directory_entry *de,
+                        int do_add);
 
 
 /* disk.c */

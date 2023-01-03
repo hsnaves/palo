@@ -87,38 +87,35 @@ void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
 {
     struct directory_entry de;
     struct open_file of;
-    int ret;
 
     fs_get_of(fs, dir_fe, TRUE, &of);
     while (TRUE) {
-        ret = read_of_directory_entry(fs, &of, &de);
-
-        if (ret == 0) break;
-        if (ret < 0)
+        if (!fetch_directory_entry(fs, &of, &de))
             /* Ignore errors. */
-            return;
+            break;
 
-        ret = cb(fs, &de, arg);
-        if (!ret) break;
+        if (!cb(fs, &de, arg))
+            break;
     }
 }
 
 int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
-                      scan_directory_cb cb, void *arg)
+                      scan_directory_cb cb, void *arg, int *error)
 {
-    if (!fs->checked) {
-        report_error("fs: scan_directory: filesystem not checked");
-        return FALSE;
+    struct open_file of;
+
+    fs_get_of(fs, dir_fe, FALSE, &of);
+    if (of.error >= 0) {
+        if (!(dir_fe->sn.word1 & SN_DIRECTORY)) {
+            of.error = ERROR_NOT_DIRECTORY;
+        }
     }
 
-    if (!check_file_entry(fs, dir_fe, FALSE)) {
-        report_error("fs: scan_directory: invalid dir_fe");
-        return FALSE;
+    if (error) {
+        *error = of.error;
     }
 
-    if (!(dir_fe->sn.word1 & SN_DIRECTORY)) {
-        report_error("fs: scan_directory: "
-                     "dir_fe does not point to a directory");
+    if (of.error < 0) {
         return FALSE;
     }
 

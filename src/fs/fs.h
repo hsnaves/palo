@@ -36,14 +36,15 @@
 #define ERROR_FS_UNCHECKED                -2
 #define ERROR_INVALID_OF                  -3
 #define ERROR_INVALID_FE                  -4
-#define ERROR_DISK_FULL                   -5
-#define ERROR_DIR_FULL                    -6
-#define ERROR_FILE_NOT_FOUND              -7
-#define ERROR_DIR_NOT_FOUND               -8
-#define ERROR_INVALID_NAME                -9
-#define ERROR_INVALID_MODE               -10
-#define ERROR_RESOLVE_ERROR              -11
-#define ERROR_END                        -12
+#define ERROR_INVALID_DE                  -5
+#define ERROR_DISK_FULL                   -6
+#define ERROR_DIR_FULL                    -7
+#define ERROR_FILE_NOT_FOUND              -8
+#define ERROR_DIR_NOT_FOUND               -9
+#define ERROR_INVALID_NAME               -10
+#define ERROR_INVALID_MODE               -11
+#define ERROR_NOT_DIRECTORY              -12
+#define ERROR_END                        -13
 
 /* Data structures and types. */
 
@@ -291,28 +292,34 @@ int fs_truncate(struct fs *fs, struct open_file *of);
 
 /* Determines the file length.
  * The `fe` specifies the file. The file length is returned in `length`.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
  * Returns TRUE on success.
  */
 int fs_file_length(const struct fs *fs, const struct file_entry *fe,
-                   size_t *length);
+                   size_t *length, int *error);
 
 /* Obtains the file metadata at the leader page.
  * This includes the name of the file, access and modification times,
- * etc.
+ * etc. The `error` parameter, if provided, returns the details about
+ * the error, in case the function fails.
  * Returns TRUE on success.
  */
 int fs_file_info(const struct fs *fs,
                  const struct file_entry *fe,
-                 struct file_info *finfo);
+                 struct file_info *finfo,
+                 int *error);
 
 /* Scans (lists) one directory.
  * The directory is specified by the file_entry `dir_fe` parameter.
  * The callback `cb` is used to list the directory. The `arg` is
- * an extra parameter passed to the callback.
+ * an extra parameter passed to the callback. The `error` parameter,
+ * if provided, returns the details about the error, in case the
+ * function fails.
  * Returns TRUE on success.
  */
 int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
-                      scan_directory_cb cb, void *arg);
+                      scan_directory_cb cb, void *arg, int *error);
 
 /* Resolves a name in the filesystem.
  * The name of the file to find is given in `name`. If the file
@@ -330,9 +337,11 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
                     const char **suffix);
 
 /* Updates the DiskDescriptor file.
+ * The `error` parameter, if provided, returns more information about
+ * the error, in case the function fails.
  * Returns TRUE on success.
  */
-int fs_update_disk_descriptor(struct fs *fs);
+int fs_update_disk_descriptor(struct fs *fs, int *error);
 
 /* Extracts a file from the filesystem.
  * The `name` is the name of the file in the filesystem.

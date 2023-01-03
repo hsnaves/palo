@@ -205,13 +205,14 @@ const char *fs_error(int error)
         "filesystem unchecked",
         "invalid open_file",
         "invalid file_entry",
+        "invalid directory_entry",
         "disk full",
         "directory full",
         "file not found",
         "directory not found",
         "invalid name",
         "invalid mode",
-        "resolve error",
+        "not a directory",
     };
     if (error > 0) error = 0;
     if (error <= ERROR_END) error = ERROR_UNKNOWN;

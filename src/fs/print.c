@@ -26,12 +26,13 @@ int print_dir_cb(const struct fs *fs,
                  const struct directory_entry *de,
                  void *arg)
 {
+    FILE *fp;
     struct file_info finfo;
     struct print_dir_cb_arg *cb_arg;
-    FILE *fp;
     uint32_t sn;
     struct tm *ltm;
     size_t length;
+    int error;
 
     cb_arg = ((struct print_dir_cb_arg *) arg);
     cb_arg->count++;
@@ -43,17 +44,17 @@ int print_dir_cb(const struct fs *fs,
 
     if (de->type == DIR_ENTRY_MISSING) return TRUE;
 
-    if (!fs_file_info(fs, &de->fe, &finfo)) {
+    if (!fs_file_info(fs, &de->fe, &finfo, &error)) {
         report_error("fs: print_dir_cb: "
-                     "could not get file information of `%s`",
-                     de->name);
+                     "could not get file information of `%s`: %s",
+                     de->name, fs_error(error));
         return FALSE;
     }
 
-    if (!fs_file_length(fs, &de->fe, &length)) {
+    if (!fs_file_length(fs, &de->fe, &length, &error)) {
         report_error("fs: print_dir_cb: "
-                     "could not get file length of `%s`",
-                     de->name);
+                     "could not get file length of `%s`: %s",
+                     de->name, fs_error(error));
         return FALSE;
     }
 
@@ -113,13 +114,15 @@ int fs_print_directory(const struct fs *fs,
                        int verbose, FILE *fp)
 {
     struct print_dir_cb_arg cb_arg;
+    int error;
 
     cb_arg.fp = fp;
     cb_arg.count = 0;
     cb_arg.verbose = verbose;
-    if (!fs_scan_directory(fs, dir_fe, &print_dir_cb, &cb_arg)) {
+    if (!fs_scan_directory(fs, dir_fe, &print_dir_cb, &cb_arg, &error)) {
         report_error("fs: print_directory: "
-                     "could not scan directory");
+                     "could not scan directory: %s",
+                     fs_error(error));
         return FALSE;
     }
     return TRUE;

@@ -12,6 +12,7 @@
 struct compress_cb_arg {
     struct fs *fs;                /* A non-const reference to fs. */
     struct open_file of;          /* Open file for the directory. */
+    int do_compress;              /* To actually do the compression. */
     size_t used_length;           /* Total used length. */
     size_t empty_length;          /* The total empty length. */
     int has_error;                /* If an error occurred. */
@@ -19,9 +20,9 @@ struct compress_cb_arg {
 
 /* Functions. */
 
-int read_of_directory_entry(const struct fs *fs,
-                            struct open_file *of,
-                            struct directory_entry *de)
+int fetch_directory_entry(const struct fs *fs,
+                          struct open_file *of,
+                          struct directory_entry *de)
 {
     uint8_t buffer[64];
     size_t nbytes, byte_length;
@@ -30,48 +31,63 @@ int read_of_directory_entry(const struct fs *fs,
     if (of->eof) return 0;
 
     nbytes = fs_read(fs, of, buffer, 2);
-    if (nbytes == 0) return 0;
-    if ((nbytes != 2) || (of->error < 0)) return -1;
+    if (of->error < 0) return FALSE;
+    if (nbytes == 0) return FALSE;
+    if (nbytes != 2) goto error_fetch;
 
     /* Predecode the length of the directory_entry. */
     read_directory_entry(buffer, 0, de);
 
     byte_length = 2 * ((size_t) de->length);
-    if (byte_length <= DIR_OFF_NAME) return -1;
+    if (byte_length <= DIR_OFF_NAME) goto error_fetch;
 
     if (byte_length > sizeof(buffer)) {
         nbytes = fs_read(fs, of, &buffer[2], sizeof(buffer) - 2);
         if ((nbytes != sizeof(buffer) - 2) || (of->error < 0))
-            return -1;
+            goto error_fetch;
 
         byte_length -= sizeof(buffer);
 
         /* Discard the remaining data. */
         nbytes = fs_read(fs, of, NULL, byte_length);
         if ((nbytes != byte_length) || (of->error < 0))
-            return -1;
+            goto error_fetch;
     } else {
         nbytes = fs_read(fs, of, &buffer[2], byte_length - 2);
         if ((nbytes != byte_length - 2) || (of->error < 0))
-            return -1;
+            goto error_fetch;
     }
 
     read_directory_entry(buffer, 0, de);
-    return 1;
+    return TRUE;
+
+error_fetch:
+    if (of->error >= 0)
+        of->error = ERROR_INVALID_DE;
+    return FALSE;
 }
 
-int write_of_directory_entry(struct fs *fs,
-                             struct open_file *of,
-                             const struct directory_entry *de,
-                             int extend)
+/* Writes the contents of a directory_entry to the open_file `of`.
+ * The directory_entry parameter is `de`. The parameter `extends` is passed
+ * to fs_write() to indicate that the file can be extended.
+ * Returns TRUE if the directory_entry was successfully written.
+ */
+static
+int append_directory_entry(struct fs *fs,
+                           struct open_file *of,
+                           const struct directory_entry *de,
+                           int extend)
 {
     uint8_t buffer[64];
     size_t nbytes, byte_length;
 
-    if ((of->error < 0) || of->eof) return FALSE;
+    if ((of->error < 0) || of->eof) goto error_append;
 
     byte_length = 2 * ((size_t) de->length);
-    if (byte_length <= DIR_OFF_NAME) return FALSE;
+    if (byte_length <= DIR_OFF_NAME) {
+        of->error = ERROR_INVALID_DE;
+        return FALSE;
+    }
 
     memset(buffer, 0, sizeof(buffer));
     write_directory_entry(buffer, 0, de);
@@ -79,21 +95,26 @@ int write_of_directory_entry(struct fs *fs,
     if (byte_length > sizeof(buffer)) {
         nbytes = fs_write(fs, of, buffer, sizeof(buffer), extend);
         if ((nbytes != sizeof(buffer)) || (of->error < 0))
-            return FALSE;
+            goto error_append;
 
         byte_length -= sizeof(buffer);
 
         /* Write NUL bytes as the remaining data. */
         nbytes = fs_write(fs, of, NULL, byte_length, extend);
         if ((nbytes != byte_length) || (of->error < 0))
-            return FALSE;
+            goto error_append;
     } else {
         nbytes = fs_write(fs, of, buffer, byte_length, extend);
         if ((nbytes != byte_length) || (of->error < 0))
-            return FALSE;
+            goto error_append;
     }
 
     return TRUE;
+
+error_append:
+    if (of->error >= 0)
+        of->error = ERROR_DIR_FULL;
+    return FALSE;
 }
 
 /* Appends the empty entries at the end of the directory.
@@ -118,8 +139,9 @@ int append_empty_entries(struct fs *fs,
         }
         empty_length -= (size_t) de.length;
 
-        if (!write_of_directory_entry(fs, of, &de, FALSE))
+        if (!append_directory_entry(fs, of, &de, FALSE)) {
             return FALSE;
+        }
     }
     return TRUE;
 }
@@ -143,28 +165,35 @@ int compress_dir_cb(const struct fs *fs,
     }
 
     c_arg->used_length += (size_t) de->length;
-    if (!write_of_directory_entry(c_arg->fs, &c_arg->of, de, FALSE)) {
+    if (!c_arg->do_compress) return TRUE;
+
+    if (!append_directory_entry(c_arg->fs, &c_arg->of, de, FALSE)) {
+        report_error("fs: compress_directory: "
+                     "%s", fs_error(c_arg->of.error));
         c_arg->has_error = TRUE;
         return FALSE;
     }
     return TRUE;
 }
 
-void compress_directory(struct fs *fs,
-                        const struct file_entry *dir_fe,
-                        size_t *used_length, size_t *empty_length)
+int compress_directory(struct fs *fs,
+                       const struct file_entry *dir_fe,
+                       int do_compress,
+                       size_t *used_length,
+                       size_t *empty_length)
 {
     struct compress_cb_arg c_arg;
 
     c_arg.fs = fs;
+    c_arg.do_compress = do_compress;
     c_arg.used_length = 0;
     c_arg.empty_length = 0;
     c_arg.has_error = FALSE;
     fs_get_of(fs, dir_fe, TRUE, &c_arg.of);
     if (c_arg.of.error < 0) {
         report_error("fs: compress_directory: "
-                     "could not find directory");
-        return;
+                     "%s", fs_error(c_arg.of.error));
+        return FALSE;
     }
 
     scan_directory(fs, dir_fe, &compress_dir_cb, &c_arg);
@@ -174,39 +203,58 @@ void compress_directory(struct fs *fs,
     if (c_arg.has_error) {
         report_error("fs: compress_directory: "
                      "could not compress");
-        return;
+        return FALSE;
     }
-    if (c_arg.empty_length == 0) return;
+    if ((c_arg.empty_length == 0) || (!do_compress))
+        return TRUE;
 
     if (!append_empty_entries(fs, &c_arg.of, c_arg.empty_length)) {
         report_error("fs: compress_directory: "
-                     "could not append empty entries");
-        return;
+                     "%s", fs_error(c_arg.of.error));
+        return FALSE;
     }
+    return TRUE;
 }
 
 int add_directory_entry(struct fs *fs,
                         const struct file_entry *dir_fe,
-                        const struct directory_entry *de)
+                        const struct directory_entry *de,
+                        int do_add)
 {
     size_t used_length, empty_length;
     struct open_file of;
 
-    compress_directory(fs, dir_fe, &used_length, &empty_length);
-    if (empty_length < de->length) return FALSE;
+    if (!compress_directory(fs, dir_fe, do_add,
+                            &used_length, &empty_length)) {
+        report_error("fs: add_directory_entry: "
+                     "could not compress");
+        return FALSE;
+    }
+
+    if (empty_length < de->length)
+        return FALSE;
+
+    if (!do_add)
+        return TRUE;
 
     fs_get_of(fs, dir_fe, TRUE, &of);
     fs_read(fs, &of, NULL, 2 * used_length);
-    if (of.error < 0) return FALSE;
+    if (of.error < 0) goto error_add;
 
-    if (!write_of_directory_entry(fs, &of, de, FALSE))
-        return FALSE;
+    if (!append_directory_entry(fs, &of, de, FALSE))
+        goto error_add;
 
     empty_length -= de->length;
     if (empty_length == 0) return TRUE;
 
     if (!append_empty_entries(fs, &of, empty_length))
-        return FALSE;
+        goto error_add;
 
     return TRUE;
+
+error_add:
+    /* This should never happen. */
+    report_error("fs: add_directory_entry: "
+                 "%s", fs_error(of.error));
+    return FALSE;
 }

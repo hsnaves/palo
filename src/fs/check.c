@@ -137,13 +137,13 @@ int check_directory_structure(const struct fs *fs,
 
     fs_get_of(fs, dir_fe, TRUE, &of);
     while (TRUE) {
-        ret = read_of_directory_entry(fs, &of, &de);
-        if (ret == 0) break;
-        if (ret < 0) {
+        ret = fetch_directory_entry(fs, &of, &de);
+        if (of.error < 0) {
             report_error("fs: check_directory_structure: "
-                         "directory_entry too short");
+                         "%s", fs_error(of.error));
             return FALSE;
         }
+        if (!ret) break;
     }
 
     return TRUE;

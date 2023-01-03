@@ -216,7 +216,7 @@ void free_pages(struct fs *fs, uint16_t vda, int follow)
    }
 }
 
-int fs_update_disk_descriptor(struct fs *fs)
+int fs_update_disk_descriptor(struct fs *fs, int *error)
 {
     struct open_file of;
     uint8_t buffer[32];
@@ -226,7 +226,7 @@ int fs_update_disk_descriptor(struct fs *fs)
     update_disk_metadata(fs);
 
     if (!fs_open(fs, "DiskDescriptor", "w+", &of))
-        return FALSE;
+        goto update_error;
 
     memset(buffer, 0, sizeof(buffer));
     write_geometry(buffer, DESCR_OFF_GEOMETRY, &fs->dg);
@@ -250,9 +250,20 @@ int fs_update_disk_descriptor(struct fs *fs)
     if (!fs_truncate(fs, &of))
         goto update_error;
 
+    fs_close(fs, &of);
+    if (error) {
+        *error = ERROR_NO_ERROR;
+    }
     return TRUE;
 
 update_error:
+    if (error) {
+        if (of.error < 0) {
+            *error = of.error;
+        } else {
+            *error = ERROR_UNKNOWN;
+        }
+    }
     fs_close(fs, &of);
     return FALSE;
 }
