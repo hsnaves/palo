@@ -16,7 +16,7 @@ void usage(const char *prog_name)
     printf(" %s [options] disk\n", prog_name);
     printf("where:\n");
     printf("  -2                Use double disk\n");
-    printf("  -d dirname        Lists the contents of a directory\n");
+    printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
     printf("  -r                Operate in read only mode\n");
@@ -30,12 +30,11 @@ int main(int argc, char **argv)
     const char *disk_filename;
     const char *e_filename, *e_name;
     const char *i_filename, *i_name;
-    const char *dirname;
+    const char *dir_name;
     struct geometry dg;
     struct fs fs;
-    struct file_entry dir_fe;
     int i, is_last, is_second_last;
-    int found, modified, read_only;
+    int modified, read_only;
     int verbose, error;
 
     disk_filename = NULL;
@@ -43,7 +42,7 @@ int main(int argc, char **argv)
     i_filename = NULL;
     e_name = NULL;
     i_name = NULL;
-    dirname = NULL;
+    dir_name = NULL;
     modified = FALSE;
     read_only = FALSE;
     verbose = 0;
@@ -63,7 +62,7 @@ int main(int argc, char **argv)
                 report_error("main: please specify the directory to list");
                 return 1;
             }
-            dirname = argv[++i];
+            dir_name = argv[++i];
         } else if (strcmp("-e", argv[i]) == 0) {
             if (is_second_last) {
                 report_error("main: please specify the name to extract "
@@ -139,18 +138,8 @@ int main(int argc, char **argv)
                i_filename, i_name);
     }
 
-    if (dirname) {
-        if (!fs_resolve_name(&fs, dirname, &found, &dir_fe, NULL, NULL)) {
-            report_error("main: could not resolve `%s`", dirname);
-            goto error;
-        }
-
-        if (!found) {
-            report_error("main: could not find `%s`", dirname);
-            goto error;
-        }
-
-        if (!fs_print_directory(&fs, &dir_fe, verbose, stdout)) {
+    if (dir_name) {
+        if (!fs_print_directory(&fs, dir_name, verbose, stdout)) {
             report_error("main: could not print directory");
             return FALSE;
         }

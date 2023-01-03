@@ -42,7 +42,8 @@ int print_dir_cb(const struct fs *fs,
         fprintf(fp, "N      VDA    SN     VER    SIZE        FILENAME\n");
     }
 
-    if (de->type == DIR_ENTRY_MISSING) return TRUE;
+    if (de->type != DIR_ENTRY_VALID)
+        return TRUE;
 
     if (!fs_file_info(fs, &de->fe, &finfo, &error)) {
         report_error("fs: print_dir_cb: "
@@ -110,19 +111,32 @@ int print_dir_cb(const struct fs *fs,
 }
 
 int fs_print_directory(const struct fs *fs,
-                       const struct file_entry *dir_fe,
+                       const char *dir_name,
                        int verbose, FILE *fp)
 {
     struct print_dir_cb_arg cb_arg;
-    int error;
+    struct file_entry dir_fe;
+    int found, error;
+
+    if (!fs_resolve_name(fs, dir_name, &found, &dir_fe, NULL, NULL)) {
+        report_error("fs: print_directory: "
+                     "could not resolve `%s`", dir_name);
+        return FALSE;
+    }
+
+    if (!found) {
+        report_error("fs: print_directory: "
+                     "could not find `%s`", dir_name);
+        return FALSE;
+    }
 
     cb_arg.fp = fp;
     cb_arg.count = 0;
     cb_arg.verbose = verbose;
-    if (!fs_scan_directory(fs, dir_fe, &print_dir_cb, &cb_arg, &error)) {
+    if (!fs_scan_directory(fs, &dir_fe, &print_dir_cb, &cb_arg, &error)) {
         report_error("fs: print_directory: "
-                     "could not scan directory: %s",
-                     fs_error(error));
+                     "could not scan directory `%s`: %s",
+                     dir_name, fs_error(error));
         return FALSE;
     }
     return TRUE;

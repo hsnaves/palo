@@ -88,7 +88,7 @@ void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
     struct directory_entry de;
     struct open_file of;
 
-    fs_get_of(fs, dir_fe, TRUE, &of);
+    fs_get_of(fs, dir_fe, TRUE, TRUE, &of);
     while (TRUE) {
         if (!fetch_directory_entry(fs, &of, &de))
             /* Ignore errors. */
@@ -104,7 +104,7 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
 {
     struct open_file of;
 
-    fs_get_of(fs, dir_fe, FALSE, &of);
+    fs_get_of(fs, dir_fe, TRUE, TRUE, &of);
     if (of.error >= 0) {
         if (!(dir_fe->sn.word1 & SN_DIRECTORY)) {
             of.error = ERROR_NOT_DIRECTORY;
@@ -134,7 +134,7 @@ int resolve_name_cb(const struct fs *fs,
     struct resolve_result *res;
 
     UNUSED(fs);
-    if (de->type == DIR_ENTRY_MISSING) {
+    if (de->type != DIR_ENTRY_VALID) {
         /* Skip missing entries (but do not stop). */
         return TRUE;
     }
@@ -151,11 +151,12 @@ int resolve_name_cb(const struct fs *fs,
 
 int fs_resolve_name(const struct fs *fs, const char *name, int *found,
                     struct file_entry *fe, struct file_entry *dir_fe,
-                    const char **suffix)
+                    const char **base_name)
 {
     struct resolve_result res;
     struct file_entry sysdir_fe;
     struct file_entry _fe, _dir_fe;
+    const char *_base_name;
     size_t pos, npos;
 
     if (!fs->checked)
@@ -164,10 +165,11 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
     fs_get_sysdir(fs, &sysdir_fe);
 
     pos = 0;
-    _fe = _dir_fe = sysdir_fe;
+    _fe = sysdir_fe;
+    _base_name = name;
     while (name[pos]) {
         if (name[pos] == '<') {
-            _fe = _dir_fe = sysdir_fe;
+            _fe = sysdir_fe;
             pos++;
             continue;
         }
@@ -179,25 +181,26 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
             npos++;
         }
 
-        res.name = &name[pos];
+        _dir_fe = _fe;
+        _base_name = &name[pos];
+
+        res.name = _base_name;
         res.name_length = npos - pos;
         res.found = FALSE;
 
-        scan_directory(fs, &_fe, &resolve_name_cb, &res);
+        scan_directory(fs, &_dir_fe, &resolve_name_cb, &res);
         if (!res.found) {
             *found = FALSE;
             if (dir_fe) {
-                *dir_fe = _fe;
+                *dir_fe = _dir_fe;
             }
-            if (suffix) {
-                *suffix = res.name;
+            if (base_name) {
+                *base_name = _base_name;
             }
             return TRUE;
         }
 
-        _dir_fe = _fe;
         _fe = res.fe;
-
         if (name[npos] == '>') npos++;
         pos = npos;
     }
@@ -205,6 +208,9 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
     *fe = _fe;
     if (dir_fe) {
         *dir_fe = _dir_fe;
+    }
+    if (base_name) {
+        *base_name = _base_name;
     }
 
     *found = TRUE;

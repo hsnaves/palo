@@ -26,8 +26,8 @@ struct check_dirs_cb_arg {
 struct check_unique_cb_arg {
     uint16_t num_files;           /* Total number of files. */
     uint16_t num_missing_files;   /* Total number of missing files. */
-    uint16_t dir_count;           /* Directory count. */
-    uint16_t max_dir_count;       /* The maximum directory count. */
+    unsigned int dir_count;       /* Directory count. */
+    unsigned int max_dir_count;   /* The maximum directory count. */
     struct serial_number *sns;    /* The serial numbers. */
     struct directory_entry *des;  /* The directory entries. */
     int has_error;                /* If found an error. */
@@ -45,7 +45,7 @@ int check_directory_entry(const struct fs *fs,
 {
     uint16_t len;
 
-    if (de->type == DIR_ENTRY_MISSING)
+    if (de->type != DIR_ENTRY_VALID)
         return TRUE;
 
     if (!check_file_entry(fs, &de->fe, TRUE)) {
@@ -146,7 +146,7 @@ int check_directory_structure(const struct fs *fs,
         return FALSE;
     }
 
-    fs_get_of(fs, dir_fe, TRUE, &of);
+    fs_get_of(fs, dir_fe, TRUE, TRUE, &of);
     while (TRUE) {
         ret = fetch_directory_entry(fs, &of, &de);
         if (of.error < 0) {
@@ -443,7 +443,7 @@ int check_dirs_cb(const struct fs *fs,
     cb_arg = (struct check_dirs_cb_arg *) arg;
     cb_arg->count++;
 
-    if (de->type == DIR_ENTRY_MISSING)
+    if (de->type != DIR_ENTRY_VALID)
         return TRUE;
 
     if (!check_directory_entry(fs, de)) {
@@ -503,9 +503,9 @@ int check_dirs(struct fs *fs)
     /* Fake directory entry containing the SysDir. */
     sysdir_de.fe = sysdir_fe;
     sysdir_de.type = DIR_ENTRY_VALID;
-    sysdir_de.length = (DIR_OFF_NAME / 2) + 4;
-    sysdir_de.name_length = 6;
     strcpy(sysdir_de.name, "SysDir");
+    sysdir_de.name_length = 1 + strlen(sysdir_de.name);
+    update_directory_entry_length(&sysdir_de);
 
     cb_arg.fs = fs;
     cb_arg.dir_fe = sysdir_fe;
@@ -531,7 +531,7 @@ int check_unique_dir_cb(const struct fs *fs,
 
     UNUSED(fs);
     cb_arg = (struct check_unique_cb_arg *) arg;
-    if (de->type == DIR_ENTRY_MISSING)
+    if (de->type != DIR_ENTRY_VALID)
         return TRUE;
 
     if (cb_arg->des) {
@@ -583,30 +583,32 @@ int check_unique_cb(const struct fs *fs,
         cb_arg->num_missing_files++;
     }
 
-    if (fe->sn.word1 & SN_DIRECTORY) {
-        cb_arg->dir_count = 0;
-        scan_directory(fs, fe, &check_unique_dir_cb, arg);
-        if (cb_arg->max_dir_count < cb_arg->dir_count) {
-            cb_arg->max_dir_count = cb_arg->dir_count;
-        }
+    if (!(fe->sn.word1 & SN_DIRECTORY))
+        return TRUE;
 
-        if (cb_arg->des && (cb_arg->dir_count > 1)) {
-            qsort(cb_arg->des,
-                  cb_arg->dir_count,
-                  sizeof(struct directory_entry),
-                  &cmp_directory_entry);
+    cb_arg->dir_count = 0;
+    scan_directory(fs, fe, &check_unique_dir_cb, arg);
+    if (cb_arg->max_dir_count < cb_arg->dir_count) {
+        cb_arg->max_dir_count = cb_arg->dir_count;
+    }
 
-            for (idx = 0; idx < cb_arg->dir_count - 1; idx++) {
-                if (cmp_directory_entry(&cb_arg->des[idx],
-                                        &cb_arg->des[idx + 1]) == 0) {
+    if (!cb_arg->des || (cb_arg->dir_count <= 1))
+        return TRUE;
 
-                    report_error("fs: check_unique: "
-                                 "repeated directory_entry in LDA: %u",
-                                 fe->leader_vda);
-                    cb_arg->has_error = TRUE;
-                    break;
-                }
-            }
+    qsort(cb_arg->des,
+          cb_arg->dir_count,
+          sizeof(struct directory_entry),
+          &cmp_directory_entry);
+
+    for (idx = 0; idx < cb_arg->dir_count - 1; idx++) {
+        if (cmp_directory_entry(&cb_arg->des[idx],
+                                &cb_arg->des[idx + 1]) == 0) {
+
+            report_error("fs: check_unique: "
+                         "repeated directory_entry in LDA: %u",
+                         fe->leader_vda);
+            cb_arg->has_error = TRUE;
+            break;
         }
     }
 
@@ -771,6 +773,7 @@ int fs_check_integrity(struct fs *fs)
         goto check_error;
 
     update_disk_metadata(fs);
+    update_reference_counts(fs);
     return TRUE;
 
 check_error:

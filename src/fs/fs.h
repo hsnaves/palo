@@ -43,8 +43,9 @@
 #define ERROR_DIR_NOT_FOUND               -9
 #define ERROR_INVALID_NAME               -10
 #define ERROR_INVALID_MODE               -11
-#define ERROR_NOT_DIRECTORY              -12
-#define ERROR_END                        -13
+#define ERROR_READ_ONLY                  -12
+#define ERROR_NOT_DIRECTORY              -13
+#define ERROR_END                        -14
 
 /* Data structures and types. */
 
@@ -100,6 +101,7 @@ struct open_file {
     int error;                    /* Indicates the error, according
                                    * to the ERROR constants.
                                    */
+    int read_only;                /* File was open in read-only mode. */
     int modified;                 /* Indicates that file was modified. */
 };
 
@@ -242,19 +244,26 @@ int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe);
 /* Obtains an open_file.
  * The file is specified by `fe` and the open file is stored in `of`.
  * This function starts at the leader page if `skip_leader` is set
- * to FALSE.
+ * to FALSE. To open in read-only mode the parameter `read_only`
+ * should be set to TRUE.
  * Returns TRUE on success.
  */
 int fs_get_of(const struct fs *fs,
               const struct file_entry *fe,
-              int skip_leader,
+              int skip_leader, int read_only,
               struct open_file *of);
 
 /* Opens a file for reading or writing.
  * The file is specified by `name` and the open file is stored in `of`.
  * The `mode` specifies how to open the file. The valid modes are:
  *   "r" -> opens for reading,
- *   "w" -> opens the file for writing.
+ *   "r+" -> opens the file for reading and writing, but does
+ *           not create the file if it does not exist,
+ *   "w" -> opens the file for reading and writing, create the
+ *          file if it does not exist, but if exists, it truncates
+ *          the file on open,
+ *   "w+" -> opens the file for reading and writing, but does not
+ *           truncate if the file already exists.
  * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_open(struct fs *fs,
@@ -328,13 +337,13 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
  * the file found (such as leader page virtual disk address, etc.).
  * The parameter `dir_fe`, if provided, will be populated with
  * the information about the directory that contains the file.
- * If the file was not found, the `suffix` will be populated with
- * the unresolved suffix.
+ * If the file was not found, the `base_name` will be populated with
+ * the unresolved suffix (the base name).
  * Returns TRUE on success.
  */
 int fs_resolve_name(const struct fs *fs, const char *name, int *found,
                     struct file_entry *fe, struct file_entry *dir_fe,
-                    const char **suffix);
+                    const char **base_name);
 
 /* Updates the DiskDescriptor file.
  * The `error` parameter, if provided, returns more information about
@@ -362,13 +371,13 @@ int fs_insert_file(struct fs *fs, const char *input_filename,
                    const char *name);
 
 /* Prints the contents of a directory to `fp`.
- * The directory is specified by the parameter `dir_fe`.
+ * The directory is specified by the parameter `dir_name`.
  * To print more information, the `verbose` parameter should be set
  * to TRUE.
  * Returns TRUE on success.
  */
 int fs_print_directory(const struct fs *fs,
-                       const struct file_entry *dir_fe,
+                       const char *dir_name,
                        int verbose, FILE *fp);
 
 #endif /* __FS_FS_H */

@@ -15,7 +15,7 @@ void read_leader_page(const struct fs *fs,
 {
     struct open_file of;
 
-    fs_get_of(fs, fe, FALSE, &of);
+    fs_get_of(fs, fe, FALSE, TRUE, &of);
     fs_read(fs, &of, data, PAGE_DATA_SIZE);
     if (of.error < 0) {
         /* This should not happen. */
@@ -32,7 +32,7 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
     size_t l, nbytes;
 
     l = 0;
-    fs_get_of(fs, fe, TRUE, &of);
+    fs_get_of(fs, fe, TRUE, TRUE, &of);
     if (of.error < 0) goto error_length;
 
     while (!of.eof) {
@@ -120,7 +120,7 @@ int fs_file_info(const struct fs *fs,
     struct open_file of;
 
     /* Test for errors. */
-    fs_get_of(fs, fe, FALSE, &of);
+    fs_get_of(fs, fe, FALSE, TRUE, &of);
     if (error) {
         *error = of.error;
     }
@@ -144,9 +144,8 @@ void write_raw_leader_page(struct fs *fs,
 {
     struct open_file of;
 
-    fs_get_of(fs, fe, FALSE, &of);
+    fs_get_of(fs, fe, FALSE, FALSE, &of);
     fs_write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
-
     if (of.error < 0) {
         /* This should never happen. */
         report_error("fs: write_raw_leader_page: "

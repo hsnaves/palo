@@ -213,3 +213,11 @@ void write_alto_time(uint8_t *data, size_t offset, time_t time)
     write_word_be(data, offset + 2, (uint16_t) time);
     write_word_be(data, offset, (uint16_t) (time >> 16));
 }
+
+void update_directory_entry_length(struct directory_entry *de)
+{
+    uint16_t len;
+    len = de->name_length;
+    if (len > NAME_LENGTH) len = NAME_LENGTH;
+    de->length = (DIR_OFF_NAME + len + 1) / 2;
+}

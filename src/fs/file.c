@@ -123,7 +123,7 @@ int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
 
 int fs_get_of(const struct fs *fs,
               const struct file_entry *fe,
-              int skip_leader,
+              int skip_leader, int read_only,
               struct open_file *of)
 {
     if (!fs->checked) {
@@ -143,6 +143,7 @@ int fs_get_of(const struct fs *fs,
 
     of->eof = FALSE;
     of->error = ERROR_NO_ERROR;
+    of->read_only = read_only;
     of->modified = FALSE;
 
     if (skip_leader)
@@ -159,7 +160,7 @@ int fs_open(struct fs *fs,
     struct file_entry fe, dir_fe;
     struct directory_entry de;
     struct file_info finfo;
-    const char *suffix;
+    const char *base_name;
     uint16_t leader_vda;
     int found, ret;
 
@@ -169,23 +170,25 @@ int fs_open(struct fs *fs,
         return FALSE;
     }
 
-    if (!fs_resolve_name(fs, name, &found, &fe, &dir_fe, &suffix)) {
+    if (!fs_resolve_name(fs, name, &found, &fe, &dir_fe, &base_name)) {
         /* Can only fail if the filesystem is unchecked. */
         of->error = ERROR_FS_UNCHECKED;
         return FALSE;
     }
 
-    if (strcmp(mode, "r") == 0) {
+    if ((strcmp(mode, "r") == 0) || (strcmp(mode, "r+") == 0)) {
         if (!found) {
             of->error = ERROR_FILE_NOT_FOUND;
             return FALSE;
         }
-        return fs_get_of(fs, &fe, TRUE, of);
+        return fs_get_of(fs, &fe, TRUE,
+                         (strcmp(mode, "r") == 0),
+                         of);
     }
 
     if ((strcmp(mode, "w") == 0) || (strcmp(mode, "w+") == 0)) {
         if (!found) {
-            ret = validate_name(suffix);
+            ret = validate_name(base_name);
             if (ret < 0) {
                 of->error = ERROR_INVALID_NAME;
                 return FALSE;
@@ -202,9 +205,9 @@ int fs_open(struct fs *fs,
 
             new_file_entry(fs, leader_vda, FALSE, &fe);
 
-            finfo.name_length = 1 + strlen(suffix);
-            strncpy(finfo.name, suffix, sizeof(finfo.name) - 1);
-            finfo.name[sizeof(finfo.name) - 1] = '\0';
+            finfo.name_length = 1 + strlen(base_name);
+            strncpy(finfo.name, base_name, NAME_LENGTH - 1);
+            finfo.name[NAME_LENGTH - 1] = '\0';
             time(&finfo.created);
             finfo.written = finfo.created;
             finfo.read = finfo.created;
@@ -220,12 +223,12 @@ int fs_open(struct fs *fs,
             write_leader_page(fs, &fe, &finfo);
 
             de.type = DIR_ENTRY_VALID;
-            de.length = (finfo.name_length / 2) + 1 + (DIR_OFF_NAME / 2);
             de.fe = fe;
-            de.name_length = finfo.name_length;
             memcpy(de.name, finfo.name, NAME_LENGTH);
+            de.name_length = finfo.name_length;
+            update_directory_entry_length(&de);
 
-            fs_get_of(fs, &fe, TRUE, of);
+            fs_get_of(fs, &fe, TRUE, FALSE, of);
             of->eof = FALSE;
             fs_write(fs, of, NULL, 0, TRUE);
             if (of->error < 0) {
@@ -239,7 +242,7 @@ int fs_open(struct fs *fs,
                 return FALSE;
             }
         } else {
-            fs_get_of(fs, &fe, TRUE, of);
+            fs_get_of(fs, &fe, TRUE, FALSE, of);
             if (strcmp(mode, "w") == 0) {
                 fs_truncate(fs, of);
             }
@@ -312,6 +315,11 @@ size_t fs_write(struct fs *fs, struct open_file *of,
 
     if (!check_of(fs, of))
         return 0;
+
+    if (of->read_only) {
+        of->error = ERROR_READ_ONLY;
+        return 0;
+    }
 
     offset = 0;
     while (!of->eof) {
@@ -390,6 +398,11 @@ int fs_truncate(struct fs *fs, struct open_file *of)
 
     if (!check_of(fs, of))
         return FALSE;
+
+    if (of->read_only) {
+        of->error = ERROR_READ_ONLY;
+        return FALSE;
+    }
 
     if (of->eof) return TRUE;
     of->modified = TRUE;

@@ -8,7 +8,7 @@
 
 /* Data structures and types. */
 
-/* Auxiliary data structure used by compress_directory(). */
+/* Auxiliary data structure used by compress_cb(). */
 struct compress_cb_arg {
     struct fs *fs;                /* A non-const reference to fs. */
     struct open_file of;          /* Open file for the directory. */
@@ -19,6 +19,53 @@ struct compress_cb_arg {
 };
 
 /* Functions. */
+
+/* Auxiliary callback used by update_reference_counts().
+ * The `arg` parameter is a pointer to fs struct (non-const).
+ * structure.
+ */
+static
+int update_ref_count_cb(const struct fs *fs,
+                        const struct directory_entry *de,
+                        void *arg)
+{
+    struct fs *fs_rw;
+    int not_seen;
+
+    fs_rw = (struct fs *) arg;
+
+    if (de->type != DIR_ENTRY_VALID)
+        return TRUE;
+
+    not_seen = (fs_rw->ref_count[de->fe.leader_vda]++ == 0);
+
+    /* Check if already went into this directory
+     * to avoid infinite recursion.
+     */
+    if ((de->fe.sn.word1 & SN_DIRECTORY) && (not_seen)) {
+        scan_directory(fs, &de->fe, &update_ref_count_cb, arg);
+    }
+
+    return TRUE;
+}
+
+void update_reference_counts(struct fs *fs)
+{
+    struct file_entry sysdir_fe;
+    struct directory_entry sysdir_de;
+
+    fs_get_sysdir(fs, &sysdir_fe);
+
+    /* Fake directory entry containing the SysDir. */
+    sysdir_de.fe = sysdir_fe;
+    sysdir_de.type = DIR_ENTRY_VALID;
+    strcpy(sysdir_de.name, "SysDir");
+    sysdir_de.name_length = 1 + strlen(sysdir_de.name);
+    update_directory_entry_length(&sysdir_de);
+
+    memset(fs->ref_count, 0, fs->length * sizeof(uint16_t));
+    update_ref_count_cb(fs, &sysdir_de, fs);
+}
 
 int fetch_directory_entry(const struct fs *fs,
                           struct open_file *of,
@@ -84,7 +131,7 @@ int append_directory_entry(struct fs *fs,
     if ((of->error < 0) || of->eof) goto error_append;
 
     byte_length = 2 * ((size_t) de->length);
-    if (byte_length <= DIR_OFF_NAME) {
+    if ((byte_length <= DIR_OFF_NAME) && (de->type == DIR_ENTRY_VALID)) {
         of->error = ERROR_INVALID_DE;
         return FALSE;
     }
@@ -189,7 +236,7 @@ int compress_directory(struct fs *fs,
     c_arg.used_length = 0;
     c_arg.empty_length = 0;
     c_arg.has_error = FALSE;
-    fs_get_of(fs, dir_fe, TRUE, &c_arg.of);
+    fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
     if (c_arg.of.error < 0) {
         report_error("fs: compress_directory: "
                      "%s", fs_error(c_arg.of.error));
@@ -237,7 +284,7 @@ int add_directory_entry(struct fs *fs,
     if (!do_add)
         return TRUE;
 
-    fs_get_of(fs, dir_fe, TRUE, &of);
+    fs_get_of(fs, dir_fe, TRUE, FALSE, &of);
     fs_read(fs, &of, NULL, 2 * used_length);
     if (of.error < 0) goto error_add;
 

@@ -197,6 +197,11 @@ time_t read_alto_time(const uint8_t *data, size_t offset);
  */
 void write_alto_time(uint8_t *data, size_t offset, time_t time);
 
+/* Updates the directory_entry length based on the name length.
+ * The directory_entry `de` is modified upon exit.
+ */
+void update_directory_entry_length(struct directory_entry *de);
+
 
 /* check.c */
 
@@ -221,6 +226,9 @@ int check_of(const struct fs *fs, struct open_file *of);
 
 /* dir.c */
 
+
+/* Updates the reference counts for files. */
+void update_reference_counts(struct fs *fs);
 
 /* Reads a directory_entry from an open_file `of`.
  * The directory_entry is stored in `de`.
