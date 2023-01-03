@@ -238,6 +238,15 @@ int fetch_directory_entry(const struct fs *fs,
                           struct open_file *of,
                           struct directory_entry *de);
 
+/* Appends the empty entries at the end of the directory.
+ * The parameter `of` is the open_file of the currently open directory.
+ * The `empty_length` specifies how many empty words are left.
+ * Returns TRUE on success.
+ */
+int append_empty_entries(struct fs *fs,
+                         struct open_file *of,
+                         size_t empty_length);
+
 /* Compresses the entries in a directory.
  * The parameter `dir_fe` specifies the directory. The parameter
  * `do_compress`, when set to TRUE, will indicate that the function
@@ -264,6 +273,18 @@ int add_directory_entry(struct fs *fs,
                         const struct file_entry *dir_fe,
                         const struct directory_entry *de,
                         int do_add);
+
+/* Removes one entry from the directory.
+ * The parameter `dir_fe` specifies the directory.  The `remove_name`
+ * is the name of the entry to be removed. The parameter `do_remove` is
+ * set to TRUE when the entry is to be removed. Otherwise, only a
+ * dry-run will be performed.
+ * Returns TRUE if the entry was removed successfully.
+ */
+int remove_directory_entry(struct fs *fs,
+                           const struct file_entry *dir_fe,
+                           const char *remove_name,
+                           int do_remove);
 
 
 /* disk.c */

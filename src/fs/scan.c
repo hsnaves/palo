@@ -193,7 +193,9 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
 
         scan_directory(fs, &_dir_fe, &resolve_name_cb, &res);
         if (!res.found) {
-            *found = FALSE;
+            if (found) {
+                *found = FALSE;
+            }
             if (dir_fe) {
                 *dir_fe = _dir_fe;
             }
@@ -208,14 +210,17 @@ int fs_resolve_name(const struct fs *fs, const char *name, int *found,
         pos = npos;
     }
 
-    *fe = _fe;
+    if (found) {
+        *found = TRUE;
+    }
+    if (fe) {
+        *fe = _fe;
+    }
     if (dir_fe) {
         *dir_fe = _dir_fe;
     }
     if (base_name) {
         *base_name = _base_name;
     }
-
-    *found = TRUE;
     return TRUE;
 }

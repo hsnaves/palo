@@ -25,15 +25,24 @@ void get_file_entry(const struct fs *fs, uint16_t leader_vda,
 }
 
 /* Creates a new file_entry in the filesystem.
- * The `leader_vda` parameter specifies the VDA of the leader page.
  * If `directory` is set to TRUE, a directory is created.
+ * The `base_name` specifies the name of the file.
  * The created file_entry is stored in `fe`.
+ * Returns TRUE on success.
  */
 static
-void new_file_entry(struct fs *fs, uint16_t leader_vda,
-                    int directory, struct file_entry *fe)
+int new_file_entry(struct fs *fs,
+                   int directory,
+                   const char *base_name,
+                   struct file_entry *fe)
 {
     struct page *pg;
+    struct open_file of;
+    struct file_info finfo;
+    uint16_t leader_vda;
+
+    if (!allocate_page(fs, &leader_vda, NULL))
+        return FALSE;
 
     pg = &fs->pages[leader_vda];
     pg->label.prev_rda = 0;
@@ -47,9 +56,42 @@ void new_file_entry(struct fs *fs, uint16_t leader_vda,
     if (directory) {
         pg->label.sn.word1 |= SN_DIRECTORY;
     }
+    get_file_entry(fs, leader_vda, fe);
+
+    /* Add one more page of data. */
+    fs_get_of(fs, fe, TRUE, FALSE, &of);
+    of.eof = FALSE;
+    /* Write zero bytes to add one more page. */
+    fs_write(fs, &of, NULL, 0, TRUE);
+    /* Call fs_close_ro() to not write the leader page. */
+    fs_close_ro(fs, &of);
+
+    if (of.error < 0) {
+        free_pages(fs, leader_vda, TRUE);
+        return FALSE;
+    }
+
     increment_serial_number(fs);
 
-    get_file_entry(fs, leader_vda, fe);
+    finfo.name_length = 1 + strlen(base_name);
+    strncpy(finfo.name, base_name, NAME_LENGTH - 1);
+    finfo.name[NAME_LENGTH - 1] = '\0';
+
+    time(&finfo.created);
+    finfo.written = finfo.created;
+    finfo.read = finfo.created;
+    finfo.propbegin = 0;
+    finfo.proplen = 0;
+    finfo.consecutive = FALSE;
+    finfo.change_sn = FALSE;
+    finfo.has_dg = FALSE;
+    finfo.fe = *fe;
+    finfo.last_page.vda = leader_vda;
+    finfo.last_page.pgnum = 0;
+    finfo.last_page.pos = 0;
+    write_leader_page(fs, fe, &finfo);
+
+    return TRUE;
 }
 
 /* Advances to the next page.
@@ -159,14 +201,12 @@ int fs_open(struct fs *fs,
 {
     struct file_entry fe, dir_fe;
     struct directory_entry de;
-    struct file_info finfo;
     const char *base_name;
-    uint16_t leader_vda;
     int found, ret;
 
     of->error = ERROR_UNKNOWN;
     if (!fs->checked) {
-        of->error = ERROR_FS_UNCHECKED;;
+        of->error = ERROR_FS_UNCHECKED;
         return FALSE;
     }
 
@@ -198,47 +238,22 @@ int fs_open(struct fs *fs,
                 return FALSE;
             }
 
-            if (!allocate_page(fs, &leader_vda, NULL)) {
+            if (!new_file_entry(fs, FALSE, base_name, &fe)) {
                 of->error = ERROR_DISK_FULL;
                 return FALSE;
             }
 
-            new_file_entry(fs, leader_vda, FALSE, &fe);
-
-            finfo.name_length = 1 + strlen(base_name);
-            strncpy(finfo.name, base_name, NAME_LENGTH - 1);
-            finfo.name[NAME_LENGTH - 1] = '\0';
-            time(&finfo.created);
-            finfo.written = finfo.created;
-            finfo.read = finfo.created;
-            finfo.propbegin = 0;
-            finfo.proplen = 0;
-            finfo.consecutive = FALSE;
-            finfo.change_sn = FALSE;
-            finfo.has_dg = FALSE;
-            finfo.fe = fe;
-            finfo.last_page.vda = leader_vda;
-            finfo.last_page.pgnum = 0;
-            finfo.last_page.pos = 0;
-            write_leader_page(fs, &fe, &finfo);
-
             de.type = DIR_ENTRY_VALID;
             de.fe = fe;
-            memcpy(de.name, finfo.name, NAME_LENGTH);
-            de.name_length = finfo.name_length;
-            update_directory_entry_length(&de);
 
-            fs_get_of(fs, &fe, TRUE, FALSE, of);
-            of->eof = FALSE;
-            fs_write(fs, of, NULL, 0, TRUE);
-            if (of->error < 0) {
-                free_pages(fs, leader_vda, TRUE);
-                return FALSE;
-            }
+            de.name_length = 1 + strlen(base_name);
+            strncpy(de.name, base_name, NAME_LENGTH - 1);
+            de.name[NAME_LENGTH - 1] = '\0';
+            update_directory_entry_length(&de);
 
             if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
                 of->error = ERROR_DIR_FULL;
-                free_pages(fs, leader_vda, TRUE);
+                free_pages(fs, fe.leader_vda, TRUE);
                 return FALSE;
             }
         } else {
@@ -276,7 +291,7 @@ int fs_open_ro(const struct fs *fs,
 
     of->error = ERROR_UNKNOWN;
     if (!fs->checked) {
-        of->error = ERROR_FS_UNCHECKED;;
+        of->error = ERROR_FS_UNCHECKED;
         return FALSE;
     }
 
@@ -456,3 +471,120 @@ int fs_truncate(struct fs *fs, struct open_file *of)
     }
     return TRUE;
 }
+
+int fs_link(struct fs *fs,
+            const char *name,
+            const struct file_entry *fe,
+            int *error)
+{
+    struct file_entry dir_fe;
+    struct directory_entry de;
+    const char *base_name;
+    int found, ret;
+    int _error;
+
+    _error = ERROR_UNKNOWN;
+    if (!fs->checked) {
+        _error = ERROR_FS_UNCHECKED;
+        goto error_link;
+    }
+
+    if (!check_file_entry(fs, fe, FALSE)) {
+        _error = ERROR_INVALID_FE;
+        goto error_link;
+    }
+
+    if (!fs_resolve_name(fs, name, &found, NULL, &dir_fe, &base_name)) {
+        /* Can only fail if the filesystem is unchecked. */
+        _error = ERROR_FS_UNCHECKED;
+        goto error_link;
+    }
+
+    if (found) {
+        _error = ERROR_ALREADY_EXIST;
+        goto error_link;
+    }
+
+    ret = validate_name(base_name);
+    if (ret < 0) {
+        _error = ERROR_INVALID_NAME;
+        goto error_link;
+    }
+    if (ret == 0) {
+        _error = ERROR_DIR_NOT_FOUND;
+        goto error_link;
+    }
+
+    de.type = DIR_ENTRY_VALID;
+    de.fe = *fe;
+
+    de.name_length = 1 + strlen(base_name);
+    strncpy(de.name, base_name, NAME_LENGTH - 1);
+    de.name[NAME_LENGTH - 1] = '\0';
+    update_directory_entry_length(&de);
+
+    if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
+        _error = ERROR_DIR_FULL;
+        goto error_link;
+    }
+
+    if (error) {
+        *error = ERROR_NO_ERROR;
+    }
+    return TRUE;
+
+error_link:
+    if (error) {
+        *error = _error;
+    }
+    return FALSE;
+}
+
+int fs_unlink(struct fs *fs,
+              const char *name,
+              int remove_underlying,
+              int *error)
+{
+    struct file_entry fe, dir_fe;
+    const char *base_name;
+    int found;
+    int _error;
+
+    _error = ERROR_UNKNOWN;
+    if (!fs->checked) {
+        _error = ERROR_FS_UNCHECKED;
+        goto error_unlink;
+    }
+
+    if (!fs_resolve_name(fs, name, &found, &fe, &dir_fe, &base_name)) {
+        /* Can only fail if the filesystem is unchecked. */
+        _error = ERROR_FS_UNCHECKED;
+        goto error_unlink;
+    }
+
+    if (!found) {
+        _error = ERROR_FILE_NOT_FOUND;
+        goto error_unlink;
+    }
+
+    if (!remove_directory_entry(fs, &dir_fe, base_name, TRUE)) {
+        _error = ERROR_UNKNOWN;
+        goto error_unlink;
+    }
+
+    if (remove_underlying && (fs->ref_count[fe.leader_vda] == 0)) {
+        free_pages(fs, fe.leader_vda, TRUE);
+    }
+
+    if (error) {
+        *error = ERROR_NO_ERROR;
+    }
+    return TRUE;
+
+error_unlink:
+    if (error) {
+        *error = _error;
+    }
+    return FALSE;
+}
+

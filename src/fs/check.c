@@ -28,6 +28,7 @@ struct check_unique_cb_arg {
     uint16_t num_missing_files;   /* Total number of missing files. */
     unsigned int dir_count;       /* Directory count. */
     unsigned int max_dir_count;   /* The maximum directory count. */
+    int print_missing;            /* To print the missing files. */
     struct serial_number *sns;    /* The serial numbers. */
     struct directory_entry *des;  /* The directory entries. */
     int has_error;                /* If found an error. */
@@ -582,6 +583,11 @@ int check_unique_cb(const struct fs *fs,
     cb_arg->num_files++;
 
     if (fs->ref_count[fe->leader_vda] == 0) {
+        if (cb_arg->print_missing) {
+            report_error("fs: check_unique: "
+                         "missing file at VDA %u",
+                         fe->leader_vda);
+        }
         cb_arg->num_missing_files++;
     }
 
@@ -651,6 +657,7 @@ int check_unique(struct fs *fs)
     cb_arg.num_missing_files = 0;
     cb_arg.dir_count = 0;
     cb_arg.max_dir_count = 0;
+    cb_arg.print_missing = TRUE;
     cb_arg.sns = NULL;
     cb_arg.des = NULL;
     cb_arg.has_error = FALSE;
@@ -679,6 +686,7 @@ int check_unique(struct fs *fs)
     cb_arg.num_missing_files = 0;
     cb_arg.dir_count = 0;
     cb_arg.max_dir_count = 0;
+    cb_arg.print_missing = FALSE;
     cb_arg.has_error = FALSE;
     scan_files(fs, &check_unique_cb, &cb_arg);
 

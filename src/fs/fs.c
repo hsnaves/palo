@@ -214,6 +214,7 @@ const char *fs_error(int error)
         [-ERROR_INVALID_MODE]   = "invalid mode",
         [-ERROR_READ_ONLY]      = "file in read-only mode",
         [-ERROR_NOT_DIRECTORY]  = "not a directory",
+        [-ERROR_ALREADY_EXIST]  = "name already exist",
     };
     if (error > 0) error = 0;
     if (error <= ERROR_END) error = ERROR_UNKNOWN;
@@ -321,4 +322,31 @@ error_write:
     fclose(fp);
     fs_close(fs, &of);
     return FALSE;
+}
+
+int fs_copy(struct fs *fs, const char *src, const char *dst)
+{
+    struct file_entry fe;
+    int found, error;
+
+    if (!fs_resolve_name(fs, src, &found, &fe, NULL, NULL)) {
+        report_error("fs: copy: "
+                     "could not resolve name `%s`", src);
+        return FALSE;
+    }
+
+    if (!found) {
+        report_error("fs: copy: "
+                     "could not find source file `%s`", src);
+        return FALSE;
+    }
+
+    if (!fs_link(fs, dst, &fe, &error)) {
+        report_error("fs: copy: "
+                     "could not create link to `%s`: %s",
+                     dst, fs_error(error));
+        return FALSE;
+    }
+
+    return TRUE;
 }

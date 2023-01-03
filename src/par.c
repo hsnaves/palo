@@ -19,7 +19,10 @@ void usage(const char *prog_name)
     printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
-    printf("  -r                Operate in read only mode\n");
+    printf("  -c src dst        Copies from src to dst\n");
+    printf("  -r name           Removes the link to name\n");
+    printf("  -nru              To not remove underlying files\n");
+    printf("  -ro               Operate in read only mode\n");
     printf("  -v                Increase verbosity\n");
     printf("  --help            Print this help\n");
 }
@@ -28,23 +31,30 @@ int main(int argc, char **argv)
 {
 
     const char *disk_filename;
+    const char *dir_name;
     const char *e_filename, *e_name;
     const char *i_filename, *i_name;
-    const char *dir_name;
+    const char *c_src_name, *c_dst_name;
+    const char *r_name;
     struct geometry dg;
     struct fs fs;
     int i, is_last, is_second_last;
     int modified, read_only;
+    int not_remove_underlying;
     int verbose, error;
 
     disk_filename = NULL;
+    dir_name = NULL;
     e_filename = NULL;
     i_filename = NULL;
     e_name = NULL;
     i_name = NULL;
-    dir_name = NULL;
+    c_src_name = NULL;
+    c_dst_name = NULL;
+    r_name = NULL;
     modified = FALSE;
     read_only = FALSE;
+    not_remove_underlying = FALSE;
     verbose = 0;
 
     dg.num_disks = 1;
@@ -79,7 +89,22 @@ int main(int argc, char **argv)
             }
             i_filename = argv[++i];
             i_name = argv[++i];
+        } else if (strcmp("-c", argv[i]) == 0) {
+            if (is_second_last) {
+                report_error("main: please specify the src and dst");
+                return 1;
+            }
+            c_src_name = argv[++i];
+            c_dst_name = argv[++i];
         } else if (strcmp("-r", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the name to remove");
+                return 1;
+            }
+            r_name = argv[++i];
+        } else if (strcmp("-nru", argv[i]) == 0) {
+            not_remove_underlying = TRUE;
+        } else if (strcmp("-ro", argv[i]) == 0) {
             read_only = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
             verbose = TRUE;
@@ -136,6 +161,23 @@ int main(int argc, char **argv)
 
         printf("inserted `%s` as `%s` successfully\n",
                i_filename, i_name);
+    }
+
+    if (c_src_name != NULL && c_dst_name != NULL) {
+        modified = TRUE;
+        if (!fs_copy(&fs, c_src_name, c_dst_name)) {
+            report_error("main: could not copy");
+            goto error;
+        }
+    }
+
+    if (r_name != NULL) {
+        modified = TRUE;
+        if (!fs_unlink(&fs, r_name, !not_remove_underlying, &error)) {
+            report_error("main: could not unlink `%s`: %s",
+                         r_name, fs_error(error));
+            goto error;
+        }
     }
 
     if (dir_name) {

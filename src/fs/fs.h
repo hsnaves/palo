@@ -45,7 +45,8 @@
 #define ERROR_INVALID_MODE               -11
 #define ERROR_READ_ONLY                  -12
 #define ERROR_NOT_DIRECTORY              -13
-#define ERROR_END                        -14
+#define ERROR_ALREADY_EXIST              -14
+#define ERROR_END                        -15
 
 /* Data structures and types. */
 
@@ -317,6 +318,28 @@ size_t fs_write(struct fs *fs, struct open_file *of,
  */
 int fs_truncate(struct fs *fs, struct open_file *of);
 
+/* Creates a link from `name` to the file pointed by the file_entry `fe`.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_link(struct fs *fs,
+            const char *name,
+            const struct file_entry *fe,
+            int *error);
+
+/* Removes the link to the name `name`.
+ * If `remove_underlying` is set to TRUE, the underlying file is removed
+ * from the filesystem.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_unlink(struct fs *fs,
+              const char *name,
+              int remove_underlying,
+              int *error);
+
 /* Determines the file length.
  * The `fe` specifies the file. The file length is returned in `length`.
  * The `error` parameter, if provided, returns the details about the
@@ -387,6 +410,11 @@ int fs_extract_file(const struct fs *fs, const char *name,
  */
 int fs_insert_file(struct fs *fs, const char *input_filename,
                    const char *name);
+
+/* Copies a file from `src` to `dst`.
+ * Returns TRUE on success.
+ */
+int fs_copy(struct fs *fs, const char *src, const char *dst);
 
 /* Prints the contents of a directory to `fp`.
  * The directory is specified by the parameter `dir_name`.

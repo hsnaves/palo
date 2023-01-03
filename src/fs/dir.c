@@ -8,13 +8,18 @@
 
 /* Data structures and types. */
 
-/* Auxiliary data structure used by compress_cb(). */
-struct compress_cb_arg {
+/* Auxiliary data structure used by walk_dir_cb(). */
+struct walk_dir_cb_arg {
     struct fs *fs;                /* A non-const reference to fs. */
     struct open_file of;          /* Open file for the directory. */
     int do_compress;              /* To actually do the compression. */
+    const char *remove_name;      /* The name to remove. */
     size_t used_length;           /* Total used length. */
     size_t empty_length;          /* The total empty length. */
+    int removed;                  /* A flag indicating that the
+                                   * directory_entry was removed.
+                                   */
+    struct directory_entry rm_de; /* The removed directory_entry. */
     int has_error;                /* If an error occurred. */
 };
 
@@ -164,12 +169,6 @@ error_append:
     return FALSE;
 }
 
-/* Appends the empty entries at the end of the directory.
- * The parameter `of` is the open_file of the currently open directory.
- * The `empty_length` specifies how many empty words are left.
- * Returns TRUE on success.
- */
-static
 int append_empty_entries(struct fs *fs,
                          struct open_file *of,
                          size_t empty_length)
@@ -193,33 +192,113 @@ int append_empty_entries(struct fs *fs,
     return TRUE;
 }
 
-/* Auxiliary function used by compress_directory().
- * The `arg` parameter is a pointer to compress_cb_arg structure.
+/* Auxiliary function used by compress_directory() and other functions.
+ * The `arg` parameter is a pointer to walk_dir_cb_arg structure.
  */
 static
-int compress_dir_cb(const struct fs *fs,
-                    const struct directory_entry *de,
-                    void *arg)
+int walk_dir_cb(const struct fs *fs,
+                const struct directory_entry *de,
+                void *arg)
 {
-    struct compress_cb_arg *c_arg;
+    struct walk_dir_cb_arg *c_arg;
 
     UNUSED(fs);
-    c_arg = (struct compress_cb_arg *) arg;
+    c_arg = (struct walk_dir_cb_arg *) arg;
 
     if (de->type != DIR_ENTRY_VALID) {
         c_arg->empty_length += (size_t) de->length;
         return TRUE;
     }
 
+    if (c_arg->remove_name) {
+        if (strcmp(c_arg->remove_name, de->name) == 0) {
+            c_arg->removed = TRUE;
+            c_arg->rm_de = *de;
+            c_arg->empty_length += (size_t) de->length;
+            return TRUE;
+        }
+    }
+
     c_arg->used_length += (size_t) de->length;
     if (!c_arg->do_compress) return TRUE;
 
     if (!append_directory_entry(c_arg->fs, &c_arg->of, de, FALSE)) {
-        report_error("fs: compress_directory: "
+        report_error("fs: walk_directory: "
                      "%s", fs_error(c_arg->of.error));
         c_arg->has_error = TRUE;
         return FALSE;
     }
+
+    return TRUE;
+}
+
+/* Auxiliary function used by compress_directory() and
+ * remove_directory_entry().
+ * Returns TRUE on success.
+ */
+static
+int walk_directory(struct fs *fs,
+                   const struct file_entry *dir_fe,
+                   const char *remove_name,
+                   int do_compress,
+                   size_t *used_length,
+                   size_t *empty_length,
+                   int *removed,
+                   struct directory_entry *rm_de)
+{
+    struct walk_dir_cb_arg c_arg;
+
+    memset(&c_arg, 0, sizeof(struct walk_dir_cb_arg));
+    c_arg.fs = fs;
+    c_arg.remove_name = remove_name;
+    c_arg.do_compress = do_compress;
+    c_arg.used_length = 0;
+    c_arg.empty_length = 0;
+    c_arg.removed = FALSE;
+    c_arg.has_error = FALSE;
+    if (do_compress) {
+        fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
+        if (c_arg.of.error < 0) {
+            report_error("fs: walk_directory: "
+                         "%s", fs_error(c_arg.of.error));
+            return FALSE;
+        }
+    }
+
+    scan_directory(fs, dir_fe, &walk_dir_cb, &c_arg);
+    if (used_length) {
+        *used_length = c_arg.used_length;
+    }
+    if (empty_length) {
+        *empty_length = c_arg.empty_length;
+    }
+    if (removed) {
+        *removed = c_arg.removed;
+    }
+    if (rm_de) {
+        *rm_de = c_arg.rm_de;
+    }
+
+    if (!do_compress) return TRUE;
+
+    if (c_arg.of.error < 0) {
+        report_error("fs: walk_directory: "
+                     "could not compress");
+        fs_close(fs, &c_arg.of);
+        return FALSE;
+    }
+
+    append_empty_entries(fs, &c_arg.of, c_arg.empty_length);
+
+    if (c_arg.of.error < 0) {
+        report_error("fs: walk_directory: "
+                     "could not append empty entries: %s",
+                     fs_error(c_arg.of.error));
+        fs_close(fs, &c_arg.of);
+        return FALSE;
+    }
+
+    fs_close(fs, &c_arg.of);
     return TRUE;
 }
 
@@ -229,46 +308,12 @@ int compress_directory(struct fs *fs,
                        size_t *used_length,
                        size_t *empty_length)
 {
-    struct compress_cb_arg c_arg;
-
-    c_arg.fs = fs;
-    c_arg.do_compress = do_compress;
-    c_arg.used_length = 0;
-    c_arg.empty_length = 0;
-    c_arg.has_error = FALSE;
-    if (do_compress) {
-        fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
-        if (c_arg.of.error < 0) {
-            report_error("fs: compress_directory: "
-                         "%s", fs_error(c_arg.of.error));
-            return FALSE;
-        }
-    }
-
-    scan_directory(fs, dir_fe, &compress_dir_cb, &c_arg);
-    *used_length = c_arg.used_length;
-    *empty_length = c_arg.empty_length;
-
-    if (c_arg.has_error) {
+    if (!walk_directory(fs, dir_fe, NULL, do_compress,
+                        used_length, empty_length, NULL, NULL)) {
         report_error("fs: compress_directory: "
-                     "could not compress");
-        fs_close(fs, &c_arg.of);
+                     "could not walk directory");
         return FALSE;
     }
-    if (!do_compress) return TRUE;
-
-    if (c_arg.empty_length > 0) {
-        if (!append_empty_entries(fs, &c_arg.of,
-                                  c_arg.empty_length)) {
-
-            report_error("fs: compress_directory: "
-                         "%s", fs_error(c_arg.of.error));
-            fs_close(fs, &c_arg.of);
-            return FALSE;
-        }
-    }
-
-    fs_close(fs, &c_arg.of);
     return TRUE;
 }
 
@@ -306,6 +351,11 @@ int add_directory_entry(struct fs *fs,
     if (!append_empty_entries(fs, &of, empty_length))
         goto error_add;
 
+    /* Update the reference count. */
+    if (fs->ref_count[dir_fe->leader_vda] > 0) {
+        fs->ref_count[de->fe.leader_vda]++;
+    }
+
     fs_close(fs, &of);
     return TRUE;
 
@@ -315,4 +365,35 @@ error_add:
                  "%s", fs_error(of.error));
     fs_close(fs, &of);
     return FALSE;
+}
+
+int remove_directory_entry(struct fs *fs,
+                           const struct file_entry *dir_fe,
+                           const char *remove_name,
+                           int do_remove)
+{
+    int removed;
+    struct directory_entry rm_de;
+
+    if (!walk_directory(fs, dir_fe, remove_name, do_remove,
+                        NULL, NULL, &removed, &rm_de)) {
+        report_error("fs: remove_directory_entry: "
+                     "could not walk directory");
+        return FALSE;
+    }
+
+    if (!removed) return FALSE;
+
+    /* Update the reference count. */
+    if (fs->ref_count[dir_fe->leader_vda] > 0) {
+        if (fs->ref_count[rm_de.fe.leader_vda] > 0) {
+            fs->ref_count[rm_de.fe.leader_vda]--;
+        } else {
+            report_error("fs: remove_directory_entry: "
+                         "inconsistent reference counts");
+            update_reference_counts(fs);
+        }
+    }
+
+    return TRUE;
 }
