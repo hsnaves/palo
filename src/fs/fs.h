@@ -148,11 +148,15 @@ struct geometry {
  * Roughly corresponds to the LD structure in AltoFileSys.D.
  */
 struct file_info {
-    uint8_t name_length;          /* The original length of the name. */
-    char name[NAME_LENGTH];       /* The name of the file (hint). */
     time_t created;               /* The time the file was created. */
     time_t written;               /* The time the file was written. */
     time_t read;                  /* The time the file was accessed. */
+
+    uint8_t name_length;          /* The original length of the name. */
+    char name[NAME_LENGTH];       /* The name of the file (hint). */
+
+    uint8_t props[420];           /* Copy of the properties. */
+    uint8_t spare[20];            /* Spare data. */
 
     uint8_t propbegin;            /* The index for properties. */
     uint8_t proplen;              /* The number of words for properties. */
@@ -419,7 +423,7 @@ int fs_copy(struct fs *fs, const char *src, const char *dst);
 /* Prints the contents of a directory to `fp`.
  * The directory is specified by the parameter `dir_name`.
  * To print more information, the `verbose` parameter should be set
- * to TRUE.
+ * to a positive number (the bigger the more verbose the output).
  * Returns TRUE on success.
  */
 int fs_print_directory(const struct fs *fs,

@@ -6,6 +6,10 @@
 #include "fs/fs_internal.h"
 #include "common/utils.h"
 
+/* Constants. */
+#define MIN_ENTRY_LENGTH                 12U
+#define MAX_ENTRY_LENGTH                100U
+
 /* Data structures and types. */
 
 /* Auxiliary data structure used by walk_dir_cb(). */
@@ -64,8 +68,9 @@ void update_reference_counts(struct fs *fs)
     /* Fake directory entry containing the SysDir. */
     sysdir_de.fe = sysdir_fe;
     sysdir_de.type = DIR_ENTRY_VALID;
-    strcpy(sysdir_de.name, "SysDir");
-    sysdir_de.name_length = 1 + strlen(sysdir_de.name);
+    memset(sysdir_de.name, 0, sizeof(sysdir_de.name));
+    strcpy(sysdir_de.name, "SysDir.");
+    sysdir_de.name_length = strlen(sysdir_de.name);
     update_directory_entry_length(&sysdir_de);
 
     memset(fs->ref_count, 0, fs->length * sizeof(uint16_t));
@@ -91,7 +96,10 @@ int fetch_directory_entry(const struct fs *fs,
     read_directory_entry(buffer, 0, de);
 
     byte_length = 2 * ((size_t) de->length);
-    if (byte_length <= DIR_OFF_NAME) goto error_fetch;
+    if (byte_length == 0) goto error_fetch;
+
+    if (byte_length <= DIR_OFF_NAME && (de->type == DIR_ENTRY_VALID))
+        goto error_fetch;
 
     if (byte_length > sizeof(buffer)) {
         nbytes = fs_read(fs, of, &buffer[2], sizeof(buffer) - 2);
@@ -174,14 +182,22 @@ int append_empty_entries(struct fs *fs,
                          size_t empty_length)
 {
     struct directory_entry de;
+    size_t rem;
 
     memset(&de, 0, sizeof(struct directory_entry));
     de.type = DIR_ENTRY_MISSING;
     while (empty_length > 0) {
-        if (empty_length >= 100) {
-            de.length = 100;
-        } else {
+        if (empty_length < MAX_ENTRY_LENGTH) {
             de.length = empty_length;
+        } else {
+            rem = (empty_length % MAX_ENTRY_LENGTH);
+            if (rem < MIN_ENTRY_LENGTH) {
+                de.length = MAX_ENTRY_LENGTH - MIN_ENTRY_LENGTH + rem;
+            } else if (rem > MIN_ENTRY_LENGTH) {
+                de.length = rem - MIN_ENTRY_LENGTH;
+            } else {
+                de.length = MAX_ENTRY_LENGTH;
+            }
         }
         empty_length -= (size_t) de.length;
 
@@ -332,7 +348,7 @@ int add_directory_entry(struct fs *fs,
         return FALSE;
     }
 
-    if (empty_length < de->length)
+    if (empty_length < de->length + MIN_ENTRY_LENGTH)
         return FALSE;
 
     if (!do_add)

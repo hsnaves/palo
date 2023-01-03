@@ -97,11 +97,15 @@ void file_info(const struct fs *fs,
 
     read_leader_page(fs, fe, data);
 
-    finfo->name_length = data[LD_OFF_NAME];
-    read_name(data, LD_OFF_NAME, finfo->name);
     finfo->created = read_alto_time(data, LD_OFF_CREATED);
     finfo->written = read_alto_time(data, LD_OFF_WRITTEN);
     finfo->read = read_alto_time(data, LD_OFF_READ);
+
+    finfo->name_length = data[LD_OFF_NAME];
+    read_name(data, LD_OFF_NAME, finfo->name);
+
+    memcpy(finfo->props, &data[LD_OFF_PROPS], sizeof(finfo->props));
+    memcpy(finfo->spare, &data[LD_OFF_SPARE], sizeof(finfo->spare));
 
     finfo->propbegin = data[LD_OFF_PROPBEGIN];
     finfo->proplen = data[LD_OFF_PROPLEN];
@@ -165,28 +169,20 @@ void write_leader_page(struct fs *fs,
 {
     uint8_t data[PAGE_DATA_SIZE];
 
-    write_name(data, LD_OFF_NAME, finfo->name);
-    data[LD_OFF_NAME] = finfo->name_length;
-
     write_alto_time(data, LD_OFF_CREATED, finfo->created);
     write_alto_time(data, LD_OFF_WRITTEN, finfo->written);
     write_alto_time(data, LD_OFF_READ, finfo->read);
+
+    write_name(data, LD_OFF_NAME, finfo->name);
+    data[LD_OFF_NAME] = finfo->name_length;
 
     data[LD_OFF_PROPBEGIN] = finfo->propbegin;
     data[LD_OFF_PROPLEN] = finfo->proplen;
     data[LD_OFF_CONSECUTIVE] = finfo->consecutive;
     data[LD_OFF_CHANGESN] = finfo->change_sn;
 
-    /* Clear the properties. */
-    memset(&data[LD_OFF_PROPS], 0, LD_OFF_SPARE - LD_OFF_PROPS);
-    if (finfo->has_dg && (2 * finfo->propbegin == LD_OFF_PROPS)
-        && (finfo->proplen >= 5)) {
-
-        data[LD_OFF_PROPS] = 1; /* type */
-        data[LD_OFF_PROPS + 1] = 5; /* length */
-
-        write_geometry(data, LD_OFF_PROPS + 2, &finfo->dg);
-    }
+    memcpy(&data[LD_OFF_PROPS], finfo->props, sizeof(finfo->props));
+    memcpy(&data[LD_OFF_SPARE], finfo->spare, sizeof(finfo->spare));
 
     write_file_entry(data, LD_OFF_DIRFPHINT, &finfo->fe);
     write_file_position(data, LD_OFF_LASTPAGEHINT, &finfo->last_page);

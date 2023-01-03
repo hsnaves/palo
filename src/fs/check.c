@@ -313,6 +313,14 @@ int check_basic_filesystem_data(const struct fs *fs)
             continue;
         }
 
+        if (pg->label.unused != 0) {
+            report_error("fs: check_basic_filesystem_data: "
+                         "invalid unused at VDA = %u: %u",
+                         vda, pg->label.unused);
+            success = FALSE;
+            continue;
+        }
+
         if (pg->label.version == VERSION_FREE) continue;
         if (pg->label.version == VERSION_BAD) {
             if (pg->label.sn.word1 != VERSION_BAD
@@ -506,8 +514,9 @@ int check_dirs(struct fs *fs)
     /* Fake directory entry containing the SysDir. */
     sysdir_de.fe = sysdir_fe;
     sysdir_de.type = DIR_ENTRY_VALID;
-    strcpy(sysdir_de.name, "SysDir");
-    sysdir_de.name_length = 1 + strlen(sysdir_de.name);
+    memset(sysdir_de.name, 0, sizeof(sysdir_de.name));
+    strcpy(sysdir_de.name, "SysDir.");
+    sysdir_de.name_length = strlen(sysdir_de.name);
     update_directory_entry_length(&sysdir_de);
 
     cb_arg.fs = fs;
@@ -854,15 +863,6 @@ int check_file_entry(const struct fs *fs,
                          "version %u does not match %u at VDA %u",
                          fe->version, pg->label.version,
                          fe->leader_vda);
-        }
-        return FALSE;
-    }
-
-    if (fe->blank != 0) {
-        if (verbose) {
-            report_error("fs: check_file_entry: "
-                         "blank = %u != 0 at VDA %u",
-                         fe->blank, fe->leader_vda);
         }
         return FALSE;
     }

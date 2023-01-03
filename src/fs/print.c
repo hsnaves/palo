@@ -32,18 +32,21 @@ int print_dir_cb(const struct fs *fs,
     uint32_t sn;
     struct tm *ltm;
     size_t length;
-    int error;
+    int i, error;
 
     cb_arg = ((struct print_dir_cb_arg *) arg);
     cb_arg->count++;
 
     fp = cb_arg->fp;
-    if (!cb_arg->verbose && (cb_arg->count == 1)) {
+    if ((cb_arg->verbose <= 0) && (cb_arg->count == 1)) {
         fprintf(fp, "N      VDA    SN     VER    SIZE        FILENAME\n");
     }
 
-    if (de->type != DIR_ENTRY_VALID)
-        return TRUE;
+    if (cb_arg->verbose > 0) {
+        fprintf(fp, "\nDirectory-entry: %u, %u\n", de->type, de->length);
+    }
+
+    if (de->type != DIR_ENTRY_VALID) return TRUE;
 
     if (!fs_file_info(fs, &de->fe, &finfo, &error)) {
         report_error("fs: print_dir_cb: "
@@ -62,10 +65,11 @@ int print_dir_cb(const struct fs *fs,
     sn = ((uint32_t) (de->fe.sn.word1 & SN_PART1_MASK)) << 16;
     sn += de->fe.sn.word2;
 
-    if (cb_arg->verbose) {
+    if (cb_arg->verbose > 0) {
         fprintf(fp, "Leader VDA: %u\n", de->fe.leader_vda);
         fprintf(fp, "Serial number: %u\n", sn);
         fprintf(fp, "Version: %u\n", de->fe.version);
+        fprintf(fp, "Blank: %u\n", de->fe.blank);
         fprintf(fp, "Name: %s\n", de->name);
         fprintf(fp, "Length: %u\n", (unsigned int) length);
 
@@ -84,6 +88,22 @@ int print_dir_cb(const struct fs *fs,
                ltm->tm_mday, ltm->tm_mon + 1,
                ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 
+        fprintf(fp, "Leader page name: %s\n", finfo.name);
+        if (cb_arg->verbose > 1) {
+            fprintf(fp, "Props:");
+            for (i = 0; i < (int) sizeof(finfo.props); i++) {
+                if ((i % 10) == 0) fprintf(fp, "\n");
+                fprintf(fp, "  0x%02X", finfo.props[i]);
+            }
+            fprintf(fp, "\n");
+            fprintf(fp, "Spare:");
+            for (i = 0; i < (int) sizeof(finfo.spare); i++) {
+                if ((i % 10) == 0) fprintf(fp, "\n");
+                fprintf(fp, "  0x%02X", finfo.spare[i]);
+            }
+            fprintf(fp, "\n");
+        }
+
         fprintf(fp, "Propbegin: %u\n", finfo.propbegin);
         fprintf(fp, "Proplen: %u\n", finfo.proplen);
         if (finfo.has_dg) {
@@ -99,7 +119,6 @@ int print_dir_cb(const struct fs *fs,
         fprintf(fp, "  VDA: %u\n", finfo.last_page.vda);
         fprintf(fp, "  PGNUM: %u\n", finfo.last_page.pgnum);
         fprintf(fp, "  POS: %u\n", finfo.last_page.pos);
-        fprintf(fp, "\n");
     } else {
         fprintf(fp, "%-6u %-6u %-6u %-6u %-10u  %-38s\n",
                 cb_arg->count,  de->fe.leader_vda,

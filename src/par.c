@@ -107,7 +107,7 @@ int main(int argc, char **argv)
         } else if (strcmp("-ro", argv[i]) == 0) {
             read_only = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
-            verbose = TRUE;
+            verbose++;
         } else if (strcmp("--help", argv[i]) == 0
                    || strcmp("-h", argv[i]) == 0) {
             usage(argv[0]);
@@ -192,6 +192,7 @@ int main(int argc, char **argv)
     }
 
     if (modified && !read_only) {
+        printf("saving disk image `%s`\n", disk_filename);
         if (!fs_update_disk_descriptor(&fs, &error)) {
             report_error("main: could not update disk descriptor: %s",
                          fs_error(error));

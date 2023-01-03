@@ -58,19 +58,8 @@ int virtual_to_real(const struct geometry *dg, uint16_t vda, uint16_t *rda)
 void read_name(const uint8_t *data, size_t offset,
                char name[NAME_LENGTH])
 {
-    size_t slen;
-
-    slen = data[offset];
-    if (slen >= NAME_LENGTH)
-        slen = NAME_LENGTH - 1;
-
-    if (slen == 0) {
-        name[0] = '\0';
-        return;
-    }
-
-    memcpy(name, &data[offset + 1], slen - 1);
-    name[slen - 1] = '\0';
+    memcpy(name, &data[offset + 1], NAME_LENGTH - 1);
+    name[NAME_LENGTH - 1] = '\0';
 }
 
 void write_name(uint8_t *data, size_t offset,
@@ -78,18 +67,13 @@ void write_name(uint8_t *data, size_t offset,
 {
     size_t slen;
 
+    memcpy(&data[offset + 1], name, NAME_LENGTH - 1);
+
     slen = strlen(name);
-    if (slen >= NAME_LENGTH)
-        slen = NAME_LENGTH - 1;
+    if (slen >= NAME_LENGTH - 1)
+        slen = NAME_LENGTH - 2;
 
-    if (slen == 0) {
-        data[offset] = 0;
-        data[offset + 1] = 0;
-        return;
-    }
-
-    data[offset] = (uint8_t) (slen + 1);
-    memcpy(&data[offset + 1], name, slen);
+    data[offset] = (uint8_t) slen;
 }
 
 uint16_t read_word_be(const uint8_t *data, size_t offset)
@@ -125,7 +109,7 @@ void read_file_entry(const uint8_t *data, size_t offset,
 {
     read_serial_number(data, offset, &fe->sn);
     fe->version = read_word_be(data, offset + 4);
-    fe->blank = 0; /* read_word_be(data, offset + 6); */
+    fe->blank = read_word_be(data, offset + 6);
     fe->leader_vda = read_word_be(data, offset + 8);
 }
 
@@ -134,7 +118,7 @@ void write_file_entry(uint8_t *data, size_t offset,
 {
     write_serial_number(data, offset, &fe->sn);
     write_word_be(data, offset + 4, fe->version);
-    write_word_be(data, offset + 6, 0);
+    write_word_be(data, offset + 6, fe->blank);
     write_word_be(data, offset + 8, fe->leader_vda);
 }
 
@@ -218,6 +202,6 @@ void update_directory_entry_length(struct directory_entry *de)
 {
     uint16_t len;
     len = de->name_length;
-    if (len > NAME_LENGTH) len = NAME_LENGTH;
-    de->length = (DIR_OFF_NAME + len + 1) / 2;
+    if (len > NAME_LENGTH - 1) len = NAME_LENGTH - 1;
+    de->length = (DIR_OFF_NAME + len + 2) / 2;
 }

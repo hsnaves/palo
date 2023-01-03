@@ -73,15 +73,18 @@ int new_file_entry(struct fs *fs,
 
     increment_serial_number(fs);
 
-    finfo.name_length = 1 + strlen(base_name);
-    strncpy(finfo.name, base_name, NAME_LENGTH - 1);
-    finfo.name[NAME_LENGTH - 1] = '\0';
+    memset(&finfo, 0, sizeof(finfo));
 
     time(&finfo.created);
     finfo.written = finfo.created;
     finfo.read = finfo.created;
-    finfo.propbegin = 0;
-    finfo.proplen = 0;
+
+    memset(finfo.name, 0, sizeof(finfo.name));
+    finfo.name_length = strlen(base_name);
+    strncpy(finfo.name, base_name, NAME_LENGTH - 1);
+
+    finfo.propbegin = LD_OFF_PROPS / 2;
+    finfo.proplen = (LD_OFF_SPARE - LD_OFF_PROPS) / 2;
     finfo.consecutive = FALSE;
     finfo.change_sn = FALSE;
     finfo.has_dg = FALSE;
@@ -246,9 +249,9 @@ int fs_open(struct fs *fs,
             de.type = DIR_ENTRY_VALID;
             de.fe = fe;
 
-            de.name_length = 1 + strlen(base_name);
+            memset(de.name, 0, sizeof(de.name));
+            de.name_length = strlen(base_name);
             strncpy(de.name, base_name, NAME_LENGTH - 1);
-            de.name[NAME_LENGTH - 1] = '\0';
             update_directory_entry_length(&de);
 
             if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
@@ -256,6 +259,7 @@ int fs_open(struct fs *fs,
                 free_pages(fs, fe.leader_vda, TRUE);
                 return FALSE;
             }
+            fs_get_of(fs, &fe, TRUE, FALSE, of);
         } else {
             fs_get_of(fs, &fe, TRUE, FALSE, of);
             if (strcmp(mode, "w") == 0) {
@@ -429,6 +433,7 @@ size_t fs_write(struct fs *fs, struct open_file *of,
             nbytes = PAGE_DATA_SIZE;
 
         npg->label.next_rda = 0;
+        npg->label.unused = pg->label.unused;
         npg->label.nbytes = nbytes;
         npg->label.file_pgnum = pg->label.file_pgnum + 1;
         npg->label.version = pg->label.version;
@@ -518,9 +523,9 @@ int fs_link(struct fs *fs,
     de.type = DIR_ENTRY_VALID;
     de.fe = *fe;
 
-    de.name_length = 1 + strlen(base_name);
+    memset(de.name, 0, sizeof(de.name));
+    de.name_length = strlen(base_name);
     strncpy(de.name, base_name, NAME_LENGTH - 1);
-    de.name[NAME_LENGTH - 1] = '\0';
     update_directory_entry_length(&de);
 
     if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
