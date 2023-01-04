@@ -294,6 +294,7 @@ int fs_format(struct fs *fs, int *error)
         pg->label.file_pgnum = 1;
     }
 
+    /* Pretend it is checked. */
     fs->checked = TRUE;
     update_disk_metadata(fs);
     fs->last_sn.word2 = 100; /* First serial number. */

@@ -260,6 +260,11 @@ int fs_install_boot(struct fs *fs,
  */
 int fs_check_integrity(struct fs *fs);
 
+/* Scavenges the filesystem for what it can salvage.
+ * This will write files in the current directory.
+ */
+void fs_scavenge(const struct fs *fs);
+
 /* Obtains the file_entry of the SysDir.
  * The `sysdir_fe` will be populated with the corresponding SysDir
  * file_entry.

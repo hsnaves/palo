@@ -18,6 +18,7 @@ void usage(const char *prog_name)
     printf("  -2                Use double disk\n");
     printf("  -f                To format the disk\n");
     printf("  -b name           To install the boot file\n");
+    printf("  -s                Scavenges the filesystem\n");
     printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
@@ -45,6 +46,7 @@ int main(int argc, char **argv)
     struct fs fs;
     int i, is_last, is_second_last;
     int should_format;
+    int should_scavenge;
     int modified, read_only;
     int not_remove_underlying;
     int verbose, error;
@@ -61,6 +63,7 @@ int main(int argc, char **argv)
     m_dir_name = NULL;
     dir_name = NULL;
     should_format = FALSE;
+    should_scavenge = FALSE;
     modified = FALSE;
     read_only = FALSE;
     not_remove_underlying = FALSE;
@@ -84,6 +87,8 @@ int main(int argc, char **argv)
                 return 1;
             }
             b_name = argv[++i];
+        } else if (strcmp("-s", argv[i]) == 0) {
+            should_scavenge = TRUE;
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -169,6 +174,12 @@ int main(int argc, char **argv)
             report_error("main: could not load disk image");
             goto error;
         }
+    }
+
+    if (should_scavenge) {
+        printf("scavenging the disk ...\n");
+        fs_scavenge(&fs);
+        printf("done scavenging\n");
     }
 
     if (!fs_check_integrity(&fs)) {

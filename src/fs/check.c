@@ -1,5 +1,6 @@
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -93,16 +94,17 @@ int check_prop_structure(const struct fs *fs,
 
     if (2 * buffer[LD_OFF_PROPBEGIN] != LD_OFF_PROPS) {
         report_error("fs: check_prop_structure: "
-                     "PROPBEGIN = %u != %u",
-                     2 * buffer[LD_OFF_PROPBEGIN], LD_OFF_PROPS);
+                     "PROPBEGIN = %u != %u at VDA %u",
+                     2 * buffer[LD_OFF_PROPBEGIN], LD_OFF_PROPS,
+                     fe->leader_vda);
         return FALSE;
     }
 
     nbytes = 2 * buffer[LD_OFF_PROPLEN];
     if (nbytes > (LD_OFF_SPARE - LD_OFF_PROPS)) {
         report_error("fs: check_prop_structure: "
-                     "invalid PROPLEN = %u",
-                     buffer[LD_OFF_PROPLEN]);
+                     "invalid PROPLEN = %u at VDA %u",
+                     buffer[LD_OFF_PROPLEN], fe->leader_vda);
         return FALSE;
     }
 
@@ -114,13 +116,17 @@ int check_prop_structure(const struct fs *fs,
         UNUSED(type);
 
         if (i == nbytes) {
-            report_error("fs: check_prop_structure: missing length");
+            report_error("fs: check_prop_structure: "
+                         "missing length at VDA %u",
+                         fe->leader_vda);
             return FALSE;
         }
         length = data[i++];
 
         if (2 * length + i > nbytes) {
-            report_error("fs: check_prop_structure: overflow");
+            report_error("fs: check_prop_structure: "
+                         "overflow at VDA %u",
+                         fe->leader_vda);
             return FALSE;
         }
         i += 2 * length;
@@ -809,6 +815,83 @@ int fs_check_integrity(struct fs *fs)
 check_error:
     fs->checked = FALSE;
     return FALSE;
+}
+
+/* Auxiliary function for fs_scavenge(). */
+static
+int scavenge_cb(const struct fs *fs,
+                const struct file_entry *fe,
+                void *arg)
+{
+    struct open_file of;
+    struct file_info finfo;
+    uint8_t buffer[PAGE_DATA_SIZE];
+    size_t ret, nbytes;
+    FILE *fp;
+
+    UNUSED(arg);
+    if (!fs_get_file_info(fs, fe, &finfo, &of.error)) {
+        report_error("fs: scavenge: "
+                     "could not get file information: %s",
+                     fs_error(of.error));
+        return TRUE;
+    }
+
+    if (!fs_get_of(fs, fe, TRUE, TRUE, &of)) {
+        report_error("fs: scavenge: "
+                     "could not open file: %s",
+                     fs_error(of.error));
+        return TRUE;
+    }
+
+    fp = fopen(finfo.name, "wb");
+    if (!fp) {
+        report_error("fs: scavenge: "
+                     "could not open `%s` for writing",
+                     finfo.name);
+        fs_close_ro(fs, &of);
+        return TRUE;
+    }
+
+    while (TRUE) {
+        nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
+        if (of.error < 0) {
+            report_error("fs: scavenge: "
+                         "error while reading: %s",
+                         fs_error(of.error));
+            break;
+        }
+
+        if (nbytes > 0) {
+            ret = fwrite(buffer, 1, nbytes, fp);
+            if (ret != nbytes) {
+                report_error("fs: scavenge: "
+                             "error while writing `%s`",
+                             finfo.name);
+                break;
+            }
+        }
+
+        if (nbytes < sizeof(buffer)) break;
+    }
+
+    fclose(fp);
+    fs_close_ro(fs, &of);
+    return TRUE;
+}
+
+void fs_scavenge(const struct fs *fs)
+{
+    struct fs *fs_rw;
+    int checked;
+
+    checked = fs->checked;
+
+    /* Pretend it is checked. */
+    fs_rw = (struct fs *) fs;
+    fs_rw->checked = TRUE;
+    scan_files(fs, &scavenge_cb, NULL);
+    fs_rw->checked = checked;
 }
 
 int check_file_entry(const struct fs *fs,
