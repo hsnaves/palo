@@ -261,14 +261,18 @@ int fs_get_of(const struct fs *fs,
 /* Opens a file for reading or writing.
  * The file is specified by `name` and the open file is stored in `of`.
  * The `mode` specifies how to open the file. The valid modes are:
- *   "r" -> opens for reading,
+ *   "r"  -> opens for reading,
  *   "r+" -> opens the file for reading and writing, but does
  *           not create the file if it does not exist,
- *   "w" -> opens the file for reading and writing, create the
- *          file if it does not exist, but if exists, it truncates
- *          the file on open,
+ *   "w"  -> opens the file for reading and writing, create the
+ *           file if it does not exist, but if exists, it truncates
+ *           the file on open,
  *   "w+" -> opens the file for reading and writing, but does not
- *           truncate if the file already exists.
+ *           truncate if the file already exists,
+ *   "wd" -> like "w" but creates a directory, and the file must
+ *           not already exist.
+ *   "n"  -> creates a new file with no directory reference.
+ *   "nd" -> line "w" but creates a directory.
  * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_open(struct fs *fs,
@@ -343,6 +347,18 @@ int fs_unlink(struct fs *fs,
               const char *name,
               int remove_underlying,
               int *error);
+
+/* Creates a new directory at `name`.
+ * The parameter `is_sysdir` specifies if this directory is the SysDir
+ * directory.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_mkdir(struct fs *fs,
+             const char *name,
+             int is_sysdir,
+             int *error);
 
 /* Determines the file length.
  * The `fe` specifies the file. The file length is returned in `length`.

@@ -408,6 +408,7 @@ int remove_directory_entry(struct fs *fs,
         if (fs->ref_count[rm_de.fe.leader_vda] > 0) {
             fs->ref_count[rm_de.fe.leader_vda]--;
         } else {
+            /* This should not happen. */
             report_error("fs: remove_directory_entry: "
                          "inconsistent reference counts");
             update_reference_counts(fs);
