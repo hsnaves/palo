@@ -178,7 +178,7 @@ int main(int argc, char **argv)
 
     if (should_scavenge) {
         printf("scavenging the disk ...\n");
-        fs_scavenge(&fs);
+        fs_scavenge(&fs, stdout);
         printf("done scavenging\n");
     }
 

@@ -817,7 +817,9 @@ check_error:
     return FALSE;
 }
 
-/* Auxiliary function for fs_scavenge(). */
+/* Auxiliary function for fs_scavenge().
+ * The `arg` points to a file where to print the status information.
+ */
 static
 int scavenge_cb(const struct fs *fs,
                 const struct file_entry *fe,
@@ -827,16 +829,21 @@ int scavenge_cb(const struct fs *fs,
     struct file_info finfo;
     uint8_t buffer[PAGE_DATA_SIZE];
     size_t ret, nbytes;
-    FILE *fp;
+    FILE *fp, *out;
 
-    UNUSED(arg);
+    out = (FILE *) arg;
+
+    fprintf(out, "file at %u: ", fe->leader_vda);
+
     if (!fs_get_file_info(fs, fe, &finfo, &of.error)) {
+        fprintf(out, "error\n");
         report_error("fs: scavenge: "
                      "could not get file information: %s",
                      fs_error(of.error));
         return TRUE;
     }
 
+    fprintf(out, "%s\n", finfo.name);
     if (!fs_get_of(fs, fe, TRUE, TRUE, &of)) {
         report_error("fs: scavenge: "
                      "could not open file: %s",
@@ -880,7 +887,7 @@ int scavenge_cb(const struct fs *fs,
     return TRUE;
 }
 
-void fs_scavenge(const struct fs *fs)
+void fs_scavenge(const struct fs *fs, FILE *fp)
 {
     struct fs *fs_rw;
     int checked;
@@ -890,7 +897,7 @@ void fs_scavenge(const struct fs *fs)
     /* Pretend it is checked. */
     fs_rw = (struct fs *) fs;
     fs_rw->checked = TRUE;
-    scan_files(fs, &scavenge_cb, NULL);
+    scan_files(fs, &scavenge_cb, fp);
     fs_rw->checked = checked;
 }
 

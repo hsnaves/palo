@@ -262,8 +262,10 @@ int fs_check_integrity(struct fs *fs);
 
 /* Scavenges the filesystem for what it can salvage.
  * This will write files in the current directory.
+ * The parameter `fp` is to where the status messages should be
+ * printed.
  */
-void fs_scavenge(const struct fs *fs);
+void fs_scavenge(const struct fs *fs, FILE *fp);
 
 /* Obtains the file_entry of the SysDir.
  * The `sysdir_fe` will be populated with the corresponding SysDir
