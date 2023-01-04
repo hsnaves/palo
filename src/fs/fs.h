@@ -375,10 +375,21 @@ int fs_file_length(const struct fs *fs, const struct file_entry *fe,
  * the error, in case the function fails.
  * Returns TRUE on success.
  */
-int fs_file_info(const struct fs *fs,
-                 const struct file_entry *fe,
-                 struct file_info *finfo,
-                 int *error);
+int fs_get_file_info(const struct fs *fs,
+                     const struct file_entry *fe,
+                     struct file_info *finfo,
+                     int *error);
+
+/* Sets the file metadata at the leader page.
+ * This includes the name of the file, access and modification times,
+ * etc. The `error` parameter, if provided, returns the details about
+ * the error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_set_file_info(struct fs *fs,
+                     const struct file_entry *fe,
+                     const struct file_info *finfo,
+                     int *error);
 
 /* Scans (lists) one directory.
  * The directory is specified by the file_entry `dir_fe` parameter.

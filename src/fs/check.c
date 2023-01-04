@@ -393,10 +393,17 @@ int check_files_cb(const struct fs *fs,
 {
     struct check_files_cb_arg *cb_arg;
     struct file_info finfo;
+    int error;
 
     cb_arg = (struct check_files_cb_arg *) arg;
 
-    file_info(fs, fe, &finfo);
+    fs_get_file_info(fs, fe, &finfo, &error);
+    if (error < 0) {
+        report_error("fs: check_files: "
+                     "could not get file information: %s",
+                     fs_error(error));
+        cb_arg->has_error = TRUE;
+    }
     if (finfo.name_length >= NAME_LENGTH) {
         report_error("fs: check_files: name too large");
         cb_arg->has_error = TRUE;

@@ -48,7 +48,7 @@ int print_dir_cb(const struct fs *fs,
 
     if (de->type != DIR_ENTRY_VALID) return TRUE;
 
-    if (!fs_file_info(fs, &de->fe, &finfo, &error)) {
+    if (!fs_get_file_info(fs, &de->fe, &finfo, &error)) {
         report_error("fs: print_dir_cb: "
                      "could not get file information of `%s`: %s",
                      de->name, fs_error(error));

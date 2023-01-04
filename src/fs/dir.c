@@ -93,7 +93,7 @@ int fetch_directory_entry(const struct fs *fs,
     if (nbytes != 2) goto error_fetch;
 
     /* Predecode the length of the directory_entry. */
-    read_directory_entry(buffer, 0, de);
+    read_directory_entry(buffer, 0, TRUE, de);
 
     byte_length = 2 * ((size_t) de->length);
     if (byte_length == 0) goto error_fetch;
@@ -118,7 +118,7 @@ int fetch_directory_entry(const struct fs *fs,
             goto error_fetch;
     }
 
-    read_directory_entry(buffer, 0, de);
+    read_directory_entry(buffer, 0, FALSE, de);
     return TRUE;
 
 error_fetch:
@@ -179,7 +179,8 @@ error_append:
 
 int append_empty_entries(struct fs *fs,
                          struct open_file *of,
-                         size_t empty_length)
+                         size_t empty_length,
+                         int extend)
 {
     struct directory_entry de;
     size_t rem;
@@ -201,7 +202,7 @@ int append_empty_entries(struct fs *fs,
         }
         empty_length -= (size_t) de.length;
 
-        if (!append_directory_entry(fs, of, &de, FALSE)) {
+        if (!append_directory_entry(fs, of, &de, extend)) {
             return FALSE;
         }
     }
@@ -307,7 +308,7 @@ int walk_directory(struct fs *fs,
         return FALSE;
     }
 
-    append_empty_entries(fs, &c_arg.of, c_arg.empty_length);
+    append_empty_entries(fs, &c_arg.of, c_arg.empty_length, FALSE);
 
     if (c_arg.of.error < 0) {
         report_error("fs: walk_directory: "
@@ -367,13 +368,8 @@ int add_directory_entry(struct fs *fs,
     empty_length -= de->length;
     if (empty_length == 0) return TRUE;
 
-    if (!append_empty_entries(fs, &of, empty_length))
+    if (!append_empty_entries(fs, &of, empty_length, FALSE))
         goto error_add;
-
-    /* Update the reference count. */
-    if (fs->ref_count[dir_fe->leader_vda] > 0) {
-        fs->ref_count[de->fe.leader_vda]++;
-    }
 
     fs_close(fs, &of);
     return TRUE;
@@ -401,19 +397,5 @@ int remove_directory_entry(struct fs *fs,
         return FALSE;
     }
 
-    if (!removed) return FALSE;
-
-    /* Update the reference count. */
-    if (fs->ref_count[dir_fe->leader_vda] > 0) {
-        if (fs->ref_count[rm_de.fe.leader_vda] > 0) {
-            fs->ref_count[rm_de.fe.leader_vda]--;
-        } else {
-            /* This should not happen. */
-            report_error("fs: remove_directory_entry: "
-                         "inconsistent reference counts");
-            update_reference_counts(fs);
-        }
-    }
-
-    return TRUE;
+    return removed;
 }

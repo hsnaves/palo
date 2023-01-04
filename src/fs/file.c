@@ -40,6 +40,7 @@ int new_file_entry(struct fs *fs,
     struct open_file of;
     struct file_info finfo;
     uint16_t leader_vda;
+    int error;
 
     if (!allocate_page(fs, &leader_vda, NULL))
         return FALSE;
@@ -64,6 +65,7 @@ int new_file_entry(struct fs *fs,
     /* Write zero bytes to add one more page. */
     fs_write(fs, &of, NULL, 0, TRUE);
     /* Call fs_close_ro() to not write the leader page. */
+    of.read_only = TRUE; /* To avoid the error message. */
     fs_close_ro(fs, &of);
 
     if (of.error < 0) {
@@ -72,7 +74,6 @@ int new_file_entry(struct fs *fs,
     }
 
     increment_serial_number(fs);
-
     memset(&finfo, 0, sizeof(finfo));
 
     time(&finfo.created);
@@ -92,7 +93,15 @@ int new_file_entry(struct fs *fs,
     finfo.last_page.vda = leader_vda;
     finfo.last_page.pgnum = 0;
     finfo.last_page.pos = 0;
-    write_leader_page(fs, fe, &finfo);
+
+    if (!fs_set_file_info(fs, fe, &finfo, &error)) {
+        /* This should not happen. */
+        report_error("fs: new_file_entry: "
+                     "could not write leader page: %s",
+                     fs_error(error));
+        free_pages(fs, leader_vda, TRUE);
+        return FALSE;
+    }
 
     return TRUE;
 }
@@ -159,7 +168,7 @@ int validate_name(const char *name)
 
 int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
 {
-    if (!fs->checked)
+    if ((!fs->checked) || (fs->length <= 1))
         return FALSE;
 
     get_file_entry(fs, 1, sysdir_fe);
@@ -311,9 +320,6 @@ int fs_close(struct fs *fs, struct open_file *of)
 
     if (of->modified) {
         update_leader_page(fs, &of->fe);
-        if (of->fe.sn.word1 & SN_DIRECTORY) {
-            update_reference_counts(fs);
-        }
     }
 
     of->eof = TRUE;
@@ -616,8 +622,12 @@ int fs_unlink(struct fs *fs,
         goto error_unlink;
     }
 
-    if (remove_underlying && (fs->ref_count[fe.leader_vda] == 0)) {
-        free_pages(fs, fe.leader_vda, TRUE);
+    if (remove_underlying) {
+        update_reference_counts(fs);
+
+        if (fs->ref_count[fe.leader_vda] == 0) {
+            free_pages(fs, fe.leader_vda, TRUE);
+        }
     }
 
     if (error) {
@@ -648,7 +658,7 @@ int fs_mkdir(struct fs *fs,
         return FALSE;
     }
 
-    if (!append_empty_entries(fs, &of, 10000)) {
+    if (!append_empty_entries(fs, &of, 10000, TRUE)) {
         goto error_mkdir;
     }
 

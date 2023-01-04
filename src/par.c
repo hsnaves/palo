@@ -21,6 +21,7 @@ void usage(const char *prog_name)
     printf("  -i filename name  Inserts a given file\n");
     printf("  -c src dst        Copies from src to dst\n");
     printf("  -r name           Removes the link to name\n");
+    printf("  -m dir_name       Creates a new directory\n");
     printf("  -nru              To not remove underlying files\n");
     printf("  -ro               Operate in read only mode\n");
     printf("  -v                Increase verbosity\n");
@@ -36,6 +37,7 @@ int main(int argc, char **argv)
     const char *i_filename, *i_name;
     const char *c_src_name, *c_dst_name;
     const char *r_name;
+    const char *m_dir_name;
     struct geometry dg;
     struct fs fs;
     int i, is_last, is_second_last;
@@ -52,6 +54,7 @@ int main(int argc, char **argv)
     c_src_name = NULL;
     c_dst_name = NULL;
     r_name = NULL;
+    m_dir_name = NULL;
     modified = FALSE;
     read_only = FALSE;
     not_remove_underlying = FALSE;
@@ -102,6 +105,12 @@ int main(int argc, char **argv)
                 return 1;
             }
             r_name = argv[++i];
+        } else if (strcmp("-m", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the directory name");
+                return 1;
+            }
+            m_dir_name = argv[++i];
         } else if (strcmp("-nru", argv[i]) == 0) {
             not_remove_underlying = TRUE;
         } else if (strcmp("-ro", argv[i]) == 0) {
@@ -142,6 +151,7 @@ int main(int argc, char **argv)
         report_error("main: invalid disk");
         goto error;
     }
+    printf("filesystem checked: %u free pages\n", fs.free_pages);
 
     if (e_name != NULL) {
         if (!fs_extract_file(&fs, e_name, e_filename)) {
@@ -187,6 +197,17 @@ int main(int argc, char **argv)
         }
         printf("removed `%s` successfully\n",
                r_name);
+    }
+
+    if (m_dir_name != NULL) {
+        modified = TRUE;
+        if (!fs_mkdir(&fs, m_dir_name, FALSE, &error)) {
+            report_error("main: could not create directory `%s`: %s",
+                         m_dir_name, fs_error(error));
+            goto error;
+        }
+        printf("added directory `%s` successfully\n",
+               m_dir_name);
     }
 
     if (dir_name) {

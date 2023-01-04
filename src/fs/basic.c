@@ -64,8 +64,9 @@ void read_name(const uint8_t *data, size_t offset,
     if (slen > NAME_LENGTH - 1)
         slen = NAME_LENGTH - 1;
 
-    name[NAME_LENGTH - 1] = '\0';
-    memcpy(name, &data[offset + 1], NAME_LENGTH - 1);
+    if (slen > 0) {
+        memcpy(name, &data[offset + 1], slen);
+    }
     name[slen] = '\0';
 }
 
@@ -146,12 +147,14 @@ void write_file_position(uint8_t *data, size_t offset,
 }
 
 void read_directory_entry(const uint8_t *data, size_t offset,
-                          struct directory_entry *de)
+                          int header_only, struct directory_entry *de)
 {
     uint16_t w;
     w = read_word_be(data, offset);
     de->type = (w >> DIR_ENTRY_TYPE_SHIFT);
     de->length = (w & DIR_ENTRY_LEN_MASK);
+    if (header_only) return;
+
     read_file_entry(data, offset + DIR_OFF_FILE_ENTRY, &de->fe);
     de->name_length = data[offset + DIR_OFF_NAME];
     read_name(data, offset + DIR_OFF_NAME, de->name);

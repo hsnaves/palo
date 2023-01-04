@@ -21,11 +21,18 @@ void read_leader_page(const struct fs *fs,
     if (of.error < 0) {
         /* This should not happen. */
         report_error("fs: read_leader_page: "
-                     "%s", fs_error(of.error));
+                     "error while reading: %s",
+                     fs_error(of.error));
         memset(data, 0, PAGE_DATA_SIZE);
     }
 }
 
+/* Determines the file length.
+ * The `fe` specifies the file. Optionally, the `end_of` returns a
+ * pointer to the end of the file (if provided).
+ * Returns the file length.
+ */
+static
 size_t file_length(const struct fs *fs, const struct file_entry *fe,
                    struct open_file *end_of)
 {
@@ -48,8 +55,6 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
     return l;
 
 error_length:
-    /* This should not happen. */
-    report_error("fs: file_length: %s", fs_error(of.error));
     if (end_of) *end_of = of;
     fs_close_ro(fs, &of);
     return l;
@@ -59,6 +64,7 @@ int fs_file_length(const struct fs *fs, const struct file_entry *fe,
                    size_t *length, int *error)
 {
     struct open_file end_of;
+
     *length = file_length(fs, fe, &end_of);
     if (error) {
         *error = end_of.error;
@@ -89,11 +95,23 @@ int file_prop_cb(const struct fs *fs,
     return 1;
 }
 
-void file_info(const struct fs *fs,
-               const struct file_entry *fe,
-               struct file_info *finfo)
+int fs_get_file_info(const struct fs *fs,
+                     const struct file_entry *fe,
+                     struct file_info *finfo,
+                     int *error)
 {
+    struct open_file of;
     uint8_t data[PAGE_DATA_SIZE];
+
+    /* Test for errors. */
+    fs_get_of(fs, fe, FALSE, TRUE, &of);
+    fs_close_ro(fs, &of);
+    if (error) {
+        *error = of.error;
+    }
+
+    if (of.error < 0)
+        return FALSE;
 
     read_leader_page(fs, fe, data);
 
@@ -117,57 +135,37 @@ void file_info(const struct fs *fs,
 
     read_file_entry(data, LD_OFF_DIRFPHINT, &finfo->fe);
     read_file_position(data, LD_OFF_LASTPAGEHINT, &finfo->last_page);
-}
 
-int fs_file_info(const struct fs *fs,
-                 const struct file_entry *fe,
-                 struct file_info *finfo,
-                 int *error)
-{
-    struct open_file of;
-
-    /* Test for errors. */
-    fs_get_of(fs, fe, FALSE, TRUE, &of);
-    fs_close_ro(fs, &of);
-    if (error) {
-        *error = of.error;
-    }
-
-    if (of.error < 0)
-        return FALSE;
-
-    file_info(fs, fe, finfo);
     return TRUE;
 }
 
 /* Auxiliary function to write the leader page.
  * The contents of the raw leader page are in `data`, and
  * the file to write is indicated by `fe`.
- * Returns TRUE on success.
+ * Returns the error
  */
 static
-void write_raw_leader_page(struct fs *fs,
-                           const struct file_entry *fe,
-                           uint8_t data[PAGE_DATA_SIZE])
+int write_raw_leader_page(struct fs *fs,
+                          const struct file_entry *fe,
+                          uint8_t data[PAGE_DATA_SIZE])
 {
     struct open_file of;
 
     fs_get_of(fs, fe, FALSE, FALSE, &of);
     fs_write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
     /* Close using fs_close_ro() to avoid updating the leader page. */
+    of.read_only = TRUE; /* To avoid the error message. */
     fs_close_ro(fs, &of);
-    if (of.error < 0) {
-        /* This should never happen. */
-        report_error("fs: write_raw_leader_page: "
-                     "%s", fs_error(of.error));
-    }
+    return of.error;
 }
 
-void write_leader_page(struct fs *fs,
-                       const struct file_entry *fe,
-                       const struct file_info *finfo)
+int fs_set_file_info(struct fs *fs,
+                     const struct file_entry *fe,
+                     const struct file_info *finfo,
+                     int *error)
 {
     uint8_t data[PAGE_DATA_SIZE];
+    int _error;
 
     write_alto_time(data, LD_OFF_CREATED, finfo->created);
     write_alto_time(data, LD_OFF_WRITTEN, finfo->written);
@@ -187,19 +185,34 @@ void write_leader_page(struct fs *fs,
     write_file_entry(data, LD_OFF_DIRFPHINT, &finfo->fe);
     write_file_position(data, LD_OFF_LASTPAGEHINT, &finfo->last_page);
 
-    write_raw_leader_page(fs, fe, data);
+    _error = write_raw_leader_page(fs, fe, data);
+    if (error) {
+        *error = _error;
+    }
+    return (_error >= 0);
 }
 
 void update_leader_page(struct fs *fs, const struct file_entry *fe)
 {
     struct open_file end_of;
     uint8_t data[PAGE_DATA_SIZE];
+    int error;
 
     read_leader_page(fs, fe, data);
     file_length(fs, fe, &end_of);
+    if (end_of.error < 0) {
+        report_error("fs: update_leader_page: "
+                     "could not determine length: %s",
+                     fs_error(end_of.error));
+        return;
+    }
 
-    write_file_entry(data, LD_OFF_DIRFPHINT, fe);
     write_file_position(data, LD_OFF_LASTPAGEHINT, &end_of.pos);
-
-    write_raw_leader_page(fs, fe, data);
+    error = write_raw_leader_page(fs, fe, data);
+    if (error < 0) {
+        /* This should never happen. */
+        report_error("fs: update_leader_page: "
+                     "could not write page: %s",
+                     fs_error(error));
+    }
 }

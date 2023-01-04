@@ -156,11 +156,13 @@ void write_file_position(uint8_t *data, size_t offset,
 
 /* Reads a directory_entry data.
  * The source data is given by `data`, and the offset where
- * the directory_entry is in `offset`. The directory_entry is stored
- * in `de`.
+ * the directory_entry is in `offset`. The `header_only` parameter
+ * indicates that this function will only decode the first word, which
+ * contains `de->type` and `de->length`.
+ * The directory_entry is stored in `de`.
  */
 void read_directory_entry(const uint8_t *data, size_t offset,
-                          struct directory_entry *de);
+                          int header_only, struct directory_entry *de);
 
 /* Writes the directory_entry data.
  * The destination data is given by `data`, and the offset where
@@ -241,11 +243,14 @@ int fetch_directory_entry(const struct fs *fs,
 /* Appends the empty entries at the end of the directory.
  * The parameter `of` is the open_file of the currently open directory.
  * The `empty_length` specifies how many empty words are left.
+ * The `extend` parameter is passed to fs_write() to extend the
+ * directory.
  * Returns TRUE on success.
  */
 int append_empty_entries(struct fs *fs,
                          struct open_file *of,
-                         size_t empty_length);
+                         size_t empty_length,
+                         int extend);
 
 /* Compresses the entries in a directory.
  * The parameter `dir_fe` specifies the directory. The parameter
@@ -331,22 +336,6 @@ void free_pages(struct fs *fs, uint16_t vda, int follow);
 void read_leader_page(const struct fs *fs,
                       const struct file_entry *fe,
                       uint8_t data[PAGE_DATA_SIZE]);
-
-/* Determines the file length.
- * The `fe` specifies the file. Optionally, the `end_of` returns a
- * pointer to the end of the file (if provided).
- * Returns the file length.
- */
-size_t file_length(const struct fs *fs, const struct file_entry *fe,
-                   struct open_file *end_of);
-
-/* Obtains the file metadata at the leader page.
- * This includes the name of the file, access and modification times,
- * etc.
- */
-void file_info(const struct fs *fs,
-               const struct file_entry *fe,
-               struct file_info *finfo);
 
 /* Writes the leader page.
  * The file whose leader page is to be written is specified by `fe`.
