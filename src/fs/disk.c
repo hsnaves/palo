@@ -296,6 +296,7 @@ int fs_format(struct fs *fs, int *error)
 
     fs->checked = TRUE;
     update_disk_metadata(fs);
+    fs->last_sn.word2 = 100; /* First serial number. */
     if (!make_directory(fs, "SysDir.", TRUE, error)) {
         return FALSE;
     }
