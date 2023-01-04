@@ -16,6 +16,7 @@ void usage(const char *prog_name)
     printf(" %s [options] disk\n", prog_name);
     printf("where:\n");
     printf("  -2                Use double disk\n");
+    printf("  -f                To format the disk\n");
     printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
@@ -41,6 +42,7 @@ int main(int argc, char **argv)
     struct geometry dg;
     struct fs fs;
     int i, is_last, is_second_last;
+    int should_format;
     int modified, read_only;
     int not_remove_underlying;
     int verbose, error;
@@ -55,6 +57,7 @@ int main(int argc, char **argv)
     c_dst_name = NULL;
     r_name = NULL;
     m_dir_name = NULL;
+    should_format = FALSE;
     modified = FALSE;
     read_only = FALSE;
     not_remove_underlying = FALSE;
@@ -70,6 +73,8 @@ int main(int argc, char **argv)
         is_second_last = (i + 2 >= argc);
         if (strcmp("-2", argv[i]) == 0) {
             dg.num_disks = 2;
+        } else if (strcmp("-f", argv[i]) == 0) {
+            should_format = TRUE;
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -141,10 +146,20 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    printf("loading disk image `%s`\n", disk_filename);
-    if (!fs_load_image(&fs, disk_filename)) {
-        report_error("main: could not load disk image");
-        goto error;
+    if (should_format) {
+        modified = TRUE;
+        printf("formatting disk image\n");
+        if (!fs_format(&fs, &error)) {
+            report_error("main: could not format: %s",
+                         fs_error(error));
+            goto error;
+        }
+    } else {
+        printf("loading disk image `%s`\n", disk_filename);
+        if (!fs_load_image(&fs, disk_filename)) {
+            report_error("main: could not load disk image");
+            goto error;
+        }
     }
 
     if (!fs_check_integrity(&fs)) {
@@ -201,7 +216,7 @@ int main(int argc, char **argv)
 
     if (m_dir_name != NULL) {
         modified = TRUE;
-        if (!fs_mkdir(&fs, m_dir_name, FALSE, &error)) {
+        if (!fs_mkdir(&fs, m_dir_name, &error)) {
             report_error("main: could not create directory `%s`: %s",
                          m_dir_name, fs_error(error));
             goto error;

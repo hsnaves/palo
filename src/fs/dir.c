@@ -16,7 +16,6 @@
 struct walk_dir_cb_arg {
     struct fs *fs;                /* A non-const reference to fs. */
     struct open_file of;          /* Open file for the directory. */
-    int do_compress;              /* To actually do the compression. */
     const char *remove_name;      /* The name to remove. */
     size_t used_length;           /* Total used length. */
     size_t empty_length;          /* The total empty length. */
@@ -84,8 +83,8 @@ int fetch_directory_entry(const struct fs *fs,
     uint8_t buffer[64];
     size_t nbytes, byte_length;
 
-    if (of->error < 0) return -1;
-    if (of->eof) return 0;
+    if (of->error < 0) return FALSE;
+    if (of->eof) return FALSE;
 
     nbytes = fs_read(fs, of, buffer, 2);
     if (of->error < 0) return FALSE;
@@ -240,7 +239,6 @@ int walk_dir_cb(const struct fs *fs,
     }
 
     c_arg->used_length += (size_t) de->length;
-    if (!c_arg->do_compress) return TRUE;
 
     if (!append_directory_entry(c_arg->fs, &c_arg->of, de, FALSE)) {
         report_error("fs: walk_directory: "
@@ -260,7 +258,6 @@ static
 int walk_directory(struct fs *fs,
                    const struct file_entry *dir_fe,
                    const char *remove_name,
-                   int do_compress,
                    size_t *used_length,
                    size_t *empty_length,
                    int *removed,
@@ -271,18 +268,16 @@ int walk_directory(struct fs *fs,
     memset(&c_arg, 0, sizeof(struct walk_dir_cb_arg));
     c_arg.fs = fs;
     c_arg.remove_name = remove_name;
-    c_arg.do_compress = do_compress;
     c_arg.used_length = 0;
     c_arg.empty_length = 0;
     c_arg.removed = FALSE;
     c_arg.has_error = FALSE;
-    if (do_compress) {
-        fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
-        if (c_arg.of.error < 0) {
-            report_error("fs: walk_directory: "
-                         "%s", fs_error(c_arg.of.error));
-            return FALSE;
-        }
+
+    fs_get_of(fs, dir_fe, TRUE, FALSE, &c_arg.of);
+    if (c_arg.of.error < 0) {
+        report_error("fs: walk_directory: "
+                     "%s", fs_error(c_arg.of.error));
+        return FALSE;
     }
 
     scan_directory(fs, dir_fe, &walk_dir_cb, &c_arg);
@@ -298,8 +293,6 @@ int walk_directory(struct fs *fs,
     if (rm_de) {
         *rm_de = c_arg.rm_de;
     }
-
-    if (!do_compress) return TRUE;
 
     if (c_arg.of.error < 0) {
         report_error("fs: walk_directory: "
@@ -324,12 +317,11 @@ int walk_directory(struct fs *fs,
 
 int compress_directory(struct fs *fs,
                        const struct file_entry *dir_fe,
-                       int do_compress,
                        size_t *used_length,
                        size_t *empty_length)
 {
-    if (!walk_directory(fs, dir_fe, NULL, do_compress,
-                        used_length, empty_length, NULL, NULL)) {
+    if (!walk_directory(fs, dir_fe, NULL, used_length,
+                        empty_length, NULL, NULL)) {
         report_error("fs: compress_directory: "
                      "could not walk directory");
         return FALSE;
@@ -339,14 +331,12 @@ int compress_directory(struct fs *fs,
 
 int add_directory_entry(struct fs *fs,
                         const struct file_entry *dir_fe,
-                        const struct directory_entry *de,
-                        int do_add)
+                        const struct directory_entry *de)
 {
     size_t used_length, empty_length;
     struct open_file of;
 
-    if (!compress_directory(fs, dir_fe, do_add,
-                            &used_length, &empty_length)) {
+    if (!compress_directory(fs, dir_fe, &used_length, &empty_length)) {
         report_error("fs: add_directory_entry: "
                      "could not compress");
         return FALSE;
@@ -354,9 +344,6 @@ int add_directory_entry(struct fs *fs,
 
     if (empty_length < de->length + MIN_ENTRY_LENGTH)
         return FALSE;
-
-    if (!do_add)
-        return TRUE;
 
     fs_get_of(fs, dir_fe, TRUE, FALSE, &of);
     fs_read(fs, &of, NULL, 2 * used_length);
@@ -384,13 +371,12 @@ error_add:
 
 int remove_directory_entry(struct fs *fs,
                            const struct file_entry *dir_fe,
-                           const char *remove_name,
-                           int do_remove)
+                           const char *remove_name)
 {
     int removed;
     struct directory_entry rm_de;
 
-    if (!walk_directory(fs, dir_fe, remove_name, do_remove,
+    if (!walk_directory(fs, dir_fe, remove_name,
                         NULL, NULL, &removed, &rm_de)) {
         report_error("fs: remove_directory_entry: "
                      "could not walk directory");

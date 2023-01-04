@@ -253,43 +253,33 @@ int append_empty_entries(struct fs *fs,
                          int extend);
 
 /* Compresses the entries in a directory.
- * The parameter `dir_fe` specifies the directory. The parameter
- * `do_compress`, when set to TRUE, will indicate that the function
- * should actually compress the directory, otherwise, only a dry-run
- * will be performed.
+ * The parameter `dir_fe` specifies the directory.
  * The `used_length` and `empty_length` return statistics about the
  * usage of the directory file. Those statistics are measured in words.
  * Returns TRUE on success.
  */
 int compress_directory(struct fs *fs,
                        const struct file_entry *dir_fe,
-                       int do_compress,
                        size_t *used_length,
                        size_t *empty_length);
 
 /* Adds one entry to the directory.
  * The parameter `dir_fe` specifies the directory.  The `de` is the
- * directory_entry to be added. The parameter `do_add` is set to TRUE
- * when the entry is to be added. Otherwise, only a dry-run will be
- * performed.
+ * directory_entry to be added.
  * Returns TRUE if the entry was added successfully.
  */
 int add_directory_entry(struct fs *fs,
                         const struct file_entry *dir_fe,
-                        const struct directory_entry *de,
-                        int do_add);
+                        const struct directory_entry *de);
 
 /* Removes one entry from the directory.
  * The parameter `dir_fe` specifies the directory.  The `remove_name`
- * is the name of the entry to be removed. The parameter `do_remove` is
- * set to TRUE when the entry is to be removed. Otherwise, only a
- * dry-run will be performed.
+ * is the name of the entry to be removed.
  * Returns TRUE if the entry was removed successfully.
  */
 int remove_directory_entry(struct fs *fs,
                            const struct file_entry *dir_fe,
-                           const char *remove_name,
-                           int do_remove);
+                           const char *remove_name);
 
 
 /* disk.c */
@@ -324,6 +314,22 @@ int allocate_page(struct fs *fs, uint16_t *free_vda,
  * until the last page.
  */
 void free_pages(struct fs *fs, uint16_t vda, int follow);
+
+
+/* file.c */
+
+
+/* Creates a new directory at `name`.
+ * The parameter `is_sysdir` specifies if this directory is the SysDir
+ * directory.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int make_directory(struct fs *fs,
+                   const char *name,
+                   int is_sysdir,
+                   int *error);
 
 
 /* meta.c */

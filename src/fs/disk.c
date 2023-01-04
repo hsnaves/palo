@@ -267,3 +267,50 @@ update_error:
     fs_close(fs, &of);
     return FALSE;
 }
+
+int fs_format(struct fs *fs, int *error)
+{
+    struct page *pg;
+    struct file_entry sysdir_fe;
+    uint16_t vda, rda;
+
+    for (vda = 0; vda < fs->length; vda++) {
+        pg = &fs->pages[vda];
+
+        virtual_to_real(&fs->dg, vda, &rda);
+
+        pg->page_vda = vda;
+        pg->header[1] = rda;
+        pg->header[0] = 0;
+
+        pg->label.version = VERSION_FREE;
+        pg->label.unused = 0;
+        pg->label.nbytes = 0;
+        pg->label.next_rda = 0;
+        pg->label.prev_rda = 0;
+    }
+
+    if (fs->length > 0) {
+        pg = &fs->pages[0];
+        pg->label.version = 1;
+        pg->label.file_pgnum = 1;
+    }
+
+    fs->checked = TRUE;
+    update_disk_metadata(fs);
+    if (!make_directory(fs, "SysDir.", TRUE, error)) {
+        return FALSE;
+    }
+
+    fs_get_sysdir(fs, &sysdir_fe);
+    if (!fs_link(fs, "SysDir.", &sysdir_fe, error)) {
+        return FALSE;
+    }
+
+    if (!fs_update_disk_descriptor(fs, error)) {
+        return FALSE;
+    }
+
+    fs->checked = FALSE;
+    return TRUE;
+}

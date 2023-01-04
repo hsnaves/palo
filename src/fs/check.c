@@ -178,19 +178,21 @@ int check_page_links(const struct fs *fs)
         pg = &fs->pages[vda];
 
         if (!virtual_to_real(&fs->dg, vda, &rda)) {
-            report_error("fs: check_links: could not convert "
-                         "virtual to real disk address: %u", vda);
+            report_error("fs: check_page_links: "
+                         "could not convert virtual to real "
+                         "disk address: %u", vda);
             return FALSE;
         }
 
         if (pg->label.version == VERSION_FREE
             || pg->label.version == VERSION_BAD
-            || pg->label.version == 0)
+            || pg->label.version == 0
+            || vda == 0)
             continue;
 
         if (pg->label.prev_rda != 0) {
             if (!real_to_virtual(&fs->dg, pg->label.prev_rda, &ovda)) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "invalid prev_rda = %u at VDA = %u",
                              pg->label.prev_rda, vda);
                 success = FALSE;
@@ -199,7 +201,7 @@ int check_page_links(const struct fs *fs)
 
             opg = &fs->pages[ovda];
             if (opg->label.file_pgnum != (pg->label.file_pgnum - 1)) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "discontiguous file_pgnum (prev) "
                              "at VDA = %u: expecting %u but got %u",
                              vda, pg->label.file_pgnum - 1,
@@ -210,7 +212,7 @@ int check_page_links(const struct fs *fs)
 
             if (opg->label.sn.word1 != pg->label.sn.word1
                 || opg->label.sn.word2 != pg->label.sn.word2) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "differing file serial numbers (prev) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
                              vda, pg->label.sn.word1, pg->label.sn.word2,
@@ -219,9 +221,8 @@ int check_page_links(const struct fs *fs)
                 continue;
             }
 
-            /* First page is special, so not test it. */
-            if (opg->label.next_rda != rda && vda != 0) {
-                report_error("fs: check_links: "
+            if (opg->label.next_rda != rda) {
+                report_error("fs: check_page_links: "
                              "broken link (prev) at VDA = %u: "
                              "points to RDA %u instead of %u",
                              vda, opg->label.next_rda, rda);
@@ -230,7 +231,7 @@ int check_page_links(const struct fs *fs)
             }
         } else {
             if (pg->label.file_pgnum != 0) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "file_pgnum = %u is not zero at VDA = %u",
                              pg->label.file_pgnum, vda);
                 success = FALSE;
@@ -240,7 +241,7 @@ int check_page_links(const struct fs *fs)
 
         if (pg->label.next_rda != 0) {
             if (!real_to_virtual(&fs->dg, pg->label.next_rda, &ovda)) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "invalid next_rda = %u at VDA = %u",
                              pg->label.next_rda, vda);
                 success = FALSE;
@@ -249,7 +250,7 @@ int check_page_links(const struct fs *fs)
 
             opg = &fs->pages[ovda];
             if (opg->label.file_pgnum != (pg->label.file_pgnum + 1)) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "discontiguous file_pgnum (next) "
                              "at VDA = %u: expecting %u but got %u",
                              vda, pg->label.file_pgnum + 1,
@@ -260,7 +261,7 @@ int check_page_links(const struct fs *fs)
 
             if (opg->label.sn.word1 != pg->label.sn.word1
                 || opg->label.sn.word2 != pg->label.sn.word2) {
-                report_error("fs: check_links: "
+                report_error("fs: check_page_links: "
                              "differing file serial numbers (next) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
                              vda, pg->label.sn.word1, pg->label.sn.word2,
@@ -269,9 +270,8 @@ int check_page_links(const struct fs *fs)
                 continue;
             }
 
-            /* First page is special, so not test it. */
-            if (opg->label.prev_rda != rda && vda != 0) {
-                report_error("fs: check_links: "
+            if (opg->label.prev_rda != rda) {
+                report_error("fs: check_page_links: "
                              "broken link (next) at VDA = %u: "
                              "points to RDA %u instead of %u",
                              vda, opg->label.prev_rda, rda);
@@ -350,6 +350,8 @@ int check_basic_filesystem_data(const struct fs *fs)
             success = FALSE;
             continue;
         }
+
+        if (vda == 0) continue;
 
         if (pg->label.prev_rda == 0) {
             if (pg->label.nbytes < PAGE_DATA_SIZE) {
@@ -773,12 +775,9 @@ int check_disk_descriptor(const struct fs *fs)
         goto error_check;
     }
 
-    fs_close_ro(fs, &of);
-    return TRUE;
-
 error_check:
     fs_close_ro(fs, &of);
-    return FALSE;
+    return TRUE;
 }
 
 int fs_check_integrity(struct fs *fs)

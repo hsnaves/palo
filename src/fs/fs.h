@@ -104,6 +104,10 @@ struct open_file {
                                    */
     int read_only;                /* File was open in read-only mode. */
     int modified;                 /* Indicates that file was modified. */
+    int new_file;                 /* If this is a new file. */
+    struct file_entry dir_fe;     /* The file_entry of the parent
+                                   * directory, for new files.
+                                   */
 };
 
 /* Structure representing a filesystem page (sector). */
@@ -219,6 +223,13 @@ void fs_destroy(struct fs *fs);
  */
 int fs_create(struct fs *fs, struct geometry dg);
 
+/* Formats the filesystem.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_format(struct fs *fs, int *error);
+
 /* Reads the contents of the disk from a file named `filename`.
  * Returns TRUE on success.
  */
@@ -269,10 +280,6 @@ int fs_get_of(const struct fs *fs,
  *           the file on open,
  *   "w+" -> opens the file for reading and writing, but does not
  *           truncate if the file already exists,
- *   "wd" -> like "w" but creates a directory, and the file must
- *           not already exist.
- *   "n"  -> creates a new file with no directory reference.
- *   "nd" -> line "w" but creates a directory.
  * Returns TRUE on success. Any errors are written to `of->error`.
  */
 int fs_open(struct fs *fs,
@@ -349,15 +356,12 @@ int fs_unlink(struct fs *fs,
               int *error);
 
 /* Creates a new directory at `name`.
- * The parameter `is_sysdir` specifies if this directory is the SysDir
- * directory.
  * The `error` parameter, if provided, returns the details about the
  * error, in case the function fails.
  * Returns TRUE on success.
  */
 int fs_mkdir(struct fs *fs,
              const char *name,
-             int is_sysdir,
              int *error);
 
 /* Determines the file length.

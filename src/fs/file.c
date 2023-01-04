@@ -25,7 +25,9 @@ void get_file_entry(const struct fs *fs, uint16_t leader_vda,
 }
 
 /* Creates a new file_entry in the filesystem.
- * If `directory` is set to TRUE, a directory is created.
+ * If `directory` is non-zero, a directory is created.
+ * In addition if it is bigger than 1, the disk geometry
+ * is added to the file properties.
  * The `base_name` specifies the name of the file.
  * The created file_entry is stored in `fe`.
  * Returns TRUE on success.
@@ -82,7 +84,16 @@ int new_file_entry(struct fs *fs,
 
     memset(finfo.name, 0, sizeof(finfo.name));
     finfo.name_length = strlen(base_name);
-    strncpy(finfo.name, base_name, NAME_LENGTH - 1);
+    strncpy(finfo.name, base_name, NAME_LENGTH);
+    finfo.name[NAME_LENGTH - 1] = '\0';
+
+    if (directory > 1) {
+        finfo.has_dg = TRUE;
+        finfo.dg = fs->dg;
+        finfo.props[0] = 1;
+        finfo.props[1] = 5;
+        write_geometry(finfo.props, 2, &finfo.dg);
+    }
 
     finfo.propbegin = LD_OFF_PROPS / 2;
     finfo.proplen = (LD_OFF_SPARE - LD_OFF_PROPS) / 2;
@@ -166,6 +177,52 @@ int validate_name(const char *name)
     return 1;
 }
 
+/* Auxiliary function to resolve names (and validates the base_name).
+ * It accepts the same parameters as fs_resolve_name(), but it also
+ * has the `error` parameter which returns information about the validation
+ * of the `base_name`.
+ * Returns TRUE on success.
+ */
+static
+int resolve_location(const struct fs *fs, const char *name, int *found,
+                     struct file_entry *fe, struct file_entry *dir_fe,
+                     const char **base_name, int *error)
+{
+    const char *_base_name;
+    int _found, _error;
+    int ret;
+
+    _error = ERROR_NO_ERROR;
+    if (!fs_resolve_name(fs, name, &_found, fe, dir_fe, &_base_name)) {
+        _error = ERROR_FS_UNCHECKED;
+        goto exit_resolve;
+    }
+
+    if (!_found) {
+        ret = validate_name(_base_name);
+        if (ret < 0) {
+            _error = ERROR_INVALID_NAME;
+            goto exit_resolve;
+        }
+        if (ret == 0) {
+            _error = ERROR_DIR_NOT_FOUND;
+            goto exit_resolve;
+        }
+    }
+
+exit_resolve:
+    if (found) {
+        *found = _found;
+    }
+    if (base_name) {
+        *base_name = _base_name;
+    }
+    if (error) {
+        *error = _error;
+    }
+    return (_error >= 0);
+}
+
 int fs_get_sysdir(const struct fs *fs, struct file_entry *sysdir_fe)
 {
     if ((!fs->checked) || (fs->length <= 1))
@@ -199,6 +256,8 @@ int fs_get_of(const struct fs *fs,
     of->error = ERROR_NO_ERROR;
     of->read_only = read_only;
     of->modified = FALSE;
+    of->new_file = FALSE;
+    memset(&of->dir_fe, 0, sizeof(struct file_entry));
 
     if (skip_leader)
         advance_page(fs, of);
@@ -212,58 +271,29 @@ int fs_open(struct fs *fs,
             struct open_file *of)
 {
     struct file_entry fe, dir_fe;
-    struct directory_entry de;
     const char *base_name;
-    int found, ret, is_new_mode;
-    int is_directory;
+    int is_read_only;
+    int found;
 
-    of->error = ERROR_UNKNOWN;
-    if (!fs->checked) {
-        of->error = ERROR_FS_UNCHECKED;
+    if (!resolve_location(fs, name, &found, &fe, &dir_fe,
+                          &base_name, &of->error))
         return FALSE;
-    }
 
-    is_new_mode = (strcmp(mode, "n") == 0)
-        || (strcmp(mode, "nd") == 0);
-    is_directory = (strcmp(mode, "wd") == 0)
-        || (strcmp(mode, "nd") == 0);
-
-    if (is_new_mode) {
-        found = FALSE;
-        base_name = name;
-    } else {
-        if (!fs_resolve_name(fs, name, &found,
-                             &fe, &dir_fe, &base_name)) {
-            /* Can only fail if the filesystem is unchecked. */
-            of->error = ERROR_FS_UNCHECKED;
-            return FALSE;
-        }
-    }
-
-    if ((strcmp(mode, "r") == 0) || (strcmp(mode, "r+") == 0)) {
+    is_read_only = (strcmp(mode, "r") == 0);
+    if (is_read_only || (strcmp(mode, "r+") == 0)) {
         if (!found) {
             of->error = ERROR_FILE_NOT_FOUND;
             return FALSE;
         }
-        return fs_get_of(fs, &fe, TRUE,
-                         (strcmp(mode, "r") == 0),
-                         of);
+        return fs_get_of(fs, &fe, TRUE, is_read_only, of);
     }
 
-    if ((strcmp(mode, "w") != 0)
-        && (strcmp(mode, "w+") != 0)
-        && (!is_new_mode) && (!is_directory)) {
-
+    if ((strcmp(mode, "w") != 0) && (strcmp(mode, "w+") != 0)) {
         of->error = ERROR_INVALID_MODE;
         return FALSE;
     }
 
     if (found) {
-        if (is_directory) {
-            of->error = ERROR_ALREADY_EXIST;
-            return FALSE;
-        }
-
         fs_get_of(fs, &fe, TRUE, FALSE, of);
         if (strcmp(mode, "w") == 0) {
             fs_truncate(fs, of);
@@ -271,55 +301,46 @@ int fs_open(struct fs *fs,
         return (of->error >= 0);
     }
 
-    ret = validate_name(base_name);
-    if (is_new_mode) {
-        if (ret <= 0) {
-            of->error = ERROR_INVALID_NAME;
-            return FALSE;
-        }
-    } else {
-        if (ret < 0) {
-            of->error = ERROR_INVALID_NAME;
-            return FALSE;
-        }
-        if (ret == 0) {
-            of->error = ERROR_DIR_NOT_FOUND;
-            return FALSE;
-        }
-    }
-
-    if (!new_file_entry(fs, is_directory, base_name, &fe)) {
+    if (!new_file_entry(fs, 0, base_name, &fe)) {
         of->error = ERROR_DISK_FULL;
         return FALSE;
     }
 
-    if (!is_new_mode) {
-        de.type = DIR_ENTRY_VALID;
-        de.fe = fe;
-
-        memset(de.name, 0, sizeof(de.name));
-        de.name_length = strlen(base_name);
-        strncpy(de.name, base_name, NAME_LENGTH - 1);
-        update_directory_entry_length(&de);
-
-        if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
-            of->error = ERROR_DIR_FULL;
-            free_pages(fs, fe.leader_vda, TRUE);
-            return FALSE;
-        }
-    }
-
     fs_get_of(fs, &fe, TRUE, FALSE, of);
+    of->new_file = TRUE;
+    of->dir_fe = dir_fe;
     return (of->error >= 0);
 }
 
 int fs_close(struct fs *fs, struct open_file *of)
 {
+    struct directory_entry de;
+    struct file_info finfo;
+
     if (!check_of(fs, of))
         return FALSE;
 
     if (of->modified) {
         update_leader_page(fs, &of->fe);
+    }
+
+    if (of->new_file) {
+        fs_get_file_info(fs, &of->fe, &finfo, NULL);
+
+        de.type = DIR_ENTRY_VALID;
+        de.fe = of->fe;
+
+        memset(de.name, 0, sizeof(de.name));
+        de.name_length = finfo.name_length;
+        strncpy(de.name, finfo.name, NAME_LENGTH);
+        de.name[NAME_LENGTH - 1] = '\0';
+        update_directory_entry_length(&de);
+
+        if (!add_directory_entry(fs, &of->dir_fe, &de)) {
+            of->error = ERROR_DIR_FULL;
+            free_pages(fs, of->fe.leader_vda, TRUE);
+            return FALSE;
+        }
     }
 
     of->eof = TRUE;
@@ -333,17 +354,9 @@ int fs_open_ro(const struct fs *fs,
     struct file_entry fe;
     int found;
 
-    of->error = ERROR_UNKNOWN;
-    if (!fs->checked) {
-        of->error = ERROR_FS_UNCHECKED;
+    if (!resolve_location(fs, name, &found, &fe, NULL,
+                          NULL, &of->error))
         return FALSE;
-    }
-
-    if (!fs_resolve_name(fs, name, &found, &fe, NULL, NULL)) {
-        /* Can only fail if the filesystem is unchecked. */
-        of->error = ERROR_FS_UNCHECKED;
-        return FALSE;
-    }
 
     if (!found) {
         of->error = ERROR_FILE_NOT_FOUND;
@@ -530,39 +543,21 @@ int fs_link(struct fs *fs,
     struct file_entry dir_fe;
     struct directory_entry de;
     const char *base_name;
-    int found, ret;
+    int found;
     int _error;
 
-    _error = ERROR_UNKNOWN;
-    if (!fs->checked) {
-        _error = ERROR_FS_UNCHECKED;
-        goto error_link;
+    if (!resolve_location(fs, name, &found, NULL, &dir_fe,
+                          &base_name, &_error))
+        goto exit_link;
+
+    if (found) {
+        _error = ERROR_ALREADY_EXIST;
+        goto exit_link;
     }
 
     if (!check_file_entry(fs, fe, FALSE)) {
         _error = ERROR_INVALID_FE;
-        goto error_link;
-    }
-
-    if (!fs_resolve_name(fs, name, &found, NULL, &dir_fe, &base_name)) {
-        /* Can only fail if the filesystem is unchecked. */
-        _error = ERROR_FS_UNCHECKED;
-        goto error_link;
-    }
-
-    if (found) {
-        _error = ERROR_ALREADY_EXIST;
-        goto error_link;
-    }
-
-    ret = validate_name(base_name);
-    if (ret < 0) {
-        _error = ERROR_INVALID_NAME;
-        goto error_link;
-    }
-    if (ret == 0) {
-        _error = ERROR_DIR_NOT_FOUND;
-        goto error_link;
+        goto exit_link;
     }
 
     de.type = DIR_ENTRY_VALID;
@@ -570,24 +565,20 @@ int fs_link(struct fs *fs,
 
     memset(de.name, 0, sizeof(de.name));
     de.name_length = strlen(base_name);
-    strncpy(de.name, base_name, NAME_LENGTH - 1);
+    strncpy(de.name, base_name, NAME_LENGTH);
+    de.name[NAME_LENGTH - 1] = '\0';
     update_directory_entry_length(&de);
 
-    if (!add_directory_entry(fs, &dir_fe, &de, TRUE)) {
+    if (!add_directory_entry(fs, &dir_fe, &de)) {
         _error = ERROR_DIR_FULL;
-        goto error_link;
+        goto exit_link;
     }
 
-    if (error) {
-        *error = ERROR_NO_ERROR;
-    }
-    return TRUE;
-
-error_link:
+exit_link:
     if (error) {
         *error = _error;
     }
-    return FALSE;
+    return (_error >= 0);
 }
 
 int fs_unlink(struct fs *fs,
@@ -600,86 +591,83 @@ int fs_unlink(struct fs *fs,
     int found;
     int _error;
 
-    _error = ERROR_UNKNOWN;
-    if (!fs->checked) {
-        _error = ERROR_FS_UNCHECKED;
-        goto error_unlink;
-    }
-
-    if (!fs_resolve_name(fs, name, &found, &fe, &dir_fe, &base_name)) {
-        /* Can only fail if the filesystem is unchecked. */
-        _error = ERROR_FS_UNCHECKED;
-        goto error_unlink;
-    }
+    if (!resolve_location(fs, name, &found, &fe, &dir_fe,
+                          &base_name, &_error))
+        goto exit_unlink;
 
     if (!found) {
         _error = ERROR_FILE_NOT_FOUND;
-        goto error_unlink;
+        goto exit_unlink;
     }
 
-    if (!remove_directory_entry(fs, &dir_fe, base_name, TRUE)) {
+    if (!remove_directory_entry(fs, &dir_fe, base_name)) {
         _error = ERROR_UNKNOWN;
-        goto error_unlink;
+        goto exit_unlink;
     }
 
     if (remove_underlying) {
         update_reference_counts(fs);
-
         if (fs->ref_count[fe.leader_vda] == 0) {
             free_pages(fs, fe.leader_vda, TRUE);
         }
     }
 
-    if (error) {
-        *error = ERROR_NO_ERROR;
-    }
-    return TRUE;
-
-error_unlink:
+exit_unlink:
     if (error) {
         *error = _error;
     }
-    return FALSE;
+    return (_error >= 0);
+}
+
+int make_directory(struct fs *fs,
+                   const char *name,
+                   int is_sysdir,
+                   int *error)
+{
+    struct open_file of;
+    struct file_entry fe, dir_fe;
+    const char *base_name;
+    int found, directory;
+    int _error;
+
+    if (!resolve_location(fs, name, &found, NULL, &dir_fe,
+                          &base_name, &_error))
+        goto exit_mkdir;
+
+    if (found) {
+        _error = ERROR_ALREADY_EXIST;
+        goto exit_mkdir;
+    }
+
+    directory = (is_sysdir) ? 2 : 1;
+    if (!new_file_entry(fs, directory, base_name, &fe)) {
+        _error = ERROR_DISK_FULL;
+        goto exit_mkdir;
+    }
+
+    fs_get_of(fs, &fe, TRUE, FALSE, &of);
+    of.new_file = (!is_sysdir);
+    of.dir_fe = dir_fe;
+
+    if (!append_empty_entries(fs, &of, 10000, TRUE)) {
+        _error = of.error;
+        fs_close(fs, &of);
+        goto exit_mkdir;
+    }
+
+    fs_close(fs, &of);
+
+exit_mkdir:
+    if (error) {
+        *error = _error;
+    }
+    return (_error >= 0);
 }
 
 int fs_mkdir(struct fs *fs,
              const char *name,
-             int is_sysdir,
              int *error)
 {
-    struct open_file of;
-    const char *mode;
-
-    mode = (is_sysdir) ? "nd" : "wd";
-    if (!fs_open(fs, name, mode, &of)) {
-        if (error) {
-            *error = of.error;
-        }
-        return FALSE;
-    }
-
-    if (!append_empty_entries(fs, &of, 10000, TRUE)) {
-        goto error_mkdir;
-    }
-
-    fs_close(fs, &of);
-    return TRUE;
-
-error_mkdir:
-    if (error) {
-        *error = of.error;
-    }
-    fs_close(fs, &of);
-    if (is_sysdir) {
-        free_pages(fs, of.fe.leader_vda, TRUE);
-    } else {
-        fs_unlink(fs, name, TRUE, &of.error);
-        if (of.error < 0) {
-            report_error("fs: mkdir: "
-                         "could not unlink directory: %s",
-                         fs_error(of.error));
-        }
-    }
-    return FALSE;
+    return make_directory(fs, name, FALSE, error);
 }
 
