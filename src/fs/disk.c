@@ -283,11 +283,9 @@ int fs_format(struct fs *fs, int *error)
         pg->header[1] = rda;
         pg->header[0] = 0;
 
+        memset(&pg->label, 0, sizeof(pg->label));
+        memset(pg->data, 0, sizeof(pg->data));
         pg->label.version = VERSION_FREE;
-        pg->label.unused = 0;
-        pg->label.nbytes = 0;
-        pg->label.next_rda = 0;
-        pg->label.prev_rda = 0;
     }
 
     if (fs->length > 0) {
@@ -313,4 +311,30 @@ int fs_format(struct fs *fs, int *error)
 
     fs->checked = FALSE;
     return TRUE;
+}
+
+int fs_install_boot(struct fs *fs,
+                    const char *name,
+                    int *error)
+{
+    struct open_file of;
+    const struct page *src_pg;
+    struct page *pg;
+
+    if (!fs_open_ro(fs, name, &of)) {
+        goto exit_install;
+    }
+    fs_close_ro(fs, &of);
+
+    pg = &fs->pages[0];
+    src_pg = &fs->pages[of.pos.vda];
+
+    pg->label = src_pg->label;
+    memcpy(pg->data, src_pg->data, PAGE_DATA_SIZE);
+
+exit_install:
+    if (error) {
+        *error = of.error;
+    }
+    return (of.error >= 0);
 }

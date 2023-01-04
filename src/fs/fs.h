@@ -223,12 +223,10 @@ void fs_destroy(struct fs *fs);
  */
 int fs_create(struct fs *fs, struct geometry dg);
 
-/* Formats the filesystem.
- * The `error` parameter, if provided, returns the details about the
- * error, in case the function fails.
- * Returns TRUE on success.
+/* Translates the error to a string.
+ * Returns the string representation of the error.
  */
-int fs_format(struct fs *fs, int *error);
+const char *fs_error(int error);
 
 /* Reads the contents of the disk from a file named `filename`.
  * Returns TRUE on success.
@@ -240,10 +238,22 @@ int fs_load_image(struct fs *fs, const char *filename);
  */
 int fs_save_image(const struct fs *fs, const char *filename);
 
-/* Translates the error to a string.
- * Returns the string representation of the error.
+/* Formats the filesystem.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
  */
-const char *fs_error(int error);
+int fs_format(struct fs *fs, int *error);
+
+/* Installs the boot file onto the filesystem.
+ * The name of the boot file is given in `name`.
+ * The `error` parameter, if provided, returns the details about the
+ * error, in case the function fails.
+ * Returns TRUE on success.
+ */
+int fs_install_boot(struct fs *fs,
+                    const char *name,
+                    int *error);
 
 /* Checks the integrity of the filesystem.
  * Returns TRUE on success.

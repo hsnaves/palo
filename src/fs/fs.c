@@ -72,6 +72,31 @@ int fs_create(struct fs *fs, struct geometry dg)
     return TRUE;
 }
 
+const char *fs_error(int error)
+{
+    static const char *errors[] = {
+        [-ERROR_NO_ERROR]       = "no error",
+        [-ERROR_UNKNOWN]        = "unknown error",
+        [-ERROR_FS_UNCHECKED]   = "filesystem unchecked",
+        [-ERROR_INVALID_OF]     = "invalid open_file",
+        [-ERROR_INVALID_FE]     = "invalid file_entry",
+        [-ERROR_INVALID_DE]     = "invalid directory_entry",
+        [-ERROR_DISK_FULL]      = "disk full",
+        [-ERROR_DIR_FULL]       = "directory full",
+        [-ERROR_FILE_NOT_FOUND] = "file not found",
+        [-ERROR_DIR_NOT_FOUND]  = "directory not found",
+        [-ERROR_INVALID_NAME]   = "invalid name",
+        [-ERROR_INVALID_MODE]   = "invalid mode",
+        [-ERROR_READ_ONLY]      = "file in read-only mode",
+        [-ERROR_NOT_DIRECTORY]  = "not a directory",
+        [-ERROR_ALREADY_EXIST]  = "name already exist",
+    };
+    if (error > 0) error = 0;
+    if (error <= ERROR_END) error = ERROR_UNKNOWN;
+
+    return errors[-error];
+}
+
 int fs_load_image(struct fs *fs, const char *filename)
 {
     FILE *fp;
@@ -195,31 +220,6 @@ error:
                  filename);
     fclose(fp);
     return FALSE;
-}
-
-const char *fs_error(int error)
-{
-    static const char *errors[] = {
-        [-ERROR_NO_ERROR]       = "no error",
-        [-ERROR_UNKNOWN]        = "unknown error",
-        [-ERROR_FS_UNCHECKED]   = "filesystem unchecked",
-        [-ERROR_INVALID_OF]     = "invalid open_file",
-        [-ERROR_INVALID_FE]     = "invalid file_entry",
-        [-ERROR_INVALID_DE]     = "invalid directory_entry",
-        [-ERROR_DISK_FULL]      = "disk full",
-        [-ERROR_DIR_FULL]       = "directory full",
-        [-ERROR_FILE_NOT_FOUND] = "file not found",
-        [-ERROR_DIR_NOT_FOUND]  = "directory not found",
-        [-ERROR_INVALID_NAME]   = "invalid name",
-        [-ERROR_INVALID_MODE]   = "invalid mode",
-        [-ERROR_READ_ONLY]      = "file in read-only mode",
-        [-ERROR_NOT_DIRECTORY]  = "not a directory",
-        [-ERROR_ALREADY_EXIST]  = "name already exist",
-    };
-    if (error > 0) error = 0;
-    if (error <= ERROR_END) error = ERROR_UNKNOWN;
-
-    return errors[-error];
 }
 
 int fs_extract_file(const struct fs *fs, const char *name,

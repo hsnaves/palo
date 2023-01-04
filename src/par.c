@@ -17,6 +17,7 @@ void usage(const char *prog_name)
     printf("where:\n");
     printf("  -2                Use double disk\n");
     printf("  -f                To format the disk\n");
+    printf("  -b name           To install the boot file\n");
     printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
@@ -33,12 +34,13 @@ int main(int argc, char **argv)
 {
 
     const char *disk_filename;
-    const char *dir_name;
+    const char *b_name;
     const char *e_filename, *e_name;
     const char *i_filename, *i_name;
     const char *c_src_name, *c_dst_name;
     const char *r_name;
     const char *m_dir_name;
+    const char *dir_name;
     struct geometry dg;
     struct fs fs;
     int i, is_last, is_second_last;
@@ -48,7 +50,7 @@ int main(int argc, char **argv)
     int verbose, error;
 
     disk_filename = NULL;
-    dir_name = NULL;
+    b_name = NULL;
     e_filename = NULL;
     i_filename = NULL;
     e_name = NULL;
@@ -57,6 +59,7 @@ int main(int argc, char **argv)
     c_dst_name = NULL;
     r_name = NULL;
     m_dir_name = NULL;
+    dir_name = NULL;
     should_format = FALSE;
     modified = FALSE;
     read_only = FALSE;
@@ -75,6 +78,12 @@ int main(int argc, char **argv)
             dg.num_disks = 2;
         } else if (strcmp("-f", argv[i]) == 0) {
             should_format = TRUE;
+        } else if (strcmp("-b", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the name of the boot file");
+                return 1;
+            }
+            b_name = argv[++i];
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -177,6 +186,18 @@ int main(int argc, char **argv)
 
         printf("extracted `%s` to `%s` successfully\n",
                e_name, e_filename);
+    }
+
+    if (b_name != NULL) {
+        modified = TRUE;
+
+        if (!fs_install_boot(&fs, b_name, &error)) {
+            report_error("main: could not install boot file `%s`: %s",
+                         b_name, fs_error(error));
+            goto error;
+        }
+
+        printf("installed boot file `%s` successfully\n", b_name);
     }
 
     if (i_name != NULL) {
