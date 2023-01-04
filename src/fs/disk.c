@@ -307,10 +307,6 @@ int fs_format(struct fs *fs, int *error)
         return FALSE;
     }
 
-    if (!fs_update_disk_descriptor(fs, error)) {
-        return FALSE;
-    }
-
     fs->checked = FALSE;
     return TRUE;
 }

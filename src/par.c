@@ -26,6 +26,7 @@ void usage(const char *prog_name)
     printf("  -r name           Removes the link to name\n");
     printf("  -m dir_name       Creates a new directory\n");
     printf("  -nru              To not remove underlying files\n");
+    printf("  -nud              To not update disk descriptor\n");
     printf("  -ro               Operate in read only mode\n");
     printf("  -v                Increase verbosity\n");
     printf("  --help            Print this help\n");
@@ -49,6 +50,7 @@ int main(int argc, char **argv)
     int should_scavenge;
     int modified, read_only;
     int not_remove_underlying;
+    int not_update_descriptor;
     int verbose, error;
 
     disk_filename = NULL;
@@ -67,6 +69,7 @@ int main(int argc, char **argv)
     modified = FALSE;
     read_only = FALSE;
     not_remove_underlying = FALSE;
+    not_update_descriptor = FALSE;
     verbose = 0;
 
     dg.num_disks = 1;
@@ -132,6 +135,8 @@ int main(int argc, char **argv)
             m_dir_name = argv[++i];
         } else if (strcmp("-nru", argv[i]) == 0) {
             not_remove_underlying = TRUE;
+        } else if (strcmp("-nud", argv[i]) == 0) {
+            not_update_descriptor = TRUE;
         } else if (strcmp("-ro", argv[i]) == 0) {
             read_only = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
@@ -266,10 +271,12 @@ int main(int argc, char **argv)
 
     if (modified && !read_only) {
         printf("saving disk image `%s`\n", disk_filename);
-        if (!fs_update_disk_descriptor(&fs, &error)) {
-            report_error("main: could not update disk descriptor: %s",
-                         fs_error(error));
-            goto error;
+        if (!not_update_descriptor) {
+            if (!fs_update_disk_descriptor(&fs, &error)) {
+                report_error("main: could not update disk descriptor: %s",
+                             fs_error(error));
+                goto error;
+            }
         }
         if (!fs_save_image(&fs, disk_filename)) {
             report_error("main: could not save disk image");
