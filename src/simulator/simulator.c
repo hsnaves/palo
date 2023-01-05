@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "simulator/simulator.h"
-#include "simulator/utils.h"
+#include "simulator/intr.h"
 #include "microcode/microcode.h"
 #include "microcode/nova.h"
 #include "simulator/rom.h"

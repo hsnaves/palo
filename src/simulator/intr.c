@@ -1,7 +1,7 @@
 
 #include <stdint.h>
 
-#include "simulator/utils.h"
+#include "simulator/intr.h"
 #include "common/utils.h"
 
 /* Computes the next interrupt cycle. */

@@ -10,7 +10,7 @@
 #include "simulator/disk.h"
 #include "simulator/display.h"
 #include "simulator/ethernet.h"
-#include "simulator/utils.h"
+#include "simulator/intr.h"
 #include "microcode/microcode.h"
 #include "common/utils.h"
 

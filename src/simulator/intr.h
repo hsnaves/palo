@@ -1,6 +1,6 @@
 
-#ifndef __SIMULATOR_UTILS_H
-#define __SIMULATOR_UTILS_H
+#ifndef __SIMULATOR_INTR_H
+#define __SIMULATOR_INTR_H
 
 #include <stdint.h>
 
@@ -25,4 +25,4 @@ int32_t compute_intr_cycle(int32_t cycle, int n,
                            const int32_t *intr_cycles);
 
 
-#endif /* __SIMULATOR_UTILS_H */
+#endif /* __SIMULATOR_INTR_H */

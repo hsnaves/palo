@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #include "simulator/display.h"
-#include "simulator/utils.h"
+#include "simulator/intr.h"
 #include "microcode/microcode.h"
 #include "common/utils.h"
 

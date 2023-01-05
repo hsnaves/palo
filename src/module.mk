@@ -8,7 +8,7 @@ MICROCODE_OBJS := microcode/microcode.o microcode/nova.o
 PARSER_OBJS := parser/parser.o parser/lexer.o
 SIMULATOR_OBJS := simulator/simulator.o simulator/disk.o \
  simulator/display.o simulator/ethernet.o simulator/keyboard.o \
- simulator/mouse.o simulator/utils.o simulator/rom.o
+ simulator/mouse.o simulator/intr.o simulator/rom.o
 
 
 PMU_OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(PARSER_OBJS) \
@@ -49,17 +49,17 @@ par.o: par.c fs/fs.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  microcode/microcode.h common/utils.h simulator/disk.h simulator/display.h \
  simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
- simulator/utils.h simulator/rom.h microcode/nova.h
+ simulator/intr.h simulator/rom.h microcode/nova.h
 simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h \
- simulator/utils.h microcode/microcode.h
+ simulator/intr.h microcode/microcode.h
 simulator/display.o: simulator/display.c simulator/display.h \
- common/utils.h simulator/utils.h microcode/microcode.h
+ common/utils.h simulator/intr.h microcode/microcode.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
- common/utils.h simulator/utils.h microcode/microcode.h
+ common/utils.h simulator/intr.h microcode/microcode.h
 simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
  common/utils.h
 simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h
-simulator/utils.o: simulator/utils.c simulator/utils.h common/utils.h
+simulator/intr.o: simulator/intr.c simulator/intr.h common/utils.h
 simulator/rom.o: simulator/rom.c simulator/rom.h microcode/microcode.h \
  common/utils.h
 gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
@@ -68,7 +68,7 @@ gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
 debugger/debugger.o: debugger/debugger.c debugger/debugger.h \
  simulator/simulator.h microcode/microcode.h common/utils.h \
  simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h gui/gui.h simulator/utils.h
+ simulator/keyboard.h simulator/mouse.h gui/gui.h simulator/intr.h
 palos.o: palos.c simulator/simulator.h microcode/microcode.h \
  common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
  simulator/keyboard.h simulator/mouse.h gui/gui.h debugger/debugger.h
