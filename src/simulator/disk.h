@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -73,7 +74,7 @@ struct disk {
 
     uint16_t disk;                /* Current disk. */
 
-    int rec_no;                   /* Record number. */
+    uint8_t rec_no;               /* Record number. */
     int restore;                  /* Restore operation. */
     int sync_word_written;        /* The sync word was written. */
     int bitclk_enable;            /* Disk bit counter enabled. */
@@ -274,5 +275,11 @@ void disk_on_switch_task(struct disk *dsk, uint8_t task);
  */
 void disk_print_registers(struct disk *dsk,
                           struct string_buffer *output);
+
+/* Serializes the disk object to `sd`. */
+void disk_serialize(const struct disk *dsk, struct serdes *sd);
+
+/* Deserializes the disk object from `sd`. */
+void disk_deserialize(struct disk *dsk, struct serdes *sd);
 
 #endif /* __SIMULATOR_DISK_H */

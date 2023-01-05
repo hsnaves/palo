@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "simulator/mouse.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -122,7 +123,7 @@ void mouse_release_button(struct mouse *mous, enum alto_button btn)
     mous->buttons &= (~mask);
 }
 
-void mouse_move(struct mouse *mous, int dx, int dy)
+void mouse_move(struct mouse *mous, int16_t dx, int16_t dy)
 {
     mous->dx += dx;
     mous->dy += dy;
@@ -132,4 +133,20 @@ void mouse_clear_movement(struct mouse *mous)
 {
     mous->dx = 0;
     mous->dy = 0;
+}
+
+void mouse_serialize(const struct mouse *mous, struct serdes *sd)
+{
+    serdes_put16(sd, mous->buttons);
+    serdes_put16(sd, mous->dx);
+    serdes_put16(sd, mous->dy);
+    serdes_put_bool(sd, mous->dir_x);
+}
+
+void mouse_deserialize(struct mouse *mous, struct serdes *sd)
+{
+    mous->buttons = serdes_get16(sd);
+    mous->dx = serdes_get16(sd);
+    mous->dy = serdes_get16(sd);
+    mous->dir_x = serdes_get_bool(sd);
 }

@@ -25,6 +25,7 @@ int main(int argc, char **argv)
     const char *listing_filename;
     const char *constant_filename;
     const char *microcode_filename;
+    const char *fn;
     struct assembler as;
     int i, is_last;
 
@@ -78,7 +79,8 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (unlikely(parser_parse(&as.p, input_filename) != OK)) {
+    fn = input_filename;
+    if (unlikely(parser_parse(&as.p, fn) == ERROR)) {
         report_error("main: could not parse file");
         goto error;
     }
@@ -103,19 +105,28 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (unlikely(!assembler_dump_constant_rom(&as, constant_filename))) {
-        report_error("main: could not write constant rom");
-        goto error;
+    fn = constant_filename;
+    if (fn) {
+        if (unlikely(!assembler_dump_constant_rom(&as, fn))) {
+            report_error("main: could not write constant rom");
+            goto error;
+        }
     }
 
-    if (unlikely(!assembler_dump_microcode_rom(&as, microcode_filename))) {
-        report_error("main: could not write microcode rom");
-        goto error;
+    fn = microcode_filename;
+    if (fn) {
+        if (unlikely(!assembler_dump_microcode_rom(&as, fn))) {
+            report_error("main: could not write microcode rom");
+            goto error;
+        }
     }
 
-    if (unlikely(!assembler_print_listing(&as, listing_filename))) {
-        report_error("main: could not write listing file");
-        goto error;
+    fn = listing_filename;
+    if (fn) {
+        if (unlikely(!assembler_print_listing(&as, fn))) {
+            report_error("main: could not write listing file");
+            goto error;
+        }
     }
 
     assembler_destroy(&as);

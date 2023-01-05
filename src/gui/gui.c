@@ -128,8 +128,8 @@ void gui_process_event(struct gui *ui, SDL_Event *e)
     switch (e->type) {
     case SDL_MOUSEMOTION:
         mouse_move(&iui->mous,
-                   e->motion.x - mx,
-                   e->motion.y - my);
+                   (int16_t) (e->motion.x - mx),
+                   (int16_t) (e->motion.y - my));
         break;
 
     case SDL_MOUSEBUTTONDOWN:

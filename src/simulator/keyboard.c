@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "simulator/keyboard.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Static tables. */
@@ -146,4 +147,14 @@ void keyboard_release_key(struct keyboard *keyb, enum alto_key key)
     mask = KEY_MAP[key].mask;
 
     keyb->keys[word_index] &= (~mask);
+}
+
+void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd)
+{
+    serdes_put16_array(sd, keyb->keys, 4);
+}
+
+void keyboard_deserialize(struct keyboard *keyb, struct serdes *sd)
+{
+    serdes_get16_array(sd, keyb->keys, 4);
 }

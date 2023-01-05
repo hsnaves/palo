@@ -5,6 +5,7 @@
 #include "simulator/display.h"
 #include "simulator/intr.h"
 #include "microcode/microcode.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -407,4 +408,62 @@ void display_print_registers(struct display *displ,
                         displ->dv_intr_cycle,
                         displ->dh_intr_cycle,
                         displ->dw_intr_cycle);
+}
+
+void display_serialize(const struct display *displ, struct serdes *sd)
+{
+    serdes_put16_array(sd, displ->fifo, FIFO_SIZE);
+    serdes_put8(sd, displ->fifo_start);
+    serdes_put8(sd, displ->fifo_end);
+    serdes_put_bool(sd, displ->even_field);
+    serdes_put16(sd, displ->scanline);
+    serdes_put16(sd, displ->vblank_scanline);
+    serdes_put16(sd, displ->word);
+    serdes_put16(sd, displ->cursor_x);
+    serdes_put16(sd, displ->cursor_x_latched);
+    serdes_put_bool(sd, displ->has_cursor_x);
+    serdes_put16(sd, displ->cursor_data);
+    serdes_put16(sd, displ->cursor_data_latched);
+    serdes_put_bool(sd, displ->has_cursor_data);
+    serdes_put_bool(sd, displ->switch_mode);
+    serdes_put_bool(sd, displ->low_res);
+    serdes_put_bool(sd, displ->low_res_latched);
+    serdes_put_bool(sd, displ->wob);
+    serdes_put_bool(sd, displ->wob_latched);
+    serdes_put_bool(sd, displ->dw_blocked);
+    serdes_put_bool(sd, displ->dh_blocked);
+    serdes_put32(sd, displ->intr_cycle);
+    serdes_put32(sd, displ->dv_intr_cycle);
+    serdes_put32(sd, displ->dh_intr_cycle);
+    serdes_put32(sd, displ->dw_intr_cycle);
+    serdes_put16(sd, displ->pending);
+}
+
+void display_deserialize(struct display *displ, struct serdes *sd)
+{
+    serdes_get16_array(sd, displ->fifo, FIFO_SIZE);
+    displ->fifo_start = serdes_get8(sd);
+    displ->fifo_end = serdes_get8(sd);
+    displ->even_field = serdes_get_bool(sd);
+    displ->scanline = serdes_get16(sd);
+    displ->vblank_scanline = serdes_get16(sd);
+    displ->word = serdes_get16(sd);
+    displ->cursor_x = serdes_get16(sd);
+    displ->cursor_x_latched = serdes_get16(sd);
+    displ->has_cursor_x = serdes_get_bool(sd);
+    displ->cursor_data = serdes_get16(sd);
+    displ->cursor_data_latched = serdes_get16(sd);
+    displ->has_cursor_data = serdes_get_bool(sd);
+    displ->switch_mode = serdes_get_bool(sd);
+    displ->low_res = serdes_get_bool(sd);
+    displ->low_res_latched = serdes_get_bool(sd);
+    displ->wob = serdes_get_bool(sd);
+    displ->wob_latched = serdes_get_bool(sd);
+    displ->dw_blocked = serdes_get_bool(sd);
+    displ->dh_blocked = serdes_get_bool(sd);
+    displ->intr_cycle = serdes_get32(sd);
+    displ->dv_intr_cycle = serdes_get32(sd);
+    displ->dh_intr_cycle = serdes_get32(sd);
+    displ->dw_intr_cycle = serdes_get32(sd);
+    displ->pending = serdes_get16(sd);
 }

@@ -992,6 +992,34 @@ void cmd_load_or_save_image(struct debugger *dbg, int save)
     }
 }
 
+/* Loads or saves the simulator state.
+ * The parameter `save` is set to TRUE for when saving the state.
+ */
+static
+void cmd_load_or_save_state(struct debugger *dbg, int save)
+{
+    struct simulator *sim;
+    const char *arg;
+    const char *filename;
+
+    sim = dbg->sim;
+
+    arg = (const char *) dbg->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("please specify a filename\n");
+        return;
+    }
+    filename = arg;
+
+    if (save) {
+        simulator_save_state(sim, filename);
+    } else {
+        simulator_load_state(sim, filename);
+    }
+}
+
 /* Restarts the simulation. */
 static
 void cmd_restart(struct debugger *dbg)
@@ -1029,6 +1057,8 @@ void cmd_help(struct debugger *dbg)
     printf("  br num           Remove a breakpoint\n");
     printf("  li num file      Load a disk drive image\n");
     printf("  si num file      Save a disk drive image\n");
+    printf("  ls file          Load the simulator state\n");
+    printf("  ss file          Save the simulator state\n");
     printf("  zs               Restart the simulation\n");
     printf("  h                Print this help\n");
     printf("  q                Quit the debugger\n");
@@ -1222,6 +1252,16 @@ int debugger_debug(struct gui *ui)
 
         if (strcmp(cmd, "si") == 0) {
             cmd_load_or_save_image(dbg, TRUE);
+            continue;
+        }
+
+        if (strcmp(cmd, "ls") == 0) {
+            cmd_load_or_save_state(dbg, FALSE);
+            continue;
+        }
+
+        if (strcmp(cmd, "ss") == 0) {
+            cmd_load_or_save_state(dbg, TRUE);
             continue;
         }
 

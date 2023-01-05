@@ -57,8 +57,7 @@ int assembler_resolve_labels(struct assembler *as);
 int assembler_assemble(struct assembler *as);
 
 /* Dumps the constant rom to a file.
- * The file is named `filename`. If the file name is not provided
- * this function is skipped.
+ * The file is named `filename`.
  * It uses little-endian for encoding the 16-bit constants.
  * Returns TRUE on success.
  */
@@ -66,8 +65,7 @@ int assembler_dump_constant_rom(struct assembler *as,
                                 const char *filename);
 
 /* Dumps the microcode rom to a file.
- * The file is named `filename`. If the file name is not provided
- * this function is skipped.
+ * The file is named `filename`.
  * It uses little-endian for encoding the 32-bit microcodes.
  * Returns TRUE on success.
  */
@@ -75,8 +73,7 @@ int assembler_dump_microcode_rom(struct assembler *as,
                                  const char *filename);
 
 /* Prints the assembly listing.
- * The listing is printed to file `filename`. If the file name is
- * not provided this function is skipped.
+ * The listing is printed to file `filename`.
  * Returns TRUE on success.
  */
 int assembler_print_listing(struct assembler *as, const char *filename);

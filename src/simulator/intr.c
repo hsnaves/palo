@@ -4,6 +4,8 @@
 #include "simulator/intr.h"
 #include "common/utils.h"
 
+/* Functions. */
+
 /* Computes the next interrupt cycle. */
 int32_t compute_intr_cycle(int32_t cycle, int n,
                            const int32_t *intr_cycles)

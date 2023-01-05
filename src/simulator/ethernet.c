@@ -5,6 +5,7 @@
 #include "simulator/ethernet.h"
 #include "simulator/intr.h"
 #include "microcode/microcode.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -357,4 +358,52 @@ void ethernet_print_registers(struct ethernet *ether,
     /* TODO: Implement this. */
     UNUSED(ether);
     string_buffer_print(output, "<empty>");
+}
+
+void ethernet_serialize(const struct ethernet *ether, struct serdes *sd)
+{
+    serdes_put16(sd, ether->address);
+    serdes_put16_array(sd, ether->fifo, FIFO_SIZE);
+    serdes_put8(sd, ether->fifo_start);
+    serdes_put8(sd, ether->fifo_end);
+    serdes_put16(sd, ether->iocmd);
+    serdes_put_bool(sd, ether->out_busy);
+    serdes_put_bool(sd, ether->in_busy);
+    serdes_put_bool(sd, ether->in_gone);
+    serdes_put16(sd, ether->input_state);
+    serdes_put_bool(sd, ether->data_late);
+    serdes_put_bool(sd, ether->collision);
+    serdes_put_bool(sd, ether->crc_bad);
+    serdes_put_bool(sd, ether->incomplete);
+    serdes_put16(sd, ether->status);
+    serdes_put_bool(sd, ether->countdown_wakeup);
+    serdes_put_bool(sd, ether->end_tx);
+    serdes_put32(sd, ether->intr_cycle);
+    serdes_put32(sd, ether->tx_intr_cycle);
+    serdes_put32(sd, ether->rx_intr_cycle);
+    serdes_put16(sd, ether->pending);
+}
+
+void ethernet_deserialize(struct ethernet *ether, struct serdes *sd)
+{
+    ether->address = serdes_get16(sd);
+    serdes_get16_array(sd, ether->fifo, FIFO_SIZE);
+    ether->fifo_start = serdes_get8(sd);
+    ether->fifo_end = serdes_get8(sd);
+    ether->iocmd = serdes_get16(sd);
+    ether->out_busy = serdes_get_bool(sd);
+    ether->in_busy = serdes_get_bool(sd);
+    ether->in_gone = serdes_get_bool(sd);
+    ether->input_state = serdes_get16(sd);
+    ether->data_late = serdes_get_bool(sd);
+    ether->collision = serdes_get_bool(sd);
+    ether->crc_bad = serdes_get_bool(sd);
+    ether->incomplete = serdes_get_bool(sd);
+    ether->status = serdes_get16(sd);
+    ether->countdown_wakeup = serdes_get_bool(sd);
+    ether->end_tx = serdes_get_bool(sd);
+    ether->intr_cycle = serdes_get32(sd);
+    ether->tx_intr_cycle = serdes_get32(sd);
+    ether->rx_intr_cycle = serdes_get32(sd);
+    ether->pending = serdes_get16(sd);
 }

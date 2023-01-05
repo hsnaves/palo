@@ -1,5 +1,6 @@
 ASSEMBLER_OBJS := assembler/assembler.o
-COMMON_OBJS := common/allocator.o common/table.o common/utils.o
+COMMON_OBJS := common/allocator.o common/table.o common/serdes.o \
+ common/utils.o
 DEBUGGER_OBJS := debugger/debugger.o
 FS_OBJS := fs/basic.o fs/check.o fs/dir.o fs/disk.o fs/file.o fs/fs.o \
  fs/meta.o fs/scan.o fs/print.o
@@ -15,7 +16,7 @@ PMU_OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(PARSER_OBJS) \
  microcode/microcode.o pmu.o
 PAR_OBJS := $(FS_OBJS) common/utils.o par.o
 PALOS_OBJS := $(DEBUGGER_OBJS) $(GUI_OBJS) $(MICROCODE_OBJS) \
- $(SIMULATOR_OBJS) common/utils.o palos.o
+ $(SIMULATOR_OBJS) common/serdes.o common/utils.o palos.o
 OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(DEBUGGER_OBJS) $(FS_OBJS) \
  $(GUI_OBJS) $(MICROCODE_OBJS) $(PARSER_OBJS) $(SIMULATOR_OBJS) \
  pmu.o par.o palos.o
@@ -23,9 +24,10 @@ OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(DEBUGGER_OBJS) $(FS_OBJS) \
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
- microcode/microcode.h common/utils.h
+ microcode/microcode.h common/serdes.h common/utils.h
 common/allocator.o: common/allocator.c common/allocator.h common/utils.h
 common/table.o: common/table.c common/table.h common/utils.h
+common/serdes.o: common/serdes.c common/serdes.h common/utils.h
 common/utils.o: common/utils.c common/utils.h
 parser/lexer.o: parser/lexer.c parser/lexer.h common/allocator.h \
  common/table.h common/utils.h
@@ -47,18 +49,19 @@ fs/print.o: fs/print.c fs/fs.h common/utils.h
 fs/scan.o: fs/scan.c fs/fs.h fs/fs_internal.h common/utils.h
 par.o: par.c fs/fs.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
- microcode/microcode.h common/utils.h simulator/disk.h simulator/display.h \
- simulator/ethernet.h  simulator/keyboard.h simulator/mouse.h \
- simulator/intr.h simulator/rom.h microcode/nova.h
-simulator/disk.o: simulator/disk.c simulator/disk.h common/utils.h \
- simulator/intr.h microcode/microcode.h
+ microcode/microcode.h common/utils.h simulator/disk.h common/serdes.h \
+ simulator/display.h simulator/ethernet.h  simulator/keyboard.h \
+ simulator/mouse.h simulator/intr.h simulator/rom.h microcode/nova.h
+simulator/disk.o: simulator/disk.c simulator/disk.h common/serdes.h \
+ common/utils.h simulator/intr.h microcode/microcode.h
 simulator/display.o: simulator/display.c simulator/display.h \
- common/utils.h simulator/intr.h microcode/microcode.h
+ common/serdes.h common/utils.h simulator/intr.h microcode/microcode.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
- common/utils.h simulator/intr.h microcode/microcode.h
+ common/serdes.h common/utils.h simulator/intr.h microcode/microcode.h
 simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
+ common/serdes.h common/utils.h
+simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/serdes.h \
  common/utils.h
-simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/utils.h
 simulator/intr.o: simulator/intr.c simulator/intr.h common/utils.h
 simulator/rom.o: simulator/rom.c simulator/rom.h microcode/microcode.h \
  common/utils.h
@@ -67,8 +70,9 @@ gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
  simulator/keyboard.h simulator/mouse.h
 debugger/debugger.o: debugger/debugger.c debugger/debugger.h \
  simulator/simulator.h microcode/microcode.h common/utils.h \
- simulator/disk.h simulator/display.h simulator/ethernet.h \
+ simulator/disk.h common/serdes.h simulator/display.h simulator/ethernet.h \
  simulator/keyboard.h simulator/mouse.h gui/gui.h simulator/intr.h
 palos.o: palos.c simulator/simulator.h microcode/microcode.h \
- common/utils.h simulator/disk.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h gui/gui.h debugger/debugger.h
+ common/utils.h simulator/disk.h common/serdes.h simulator/display.h \
+ simulator/ethernet.h simulator/keyboard.h simulator/mouse.h gui/gui.h \
+ debugger/debugger.h

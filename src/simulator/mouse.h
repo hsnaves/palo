@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "common/serdes.h"
+
 /* Constants. */
 #define MOUSE_BASE                    0xFE18
 #define MOUSE_END                     0xFE1C
@@ -27,7 +29,7 @@ enum alto_button {
 /* The mouse (and keyset) controller for the simulator. */
 struct mouse {
     uint16_t buttons;             /* The bit mask of pressed buttons. */
-    int dx, dy;                   /* Mouse movement. */
+    int16_t dx, dy;               /* Mouse movement. */
     int dir_x;                    /* Current movement direction in X axis. */
 };
 
@@ -82,10 +84,16 @@ void mouse_release_button(struct mouse *mous, enum alto_button btn);
  * The amount to move in the X (and Y) direction is given by
  * `dx` (and `dy`, respectively).
  */
-void mouse_move(struct mouse *mous, int dx, int dy);
+void mouse_move(struct mouse *mous, int16_t dx, int16_t dy);
 
 /* Clears the pending mouse movements. */
 void mouse_clear_movement(struct mouse *mous);
+
+/* Serializes the mouse object to `sd`. */
+void mouse_serialize(const struct mouse *mous, struct serdes *sd);
+
+/* Deserializes the mouse object from `sd`. */
+void mouse_deserialize(struct mouse *mous, struct serdes *sd);
 
 
 #endif /* __SIMULATOR_MOUSE_H */

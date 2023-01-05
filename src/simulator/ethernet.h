@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Data structures and types. */
@@ -18,7 +19,7 @@ struct ethernet {
     int out_busy;
     int in_busy;
     int in_gone;
-    int input_state;
+    uint16_t input_state;
 
     /* NS below means not simulated. */
     int data_late;                /* Data late detected (NS). */
@@ -142,6 +143,12 @@ void ethernet_before_step(struct ethernet *ether);
  */
 void ethernet_print_registers(struct ethernet *ether,
                               struct string_buffer *output);
+
+/* Serializes the ethernet object to `sd`. */
+void ethernet_serialize(const struct ethernet *ether, struct serdes *sd);
+
+/* Deserializes the ethernet object from `sd`. */
+void ethernet_deserialize(struct ethernet *ether, struct serdes *sd);
 
 
 #endif /* __SIMULATOR_ETHERNET_H */

@@ -14,6 +14,7 @@
 #include "parser/parser.h"
 #include "common/allocator.h"
 #include "common/table.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* For attributes of literal symbols. */
@@ -1205,60 +1206,52 @@ int assembler_assemble(struct assembler *as)
 int assembler_dump_constant_rom(struct assembler *as,
                                 const char *filename)
 {
-    FILE *fp;
-    uint16_t slot;
-    uint16_t val;
-    char c;
+    struct serdes sd;
+    size_t size;
 
-    if (!filename) return TRUE;
-    fp = fopen(filename, "wb");
-    if (unlikely(!fp)) {
-        report_error("assembler: dump_constant_rom: cannot open `%s`",
-                     filename);
+    size = CONSTANT_SIZE * sizeof(uint16_t);
+    if (unlikely(!serdes_create(&sd, size))) {
+        report_error("assembler: dump_constant_rom: "
+                     "could not create serializer");
         return FALSE;
     }
 
-    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
-        val = as->consts[slot];
-        c = (char) (val & 0xFF);
-        fwrite(&c, 1, 1, fp);
-        c = (char) ((val >> 8) & 0xFF);
-        fwrite(&c, 1, 1, fp);
+    serdes_put16_array(&sd, as->consts, CONSTANT_SIZE);
+
+    if (unlikely(!serdes_write(&sd, filename))) {
+        report_error("assembler: dump_constant_rom: "
+                     "could not write file");
+        serdes_destroy(&sd);
+        return FALSE;
     }
 
-    fclose(fp);
+    serdes_destroy(&sd);
     return TRUE;
 }
 
 int assembler_dump_microcode_rom(struct assembler *as,
                                  const char *filename)
 {
-    FILE *fp;
-    uint16_t address;
-    uint32_t val;
-    char c;
+    struct serdes sd;
+    size_t size;
 
-    if (!filename) return TRUE;
-    fp = fopen(filename, "wb");
-    if (unlikely(!fp)) {
-        report_error("assembler: dump_microcode_rom: cannot open `%s`",
-                     filename);
+    size = MICROCODE_SIZE * sizeof(uint32_t);
+    if (unlikely(!serdes_create(&sd, size))) {
+        report_error("assembler: dump_microcode_rom: "
+                     "could not create serializer");
         return FALSE;
     }
 
-    for (address = 0; address < MICROCODE_SIZE; address++) {
-        val = as->microcode[address];
-        c = (char) (val & 0xFF);
-        fwrite(&c, 1, 1, fp);
-        c = (char) ((val >> 8) & 0xFF);
-        fwrite(&c, 1, 1, fp);
-        c = (char) ((val >> 16) & 0xFF);
-        fwrite(&c, 1, 1, fp);
-        c = (char) ((val >> 24) & 0xFF);
-        fwrite(&c, 1, 1, fp);
+    serdes_put32_array(&sd, as->microcode, MICROCODE_SIZE);
+
+    if (unlikely(!serdes_write(&sd, filename))) {
+        report_error("assembler: dump_microcode_rom: "
+                     "could not write file");
+        serdes_destroy(&sd);
+        return FALSE;
     }
 
-    fclose(fp);
+    serdes_destroy(&sd);
     return TRUE;
 }
 
@@ -1482,7 +1475,6 @@ int assembler_print_listing(struct assembler *as, const char *filename)
 {
     FILE *fp;
 
-    if (!filename) return TRUE;
     fp = fopen(filename, "w");
     if (unlikely(!fp)) {
         report_error("assembler: print_listing: cannot open `%s`",

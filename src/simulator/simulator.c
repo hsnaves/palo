@@ -9,6 +9,7 @@
 #include "microcode/microcode.h"
 #include "microcode/nova.h"
 #include "simulator/rom.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -34,6 +35,9 @@
 /* For memory access. */
 #define MA_EXTENDED                        1
 #define MA_HAS_STORE                       2
+
+/* The state size when serializing. */
+#define STATE_SIZE                    542426
 
 /* Functions. */
 
@@ -185,58 +189,42 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
 int simulator_load_constant_rom(struct simulator *sim,
                                 const char *filename)
 {
-    FILE *fp;
-    uint16_t i;
-    uint16_t val;
-    int c;
+    struct serdes sd;
+    size_t size;
 
-    if (!filename) return TRUE;
-    fp = fopen(filename, "rb");
-    if (unlikely(!fp)) {
+    size = CONSTANT_SIZE * sizeof(uint16_t);
+    if (unlikely(!serdes_create(&sd, size))) {
         report_error("simulator: load_constant_rom: "
-                     "cannot open `%s`", filename);
+                     "could not create deserializer");
         return FALSE;
     }
 
-    for (i = 0; i < CONSTANT_SIZE; i++) {
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val = (uint16_t) (c & 0xFF);
-
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val |= ((uint16_t) (c & 0xFF)) << 8;
-
-        sim->consts[i] = val;
-    }
-
-    c = fgetc(fp);
-    if (unlikely(c != EOF)) {
+    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
         report_error("simulator: load_constant_rom: "
-                     "invalid file size `%s`",
-                     filename);
-        fclose(fp);
+                     "could not read file");
+        serdes_destroy(&sd);
         return FALSE;
     }
 
-    fclose(fp);
+    if (unlikely(sd.pos != sd.size)) {
+        report_error("simulator: load_constant_rom: "
+                     "invalid rom file `%s`", filename);
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_rewind(&sd);
+    serdes_get16_array(&sd, sim->consts, CONSTANT_SIZE);
+    serdes_destroy(&sd);
     return TRUE;
-
-error_eof:
-    report_error("simulator: load_constant_rom: "
-                 "premature end of file `%s`",
-                 filename);
-    fclose(fp);
-    return FALSE;
 }
 
 int simulator_load_microcode_rom(struct simulator *sim,
                                  const char *filename, uint8_t bank)
 {
-    FILE *fp;
-    uint16_t i, offset;
-    uint32_t val;
-    int c;
+    struct serdes sd;
+    uint16_t offset;
+    size_t size;
 
     if (unlikely(bank >= 2)) {
         report_error("simulator: load_microcode_rom: "
@@ -246,52 +234,31 @@ int simulator_load_microcode_rom(struct simulator *sim,
 
     offset = (bank) ? MICROCODE_SIZE : 0;
 
-    if (!filename) return TRUE;
-    fp = fopen(filename, "rb");
-    if (unlikely(!fp)) {
+    size = MICROCODE_SIZE * sizeof(uint32_t);
+    if (unlikely(!serdes_create(&sd, size))) {
         report_error("simulator: load_microcode_rom: "
-                     "cannot open `%s`", filename);
+                     "could not create deserializer");
         return FALSE;
     }
 
-    for (i = 0; i < MICROCODE_SIZE; i++) {
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val = (uint32_t) (c & 0xFF);
-
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val |= ((uint32_t) (c & 0xFF)) << 8;
-
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val |= ((uint32_t) (c & 0xFF)) << 16;
-
-        c = fgetc(fp);
-        if (unlikely(c == EOF)) goto error_eof;
-        val |= ((uint32_t) (c & 0xFF)) << 24;
-
-        sim->microcode[offset + i] = val;
-    }
-
-    c = fgetc(fp);
-    if (unlikely(c != EOF)) {
+    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
         report_error("simulator: load_microcode_rom: "
-                     "invalid file size `%s`",
-                     filename);
-        fclose(fp);
+                     "could not read file");
+        serdes_destroy(&sd);
         return FALSE;
     }
 
-    fclose(fp);
+    if (unlikely(sd.pos != sd.size)) {
+        report_error("simulator: load_microcode_rom: "
+                     "invalid rom file `%s`", filename);
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_rewind(&sd);
+    serdes_get32_array(&sd, &sim->microcode[offset], MICROCODE_SIZE);
+    serdes_destroy(&sd);
     return TRUE;
-
-error_eof:
-    report_error("simulator: load_microcode_rom: "
-                 "premature end of file `%s`",
-                 filename);
-    fclose(fp);
-    return FALSE;
 }
 
 void simulator_reset(struct simulator *sim)
@@ -1946,3 +1913,171 @@ void simulator_print_nova_registers(const struct simulator *sim,
                         sim->ir, sim-> carry ? 1 : 0);
 }
 
+void simulator_serialize(const struct simulator *sim, struct serdes *sd)
+{
+    serdes_put32(sd, (uint32_t) sim->sys_type);
+    serdes_put_bool(sd, sim->error);
+    serdes_put16_array(sd, sim->r, NUM_R_REGISTERS);
+    serdes_put16_array(sd, sim->s, NUM_S_REGISTERS);
+    serdes_put16(sd, sim->t);
+    serdes_put16(sd, sim->l);
+    serdes_put16(sd, sim->m);
+    serdes_put16(sd, sim->mar);
+    serdes_put16(sd, sim->ir);
+    serdes_put16(sd, sim->mir);
+    serdes_put16(sd, sim->mpc);
+    serdes_put8(sd, sim->ctask);
+    serdes_put8(sd, sim->ntask);
+    serdes_put_bool(sd, sim->task_switch);
+    serdes_put_bool(sd, sim->aluC0);
+    serdes_put_bool(sd, sim->skip);
+    serdes_put_bool(sd, sim->carry);
+    serdes_put16(sd, sim->rmr);
+    serdes_put16(sd, sim->cram_addr);
+    serdes_put_bool(sd, sim->rdram);
+    serdes_put_bool(sd, sim->wrtram);
+    serdes_put_bool(sd, sim->soft_reset);
+    serdes_put8_array(sd, sim->acs_rom, ACSROM_SIZE);
+    serdes_put16_array(sd, sim->consts, CONSTANT_SIZE);
+    serdes_put32_array(sd, sim->microcode,
+                       NUM_MICROCODE_BANKS * MICROCODE_SIZE);
+    serdes_put16_array(sd, sim->task_mpc, TASK_NUM_TASKS);
+    serdes_put32(sd, sim->cycle);
+    serdes_put32_array(sd, (const uint32_t *) sim->task_cycle,
+                       TASK_NUM_TASKS);
+    serdes_put32(sd, sim->intr_cycle);
+    serdes_put16_array(sd, sim->mem, NUM_BANKS * MEMORY_SIZE);
+    serdes_put16_array(sd, sim->xm_banks, NUM_BANK_SLOTS);
+    serdes_put8_array(sd, sim->sreg_banks, NUM_BANK_SLOTS);
+    serdes_put16(sd, sim->mem_cycle);
+    serdes_put8(sd, sim->mem_task);
+    serdes_put16(sd, sim->mem_low);
+    serdes_put16(sd, sim->mem_high);
+    serdes_put16(sd, sim->mem_status);
+    disk_serialize(&sim->dsk, sd);
+    display_serialize(&sim->displ, sd);
+    ethernet_serialize(&sim->ether, sd);
+    keyboard_serialize(&sim->keyb, sd);
+    mouse_serialize(&sim->mous, sd);
+}
+
+void simulator_deserialize(struct simulator *sim, struct serdes *sd)
+{
+    sim->sys_type = (enum system_type) serdes_get32(sd);
+    sim->error = serdes_get_bool(sd);
+    serdes_get16_array(sd, sim->r, NUM_R_REGISTERS);
+    serdes_get16_array(sd, sim->s, NUM_S_REGISTERS);
+    sim->t = serdes_get16(sd);
+    sim->l = serdes_get16(sd);
+    sim->m = serdes_get16(sd);
+    sim->mar = serdes_get16(sd);
+    sim->ir = serdes_get16(sd);
+    sim->mir = serdes_get16(sd);
+    sim->mpc = serdes_get16(sd);
+    sim->ctask = serdes_get8(sd);
+    sim->ntask = serdes_get8(sd);
+    sim->task_switch = serdes_get_bool(sd);
+    sim->aluC0 = serdes_get_bool(sd);
+    sim->skip = serdes_get_bool(sd);
+    sim->carry = serdes_get_bool(sd);
+    sim->rmr = serdes_get16(sd);
+    sim->cram_addr = serdes_get16(sd);
+    sim->rdram = serdes_get_bool(sd);
+    sim->wrtram = serdes_get_bool(sd);
+    sim->soft_reset = serdes_get_bool(sd);
+    serdes_get8_array(sd, sim->acs_rom, ACSROM_SIZE);
+    serdes_get16_array(sd, sim->consts, CONSTANT_SIZE);
+    serdes_get32_array(sd, sim->microcode,
+                       NUM_MICROCODE_BANKS * MICROCODE_SIZE);
+    serdes_get16_array(sd, sim->task_mpc, TASK_NUM_TASKS);
+    sim->cycle = serdes_get32(sd);
+    serdes_get32_array(sd, (uint32_t *) sim->task_cycle,
+                       TASK_NUM_TASKS);
+    sim->intr_cycle = serdes_get32(sd);
+    serdes_get16_array(sd, sim->mem, NUM_BANKS * MEMORY_SIZE);
+    serdes_get16_array(sd, sim->xm_banks, NUM_BANK_SLOTS);
+    serdes_get8_array(sd, sim->sreg_banks, NUM_BANK_SLOTS);
+    sim->mem_cycle = serdes_get16(sd);
+    sim->mem_task = serdes_get8(sd);
+    sim->mem_low = serdes_get16(sd);
+    sim->mem_high = serdes_get16(sd);
+    sim->mem_status = serdes_get16(sd);
+    disk_deserialize(&sim->dsk, sd);
+    display_deserialize(&sim->displ, sd);
+    ethernet_deserialize(&sim->ether, sd);
+    keyboard_deserialize(&sim->keyb, sd);
+    mouse_deserialize(&sim->mous, sd);
+}
+
+int simulator_save_state(const struct simulator *sim,
+                         const char *filename)
+{
+    struct serdes sd;
+
+    if (unlikely(!serdes_create(&sd, STATE_SIZE))) {
+        report_error("simulator: save_state: "
+                     "could not create serializer");
+        return FALSE;
+    }
+
+    simulator_serialize(sim, &sd);
+
+    if (unlikely(sd.pos != sd.size)) {
+        report_error("simulator: save_state: "
+                     "invalid state size: "
+                     "expecting %lu but got %lu",
+                     sd.size, sd.pos);
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    if (unlikely(!serdes_write(&sd, filename))) {
+        report_error("simulator: save_state: "
+                     "could not write file");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_destroy(&sd);
+    return TRUE;
+}
+
+int simulator_load_state(struct simulator *sim,
+                         const char *filename)
+{
+    struct serdes sd;
+
+    if (unlikely(!serdes_create(&sd, STATE_SIZE))) {
+        report_error("simulator: load_state: "
+                     "could not create deserializer");
+        return FALSE;
+    }
+
+    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
+        report_error("simulator: load_state: "
+                     "could not read file");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    if (unlikely(sd.pos != sd.size)) {
+        report_error("simulator: load_state: "
+                     "invalid state file `%s`", filename);
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_rewind(&sd);
+    simulator_deserialize(sim, &sd);
+
+    if (unlikely(sd.pos != sd.size)) {
+        /* This should not happen. */
+        report_error("simulator: load_state: "
+                     "error in deserialization");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_destroy(&sd);
+    return TRUE;
+}

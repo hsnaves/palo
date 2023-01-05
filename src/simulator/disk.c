@@ -6,6 +6,7 @@
 #include "simulator/disk.h"
 #include "simulator/intr.h"
 #include "microcode/microcode.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Constants. */
@@ -1104,3 +1105,78 @@ void disk_print_registers(struct disk *dsk,
                         "  WFFO  : %o",
                         (dsk->kcomm & KCOMM_WFFO) ? 1 : 0);
 }
+
+void disk_serialize(const struct disk *dsk, struct serdes *sd)
+{
+    unsigned int drive_num;
+    const struct disk_drive *dd;
+
+    serdes_put16(sd, dsk->kstat);
+    serdes_put16(sd, dsk->kdata_read);
+    serdes_put16(sd, dsk->kdata);
+    serdes_put_bool(sd, dsk->has_kdata);
+    serdes_put16(sd, dsk->kadr);
+    serdes_put16(sd, dsk->kcomm);
+    serdes_put16(sd, dsk->disk);
+    serdes_put8(sd, dsk->rec_no);
+    serdes_put_bool(sd, dsk->restore);
+    serdes_put_bool(sd, dsk->sync_word_written);
+    serdes_put_bool(sd, dsk->bitclk_enable);
+    serdes_put_bool(sd, dsk->wdinit);
+    serdes_put_bool(sd, dsk->seclate_enable);
+    serdes_put32(sd, dsk->intr_cycle);
+    serdes_put32(sd, dsk->ds_intr_cycle);
+    serdes_put32(sd, dsk->dw_intr_cycle);
+    serdes_put32(sd, dsk->seek_intr_cycle);
+    serdes_put32(sd, dsk->seclate_intr_cycle);
+    serdes_put16(sd, dsk->pending);
+
+    for (drive_num = 0; drive_num < NUM_DISK_DRIVES; drive_num++) {
+        dd = &dsk->drives[drive_num];
+
+        /* We do not serialize the contents of the disk. */
+        serdes_put16(sd, dd->head);
+        serdes_put16(sd, dd->cylinder);
+        serdes_put16(sd, dd->target_cylinder);
+        serdes_put16(sd, dd->sector);
+        serdes_put16(sd, dd->sector_word);
+    }
+}
+
+void disk_deserialize(struct disk *dsk, struct serdes *sd)
+{
+    unsigned int drive_num;
+    struct disk_drive *dd;
+
+    dsk->kstat = serdes_get16(sd);
+    dsk->kdata_read = serdes_get16(sd);
+    dsk->kdata = serdes_get16(sd);
+    dsk->has_kdata= serdes_get_bool(sd);
+    dsk->kadr = serdes_get16(sd);
+    dsk->kcomm = serdes_get16(sd);
+    dsk->disk = serdes_get16(sd);
+    dsk->rec_no = serdes_get8(sd);
+    dsk->restore = serdes_get_bool(sd);
+    dsk->sync_word_written = serdes_get_bool(sd);
+    dsk->bitclk_enable = serdes_get_bool(sd);
+    dsk->wdinit = serdes_get_bool(sd);
+    dsk->seclate_enable = serdes_get_bool(sd);
+    dsk->intr_cycle = serdes_get32(sd);
+    dsk->ds_intr_cycle = serdes_get32(sd);
+    dsk->dw_intr_cycle = serdes_get32(sd);
+    dsk->seek_intr_cycle = serdes_get32(sd);
+    dsk->seclate_intr_cycle = serdes_get32(sd);
+    dsk->pending = serdes_get16(sd);
+
+    for (drive_num = 0; drive_num < NUM_DISK_DRIVES; drive_num++) {
+        dd = &dsk->drives[drive_num];
+
+        /* We do not serialize the contents of the disk. */
+        dd->head = serdes_get16(sd);
+        dd->cylinder = serdes_get16(sd);
+        dd->target_cylinder = serdes_get16(sd);
+        dd->sector = serdes_get16(sd);
+        dd->sector_word = serdes_get16(sd);
+    }
+}
+

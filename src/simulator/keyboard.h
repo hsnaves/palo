@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#include "common/serdes.h"
+
 /* Constants. */
 #define KEYBOARD_BASE                 0xFE1C
 #define KEYBOARD_END                  0xFE20
@@ -124,6 +126,12 @@ void keyboard_press_key(struct keyboard *keyb, enum alto_key key);
  * The key to release is given by `key`
  */
 void keyboard_release_key(struct keyboard *keyb, enum alto_key key);
+
+/* Serializes the keyboard object to `sd`. */
+void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd);
+
+/* Deserializes the keyboard object from `sd`. */
+void keyboard_deserialize(struct keyboard *keyb, struct serdes *sd);
 
 
 #endif /* __SIMULATOR_KEYBOARD_H */

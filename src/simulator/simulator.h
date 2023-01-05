@@ -9,9 +9,12 @@
 #include "simulator/ethernet.h"
 #include "simulator/keyboard.h"
 #include "simulator/mouse.h"
+#include "common/serdes.h"
 #include "common/utils.h"
 
 /* Data structures and types. */
+
+/* Structure representing an Alto simulator. */
 struct simulator {
     enum system_type sys_type;    /* The alto system type. */
     int error;                    /* The simulator is in an error state. */
@@ -177,5 +180,25 @@ void simulator_nova_disassemble(const struct simulator *sim,
  */
 void simulator_print_nova_registers(const struct simulator *sim,
                                     struct string_buffer *output);
+
+/* Serializes the simulator object to `sd`. */
+void simulator_serialize(const struct simulator *sim, struct serdes *sd);
+
+/* Deserializes the simulator object from `sd`. */
+void simulator_deserialize(struct simulator *sim, struct serdes *sd);
+
+/* Saves the state of the simulator in a file.
+ * The state is saved in the file whoese name is `filename`.
+ * Returns TRUE on success.
+ */
+int simulator_save_state(const struct simulator *sim,
+                         const char *filename);
+
+/* Loads the state of the simulator in a file.
+ * The state is loaded from the file whoese name is `filename`.
+ * Returns TRUE on success.
+ */
+int simulator_load_state(struct simulator *sim,
+                         const char *filename);
 
 #endif /* __SIMULATOR_SIMULATOR_H */
