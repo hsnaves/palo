@@ -107,15 +107,19 @@ int palos_run(struct palos *ps)
     const char *fn;
 
     fn = ps->const_filename;
-    if (unlikely(!simulator_load_constant_rom(&ps->sim, fn))) {
-        report_error("palos: run: could not load constant rom");
-        return FALSE;
+    if (fn) {
+        if (unlikely(!simulator_load_constant_rom(&ps->sim, fn))) {
+            report_error("palos: run: could not load constant rom");
+            return FALSE;
+        }
     }
 
     fn = ps->mcode_filename;
-    if (unlikely(!simulator_load_microcode_rom(&ps->sim, fn, 0))) {
-        report_error("palos: run: could not load microcode rom");
-        return FALSE;
+    if (fn) {
+        if (unlikely(!simulator_load_microcode_rom(&ps->sim, fn, 0))) {
+            report_error("palos: run: could not load microcode rom");
+            return FALSE;
+        }
     }
 
     fn = ps->disk1_filename;
@@ -229,16 +233,6 @@ int main(int argc, char **argv)
             }
             disk1_filename = argv[i];
         }
-    }
-
-    if (!mcode_filename) {
-        report_error("main: must specify the microcode rom file name");
-        return 1;
-    }
-
-    if (!const_filename) {
-        report_error("main: must specify the constant rom file name");
-        return 1;
     }
 
     if (unlikely(!palos_create(&ps, sys_type, use_debugger,

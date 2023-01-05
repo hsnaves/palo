@@ -129,7 +129,24 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
         return FALSE;
     }
 
+    /* Copy the ROMs into the simulator.
+     * Note:  the constant ROM and the microcode ROM can be overwritten
+     * later with the functions simulator_load_constant_rom() and with
+     * simulator_load_microcode_rom().
+     */
     memcpy(sim->acs_rom, ACSROM, ACSROM_SIZE * sizeof(uint8_t));
+    memcpy(sim->consts, CROM, CONSTANT_SIZE * sizeof(uint16_t));
+    if (sys_type == ALTO_I) {
+        memcpy(sim->microcode, UROM1,
+               MICROCODE_SIZE * sizeof(uint32_t));
+    } else {
+        memcpy(sim->microcode, UROM2_0,
+               MICROCODE_SIZE * sizeof(uint32_t));
+        if (sys_type == ALTO_II_2KROM) {
+            memcpy(&sim->microcode[MICROCODE_SIZE], UROM2_1,
+                   MICROCODE_SIZE * sizeof(uint32_t));
+        }
+    }
 
     if (unlikely(!disk_create(&sim->dsk))) {
         report_error("sim: create: could not create disk controller");
