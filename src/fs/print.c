@@ -39,7 +39,7 @@ int print_dir_cb(const struct fs *fs,
 
     fp = cb_arg->fp;
     if ((cb_arg->verbose <= 0) && (cb_arg->count == 1)) {
-        fprintf(fp, "N      VDA    SN     VER    SIZE        FILENAME\n");
+        fprintf(fp, "N      VDA    SN     VER    SIZE         FILENAME\n");
     }
 
     if (cb_arg->verbose > 0) {
@@ -62,67 +62,76 @@ int print_dir_cb(const struct fs *fs,
         return FALSE;
     }
 
-    sn = ((uint32_t) (de->fe.sn.word1 & SN_PART1_MASK)) << 16;
-    sn += de->fe.sn.word2;
-
     if (cb_arg->verbose > 0) {
         fprintf(fp, "Leader VDA: %u\n", de->fe.leader_vda);
-        fprintf(fp, "Serial number: %u\n", sn);
+        fprintf(fp, "Serial number: %u, %u\n",
+                de->fe.sn.word1, de->fe.sn.word2);
         fprintf(fp, "Version: %u\n", de->fe.version);
         fprintf(fp, "Blank: %u\n", de->fe.blank);
         fprintf(fp, "Name: %s\n", de->name);
         fprintf(fp, "Length: %u\n", (unsigned int) length);
 
+        fprintf(fp, "Leader page information:\n");
         ltm = localtime(&finfo.created);
-        fprintf(fp, "Created: %02d-%02d-%02d %2d:%02d:%02d\n",
+        fprintf(fp, "  Created: %02d-%02d-%02d %2d:%02d:%02d\n",
                ltm->tm_mday, ltm->tm_mon + 1,
                ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 
         ltm = localtime(&finfo.written);
-        fprintf(fp, "Written: %02d-%02d-%02d %2d:%02d:%02d\n",
+        fprintf(fp, "  Written: %02d-%02d-%02d %2d:%02d:%02d\n",
                ltm->tm_mday, ltm->tm_mon + 1,
                ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 
         ltm = localtime(&finfo.read);
-        fprintf(fp, "Read:    %02d-%02d-%02d %2d:%02d:%02d\n",
+        fprintf(fp, "  Read:    %02d-%02d-%02d %2d:%02d:%02d\n",
                ltm->tm_mday, ltm->tm_mon + 1,
                ltm->tm_year % 100, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 
-        fprintf(fp, "Leader page name: %s\n", finfo.name);
+        fprintf(fp, "  Name: %s\n", finfo.name);
         if (cb_arg->verbose > 1) {
-            fprintf(fp, "Props:");
+            fprintf(fp, "  Props:");
             for (i = 0; i < (int) sizeof(finfo.props); i++) {
                 if ((i % 10) == 0) fprintf(fp, "\n");
-                fprintf(fp, "  0x%02X", finfo.props[i]);
+                fprintf(fp, "    0x%02X", finfo.props[i]);
             }
             fprintf(fp, "\n");
-            fprintf(fp, "Spare:");
+            fprintf(fp, "  Spare:");
             for (i = 0; i < (int) sizeof(finfo.spare); i++) {
                 if ((i % 10) == 0) fprintf(fp, "\n");
-                fprintf(fp, "  0x%02X", finfo.spare[i]);
+                fprintf(fp, "    0x%02X", finfo.spare[i]);
             }
             fprintf(fp, "\n");
         }
 
-        fprintf(fp, "Propbegin: %u\n", finfo.propbegin);
-        fprintf(fp, "Proplen: %u\n", finfo.proplen);
+        fprintf(fp, "  Propbegin: %u\n", finfo.propbegin);
+        fprintf(fp, "  Proplen: %u\n", finfo.proplen);
         if (finfo.has_dg) {
             fprintf(fp,
-                    "num_disks = %u, num_cylinders = %u\n"
-                    "num_heads = %u, num_sectors = %u\n",
+                    "  num_disks = %u, num_cylinders = %u\n"
+                    "  num_heads = %u, num_sectors = %u\n",
                     finfo.dg.num_disks, finfo.dg.num_cylinders,
                     finfo.dg.num_heads, finfo.dg.num_sectors);
         }
-        fprintf(fp, "Consecutive: %u\n", finfo.consecutive);
-        fprintf(fp, "Change SN: %u\n", finfo.change_sn);
-        fprintf(fp, "Last page: \n");
-        fprintf(fp, "  VDA: %u\n", finfo.last_page.vda);
-        fprintf(fp, "  PGNUM: %u\n", finfo.last_page.pgnum);
-        fprintf(fp, "  POS: %u\n", finfo.last_page.pos);
+        fprintf(fp, "  Consecutive: %u\n", finfo.consecutive);
+        fprintf(fp, "  Change SN: %u\n", finfo.change_sn);
+        fprintf(fp, "  File entry:\n");
+        fprintf(fp, "  Serial number: %u, %u\n",
+                finfo.fe.sn.word1, finfo.fe.sn.word2);
+        fprintf(fp, "    Version: %u\n", finfo.fe.version);
+        fprintf(fp, "    Blank: %u\n", finfo.fe.blank);
+        fprintf(fp, "    Leader VDA: %u\n", finfo.fe.leader_vda);
+
+        fprintf(fp, "  Last page: \n");
+        fprintf(fp, "    VDA: %u\n", finfo.last_page.vda);
+        fprintf(fp, "    PGNUM: %u\n", finfo.last_page.pgnum);
+        fprintf(fp, "    POS: %u\n", finfo.last_page.pos);
     } else {
-        fprintf(fp, "%-6u %-6u %-6u %-6u %-10u  %-39s\n",
+        sn = ((uint32_t) (de->fe.sn.word1 & SN_PART1_MASK)) << 16;
+        sn += de->fe.sn.word2;
+        fprintf(fp, "%-6u %-6u %-6u %-6u %-10u  %s%-39s\n",
                 cb_arg->count,  de->fe.leader_vda,
                 sn, de->fe.version, (unsigned int) length,
+                (de->fe.sn.word1 & SN_DIRECTORY) ? ">" : " ",
                 de->name);
     }
 
