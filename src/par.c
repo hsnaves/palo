@@ -27,7 +27,8 @@ void usage(const char *prog_name)
     printf("  -m dir_name       Creates a new directory\n");
     printf("  -nru              To not remove underlying files\n");
     printf("  -nud              To not update disk descriptor\n");
-    printf("  -ro               Operate in read only mode\n");
+    printf("  -rw               Operate in read-write mode "
+           "(default is read-only)\n");
     printf("  -v                Increase verbosity\n");
     printf("  --help            Print this help\n");
 }
@@ -48,7 +49,7 @@ int main(int argc, char **argv)
     int i, is_last, is_second_last;
     int should_format;
     int should_scavenge;
-    int modified, read_only;
+    int modified, not_read_only;
     int not_remove_underlying;
     int not_update_descriptor;
     int verbose, error;
@@ -67,7 +68,7 @@ int main(int argc, char **argv)
     should_format = FALSE;
     should_scavenge = FALSE;
     modified = FALSE;
-    read_only = FALSE;
+    not_read_only = FALSE;
     not_remove_underlying = FALSE;
     not_update_descriptor = FALSE;
     verbose = 0;
@@ -137,8 +138,8 @@ int main(int argc, char **argv)
             not_remove_underlying = TRUE;
         } else if (strcmp("-nud", argv[i]) == 0) {
             not_update_descriptor = TRUE;
-        } else if (strcmp("-ro", argv[i]) == 0) {
-            read_only = TRUE;
+        } else if (strcmp("-rw", argv[i]) == 0) {
+            not_read_only = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
             verbose++;
         } else if (strcmp("--help", argv[i]) == 0
@@ -269,7 +270,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (modified && !read_only) {
+    if (modified && not_read_only) {
         printf("saving disk image `%s`\n", disk_filename);
         if (!not_update_descriptor) {
             if (!fs_update_disk_descriptor(&fs, &error)) {
