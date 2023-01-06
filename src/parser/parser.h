@@ -111,6 +111,9 @@ struct statement {
     unsigned int line_num;        /* The location within the file. */
 
     struct statement *next;       /* A pointer to the next statement. */
+    struct statement *chain;      /* An extra pointer to chain statements
+                                   * together: this is used by the assembler.
+                                   */
 };
 
 /* Structure to represent a symbol. */

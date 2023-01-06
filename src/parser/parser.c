@@ -163,6 +163,7 @@ struct statement *new_statement(struct parser *p)
     else
         st->line_num = p->l.file->line_num;
     st->next = NULL;
+    st->chain = NULL; /* Not used by the parser. */
     return st;
 }
 

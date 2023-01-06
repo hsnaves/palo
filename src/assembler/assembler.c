@@ -269,6 +269,7 @@ int assembler_resolve_constants(struct assembler *as)
                              st->filename, st->line_num);
                 return FALSE;
             }
+            st->chain = as->const_sts[slot];
             as->const_sts[slot] = st;
             as->consts[slot] = val;
             st->v.decl.si->address = slot;
@@ -1273,27 +1274,34 @@ void print_constants(struct assembler *as, FILE *fp)
             continue;
         }
 
-        fprintf(fp, "%03o      %-6o    ", slot, as->consts[slot]);
-        fprintf(fp, "$%-12s ", st->v.decl.name.s);
+        while (st) {
+            if (st == as->const_sts[slot]) {
+                fprintf(fp, "%03o      %-6o    ", slot, as->consts[slot]);
+            } else {
+                fprintf(fp, "                   ");
+            }
+            fprintf(fp, "$%-12s ", st->v.decl.name.s);
 
-        buffer[0] = '\0';
-        switch (st->v.decl.d_type) {
-        case DECL_SYMBOL:
-            sprintf(buffer, "$L%05o,%05o,%06o",
-                    st->v.decl.n1, st->v.decl.n2, st->v.decl.n3);
-            break;
-        case DECL_CONSTANT:
-            sprintf(buffer, "$%o", st->v.decl.n1);
-            break;
-        case DECL_M_CONSTANT:
-            sprintf(buffer, "$M%o:%o", st->v.decl.n1, st->v.decl.n2);
-            break;
-        default:
-            break;
+            buffer[0] = '\0';
+            switch (st->v.decl.d_type) {
+            case DECL_SYMBOL:
+                sprintf(buffer, "$L%05o,%05o,%06o",
+                        st->v.decl.n1, st->v.decl.n2, st->v.decl.n3);
+                break;
+            case DECL_CONSTANT:
+                sprintf(buffer, "$%o", st->v.decl.n1);
+                break;
+            case DECL_M_CONSTANT:
+                sprintf(buffer, "$M%o:%o", st->v.decl.n1, st->v.decl.n2);
+                break;
+            default:
+                break;
+            }
+
+            fprintf(fp, "%-22s ", buffer);
+            fprintf(fp, "%s:%u\n", st->filename, st->line_num);
+            st = st->chain;
         }
-
-        fprintf(fp, "%-22s ", buffer);
-        fprintf(fp, "%s:%u\n", st->filename, st->line_num);
     }
 }
 
