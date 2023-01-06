@@ -205,7 +205,7 @@ int disk_load_image(struct disk *dsk, unsigned int drive_num,
             max_j = max_js[k];
             /* Read in reverse order to match the Diablo disk format. */
             for (j = max_j - 1; j-- > 1;) {
-                /* Process data in little endian format. */
+                /* Process data in little-endian format. */
                 c = fgetc(fp);
                 if (c == EOF) goto error;
                 w = (uint16_t) (c & 0xFF);
@@ -286,7 +286,7 @@ int disk_save_image(const struct disk *dsk, unsigned int drive_num,
             for (j = max_j - 1; j-- > 1;) {
                 w = wptr[j];
 
-                /* Process data in little endian format. */
+                /* Process data in little-endian format. */
                 c = fputc((int) (w & 0xFF), fp);
                 if (c == EOF) goto error;
 

@@ -8,12 +8,15 @@
 /* Data structures and types. */
 
 /* Structure to serialize / deserialize objects.
- * Integers are serialized in little-endian format.
+ * Integers are serialized in big-endian format.
  */
 struct serdes {
     uint8_t *buffer;              /* The allocated data buffer. */
     size_t size;                  /* The size of the buffer. */
     size_t pos;                   /* The current position in the buffer. */
+    int extend;                   /* A flag indicating that the buffer
+                                   * should be extendd on demand.
+                                   */
 };
 
 /* Functions. */
@@ -32,10 +35,11 @@ void serdes_destroy(struct serdes *sd);
 
 /* Creates a new serdes object.
  * This obeys the initvar / destroy / create protocol.
- * The `size` variable specifies the buffer size.
+ * The `size` variable specifies the buffer size. The `extend` parameter
+ * tells the serdes object to extend the buffer on demand.
  * Returns TRUE on success.
  */
-int serdes_create(struct serdes *sd, size_t size);
+int serdes_create(struct serdes *sd, size_t size, int extend);
 
 /* Rewinds the position to the beginning. */
 void serdes_rewind(struct serdes *sd);
@@ -45,13 +49,16 @@ void serdes_rewind(struct serdes *sd);
  */
 int serdes_verify(struct serdes *sd);
 
-/* Reads the contents of the file into the buffer.
- * The name of the file to read is in the parameter `filename`.
- * If the `extend` parameter is TRUE, the buffer may be enlarged
- * to fit the entire contents of the file.
+/* Extends the buffer to the size in `size`.
  * Returns TRUE on success.
  */
-int serdes_read(struct serdes *sd, const char *filename, int extend);
+int serdes_extend(struct serdes *sd, size_t size);
+
+/* Reads the contents of the file into the buffer.
+ * The name of the file to read is in the parameter `filename`.
+ * Returns TRUE on success.
+ */
+int serdes_read(struct serdes *sd, const char *filename);
 
 /* Writes the contents of the buffer to a file.
  * The name of the file to write is in the parameter `filename`.

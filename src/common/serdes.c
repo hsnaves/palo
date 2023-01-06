@@ -20,7 +20,7 @@ void serdes_destroy(struct serdes *sd)
     sd->buffer = NULL;
 }
 
-int serdes_create(struct serdes *sd, size_t size)
+int serdes_create(struct serdes *sd, size_t size, int extend)
 {
     serdes_initvar(sd);
 
@@ -41,13 +41,14 @@ int serdes_create(struct serdes *sd, size_t size)
 
     sd->size = size;
     sd->pos = 0;
+    sd->extend = extend;
 
     return TRUE;
 }
 
 void serdes_rewind(struct serdes *sd)
 {
-    sd->pos =0 ;
+    sd->pos = 0;
 }
 
 int serdes_verify(struct serdes *sd)
@@ -55,10 +56,30 @@ int serdes_verify(struct serdes *sd)
     return (sd->pos <= sd->size);
 }
 
-int serdes_read(struct serdes *sd, const char *filename, int extend)
+int serdes_extend(struct serdes *sd, size_t size)
+{
+    uint8_t *new_buffer;
+
+    if (unlikely(size <= sd->size)) {
+        report_error("serdes: extend: size is too small");
+        return FALSE;
+    }
+
+    new_buffer = realloc(sd->buffer, size);
+    if (unlikely(!new_buffer)) {
+        report_error("serdes: extend: memory exhausted");
+        /* To prevent multiple attempts to extend. */
+        sd->extend = FALSE;
+        return FALSE;
+    }
+    sd->buffer = new_buffer;
+    sd->size = size;
+    return TRUE;
+}
+
+int serdes_read(struct serdes *sd, const char *filename)
 {
     FILE *fp;
-    uint8_t *new_buffer;
     size_t nbytes;
 
     fp = fopen(filename, "rb");
@@ -77,15 +98,12 @@ int serdes_read(struct serdes *sd, const char *filename, int extend)
     }
     sd->pos = (size_t) ftell(fp);
 
-    if (extend && (sd->pos > sd->size)) {
-        new_buffer = realloc(sd->buffer, sd->pos);
-        if (!new_buffer) {
-            report_error("serdes: read: memory exhausted");
+    if (sd->extend && (sd->pos > sd->size)) {
+        if (unlikely(!serdes_extend(sd, sd->pos))) {
+            report_error("serdes: read: could not extend");
             fclose(fp);
             return FALSE;
         }
-        sd->buffer = new_buffer;
-        sd->size = sd->pos;
     }
 
     rewind(fp);
@@ -143,8 +161,8 @@ uint16_t serdes_get16(struct serdes *sd)
     uint16_t v;
 
     if (sd->pos + 2 <= sd->size) {
-        v = sd->buffer[sd->pos];
-        v |= ((uint16_t) sd->buffer[sd->pos + 1]) << 8;
+        v = sd->buffer[sd->pos + 1];
+        v |= ((uint16_t) sd->buffer[sd->pos]) << 8;
     } else {
         v = 0;
     }
@@ -157,10 +175,10 @@ uint32_t serdes_get32(struct serdes *sd)
     uint32_t v;
 
     if (sd->pos + 4 <= sd->size) {
-        v = sd->buffer[sd->pos];
-        v |= ((uint32_t) sd->buffer[sd->pos + 1]) << 8;
-        v |= ((uint32_t) sd->buffer[sd->pos + 2]) << 16;
-        v |= ((uint32_t) sd->buffer[sd->pos + 3]) << 24;
+        v = sd->buffer[sd->pos + 3];
+        v |= ((uint32_t) sd->buffer[sd->pos + 2]) << 8;
+        v |= ((uint32_t) sd->buffer[sd->pos + 1]) << 16;
+        v |= ((uint32_t) sd->buffer[sd->pos]) << 24;
     } else {
         v = 0;
     }
@@ -199,6 +217,10 @@ void serdes_get32_array(struct serdes *sd, uint32_t *arr, size_t num)
 
 void serdes_put8(struct serdes *sd, uint8_t v)
 {
+    if ((sd->pos + 1 > sd->size) && sd->extend) {
+        serdes_extend(sd, 2 * sd->size);
+    }
+
     if (sd->pos + 1 <= sd->size) {
         sd->buffer[sd->pos] = v;
     }
@@ -207,20 +229,28 @@ void serdes_put8(struct serdes *sd, uint8_t v)
 
 void serdes_put16(struct serdes *sd, uint16_t v)
 {
+    if ((sd->pos + 2 > sd->size) && sd->extend) {
+        serdes_extend(sd, 2 * sd->size);
+    }
+
     if (sd->pos + 2 <= sd->size) {
-        sd->buffer[sd->pos] = v;
-        sd->buffer[sd->pos + 1] = (v >> 8);
+        sd->buffer[sd->pos + 1] = v;
+        sd->buffer[sd->pos] = (v >> 8);
     }
     sd->pos += 2;
 }
 
 void serdes_put32(struct serdes *sd, uint32_t v)
 {
+    if ((sd->pos + 4 > sd->size) && sd->extend) {
+        serdes_extend(sd, 2 * sd->size);
+    }
+
     if (sd->pos + 4 <= sd->size) {
-        sd->buffer[sd->pos] = v;
-        sd->buffer[sd->pos + 1] = (v >> 8);
-        sd->buffer[sd->pos + 2] = (v >> 16);
-        sd->buffer[sd->pos + 3] = (v >> 24);
+        sd->buffer[sd->pos + 3] = v;
+        sd->buffer[sd->pos + 2] = (v >> 8);
+        sd->buffer[sd->pos + 1] = (v >> 16);
+        sd->buffer[sd->pos] = (v >> 24);
     }
     sd->pos += 4;
 }

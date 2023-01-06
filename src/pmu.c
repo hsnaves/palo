@@ -15,6 +15,7 @@ void usage(const char *prog_name)
     printf(" %s [options] input\n", prog_name);
     printf("where:\n");
     printf("  -l listing    Specify the output listing file\n");
+    printf("  -o binary     Specify the output file\n");
     printf("  -c constant   Specify the constant rom file\n");
     printf("  -m microcode  Specify the microcode rom file\n");
     printf("  --help        Print this help\n");
@@ -24,6 +25,7 @@ int main(int argc, char **argv)
 {
     const char *input_filename;
     const char *listing_filename;
+    const char *binary_filename;
     const char *constant_filename;
     const char *microcode_filename;
     const char *fn;
@@ -33,6 +35,7 @@ int main(int argc, char **argv)
 
     input_filename = NULL;
     listing_filename = NULL;
+    binary_filename = NULL;
     constant_filename = NULL;
     microcode_filename = NULL;
 
@@ -44,6 +47,12 @@ int main(int argc, char **argv)
                 return 1;
             }
             listing_filename = argv[++i];
+        } else if (strcmp("-o", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the binary file");
+                return 1;
+            }
+            binary_filename = argv[++i];
         } else if (strcmp("-c", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the constant rom file");
@@ -116,6 +125,14 @@ int main(int argc, char **argv)
     if (unlikely(!assembler_produce_objfile(&as, &objf))) {
         report_error("main: could not produce output");
         goto error;
+    }
+
+    fn = binary_filename;
+    if (fn) {
+        if (unlikely(!objfile_write_binary(&objf, fn))) {
+            report_error("main: could not write binary file");
+            goto error;
+        }
     }
 
     fn = constant_filename;

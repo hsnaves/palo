@@ -165,16 +165,20 @@ struct objsymb *new_objsymb(struct objfile *objf,
     const struct objsymb *other;
     const struct string_node *n;
 
-    other = objfile_resolve(objf, type, name);
-    if (other) {
-        if (other->value != value) {
-            report_error("objfile: new_objsymb: "
-                         "repeated name with different values: "
-                         "%s -> %u vs %u (type: %u)",
-                         other->n.str.s, other->value,
-                         value, type);
-            return NULL;
+    if (name) {
+        other = objfile_resolve(objf, type, name);
+        if (other) {
+            if (other->value != value) {
+                report_error("objfile: new_objsymb: "
+                             "repeated name with different values: "
+                             "%s -> %u vs %u (type: %u)",
+                             other->n.str.s, other->value,
+                             value, type);
+                return NULL;
+            }
         }
+    } else {
+        other = NULL;
     }
 
     osym = (struct objsymb *)
@@ -187,31 +191,32 @@ struct objsymb *new_objsymb(struct objfile *objf,
     osym->type = type;
     osym->value = value;
 
-    n = table_find(&objf->symbols, name);
-    if (n) {
-        /* To avoid allocating memory.
-         * That is, strings are interned.
-         */
-        osym->n = *n;
-    } else {
-        /* Make a copy of the name. */
-        osym->n.str.s = allocator_dup(&objf->salloc,
-                                      name->s, name->len);
-        if (unlikely(!osym->n.str.s)) {
-            report_error("objfile: new_objsymb: "
-                         "memory exhausted for strings");
-            return NULL;
+    if (name) {
+        n = table_find(&objf->symbols, name);
+        if (n) {
+            /* To avoid allocating memory.
+             * That is, strings are interned.
+             */
+            osym->n = *n;
+        } else {
+            /* Make a copy of the name. */
+            osym->n.str.s = allocator_dup(&objf->salloc,
+                                          name->s, name->len);
+            if (unlikely(!osym->n.str.s)) {
+                report_error("objfile: new_objsymb: "
+                             "memory exhausted for strings");
+                return NULL;
+            }
+            osym->n.str.len = name->len;
+            osym->n.str.hash = name->hash;
         }
-        osym->n.str.len = name->len;
-        osym->n.str.hash = name->hash;
-    }
-    osym->n.next = NULL;
 
-    if (!other) {
-        if (unlikely(!table_add(&objf->symbols, &osym->n))) {
-            report_error("objsfile: new_objsymb: "
-                         "could not add symbol to hash table");
-            return NULL;
+        if (!other) {
+            if (unlikely(!table_add(&objf->symbols, &osym->n))) {
+                report_error("objsfile: new_objsymb: "
+                             "could not add symbol to hash table");
+                return NULL;
+            }
         }
     }
 
@@ -329,6 +334,7 @@ int objfile_add_label(struct objfile *objf,
 int objfile_add_microcode(struct objfile *objf,
                           uint16_t address, uint32_t mcode)
 {
+    struct objsymb *osym;
     struct microcode mc;
     uint16_t rsel;
 
@@ -342,6 +348,13 @@ int objfile_add_microcode(struct objfile *objf,
         report_error("objfile: add_microcode: "
                      "microcode already defined for given address: %u",
                      address);
+        return FALSE;
+    }
+
+    osym = new_objsymb(objf, OBJSYMB_MU, address, NULL);
+    if (unlikely(!osym)) {
+        report_error("objfile: add_microcode: "
+                     "could not create symbol");
         return FALSE;
     }
 
@@ -471,6 +484,167 @@ struct objsymb *objfile_resolve(const struct objfile *objf,
     return NULL;
 }
 
+/* Reverses the bits according to some mask.
+ * This code was based on the source code of READMU.C:
+ * https://xeroxalto.computerhistory.org/Indigo/AltoSource/.READMU.C!1.html
+ * This is used by serialize_file().
+ */
+static
+uint16_t revbits(uint16_t x, int n, uint16_t mask)
+{
+    uint16_t y;
+    int j;
+
+    y = 0;
+    for (j = 0; j < n; j++) {
+        y = y << 1;
+        y += (x & mask);
+        x = x >> 1;
+    }
+    return y;
+}
+
+/* Auxiliary function to serialize the objfile.
+ * The objfile `objf` is serialized to `sd`.
+ */
+static
+void serialize_objfile(const struct objfile *objf,
+                       struct serdes *sd)
+{
+    const struct objsymb *osym;
+    uint16_t address, value, line_num;
+    uint16_t tmp1, tmp2;
+    uint32_t mcode;
+
+    /* Define R memory. */
+    serdes_put16(sd, 4); /* block_type */
+    serdes_put16(sd, 3); /* mem_num */
+    serdes_put16(sd, 16); /* num_bits */
+    serdes_put8_array(sd, (const uint8_t *) "R", 1);
+    serdes_put8(sd, 0); /* end of string */
+
+    /* Define CONSTANT memory. */
+    serdes_put16(sd, 4); /* block_type */
+    serdes_put16(sd, 1); /* mem_num */
+    serdes_put16(sd, 16); /* num_bits */
+    serdes_put8_array(sd, (const uint8_t *) "CONSTANT", 8);
+    serdes_put16(sd, 0); /* end of string */
+
+    for (address = 0; address < CONSTANT_SIZE; address++) {
+        if (!objf->const_symbs[address]) continue;
+
+        /* What a strange transformation! */
+        tmp1 = (revbits((address >> 4) & 0xF, 4, 1) << 1)
+            + ((address & 0xE) << 4) + (address & 1);
+
+        serdes_put16(sd, 2); /* block_type */
+        serdes_put16(sd, 1); /* mem_num */
+        serdes_put16(sd, tmp1); /* value */
+
+        value = objf->consts[address];
+        tmp2 = ~value;
+
+        serdes_put16(sd, 1); /* block_type */
+        serdes_put16(sd, 0); /* line_num */
+        serdes_put16(sd, tmp2); /* value */
+    }
+
+    /* Define INSTRUCTION memory. */
+    serdes_put16(sd, 4); /* block_type */
+    serdes_put16(sd, 2); /* mem_num */
+    serdes_put16(sd, 32); /* num_bits */
+    serdes_put8_array(sd, (const uint8_t *) "INSTRUCTION", 11);
+    serdes_put8(sd, 0); /* end of string */
+
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        if (!objf->has_microcode[address]) continue;
+
+        tmp1 = revbits((~address) & 0xFF, 8, 1)
+            + (address & 0xFF00);
+
+        serdes_put16(sd, 2); /* block_type */
+        serdes_put16(sd, 2); /* mem_num */
+        serdes_put16(sd, tmp1); /* value */
+
+        mcode = objf->microcode[address];
+        line_num = 5 + (mcode >> 16);
+
+        /* What is happening here? */
+        mcode ^= 0x88400;
+        tmp1 = revbits(mcode & 0xFFFF, 4, 0x1111);
+        tmp2 = revbits((mcode >> 16) & 0xFFFF, 4, 0x1111);
+        mcode = ((uint32_t) tmp1) + (((uint32_t) tmp2) << 16);
+
+        serdes_put16(sd, 1); /* block_type */
+        serdes_put16(sd, line_num); /* line_num */
+        serdes_put32(sd, mcode); /* value */
+    }
+
+    for (osym = objf->first_symb; osym; osym = osym->next) {
+        switch (osym->type) {
+        case OBJSYMB_CONSTANT:
+            serdes_put16(sd, 5); /* block_type */
+            serdes_put16(sd, 1); /* memory_num */
+            break;
+        case OBJSYMB_LABEL:
+            serdes_put16(sd, 5); /* block_type */
+            serdes_put16(sd, 2); /* memory_num */
+            break;
+        case OBJSYMB_REGISTER:
+            serdes_put16(sd, 5); /* block_type */
+            serdes_put16(sd, 3); /* memory_num */
+            break;
+        default:
+            continue;
+        }
+        serdes_put16(sd, osym->value);
+        serdes_put8_array(sd, (const uint8_t *) osym->n.str.s,
+                          osym->n.str.len);
+
+        /* Append the end of the string. */
+        if (osym->n.str.len & 1) {
+            serdes_put8(sd, 0);
+        } else {
+            serdes_put16(sd, 0);
+        }
+    }
+
+    /* End of file. */
+    serdes_put16(sd, 0);
+}
+
+int objfile_write_binary(const struct objfile *objf,
+                         const char *filename)
+{
+    struct serdes sd;
+    size_t size;
+
+    size = 102400;
+    if (unlikely(!serdes_create(&sd, size, TRUE))) {
+        report_error("objfile: write_binary: "
+                     "could not create serializer");
+        return FALSE;
+    }
+
+    serialize_objfile(objf, &sd);
+    if (unlikely(!serdes_verify(&sd))) {
+        report_error("objfile: write_binary: "
+                     "could not serialize");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    if (unlikely(!serdes_write(&sd, filename))) {
+        report_error("objfile: write_binary: "
+                     "could not write file");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_destroy(&sd);
+    return TRUE;
+}
+
 int objfile_dump_constant_rom(const struct objfile *objf,
                               const char *filename)
 {
@@ -478,7 +652,7 @@ int objfile_dump_constant_rom(const struct objfile *objf,
     size_t size;
 
     size = CONSTANT_SIZE * sizeof(uint16_t);
-    if (unlikely(!serdes_create(&sd, size))) {
+    if (unlikely(!serdes_create(&sd, size, FALSE))) {
         report_error("objfile: dump_constant_rom: "
                      "could not create serializer");
         return FALSE;
@@ -504,7 +678,7 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
     size_t size;
 
     size = MICROCODE_SIZE * sizeof(uint32_t);
-    if (unlikely(!serdes_create(&sd, size))) {
+    if (unlikely(!serdes_create(&sd, size, FALSE))) {
         report_error("objfile: dump_microcode_rom: "
                      "could not create serializer");
         return FALSE;

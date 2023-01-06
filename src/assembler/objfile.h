@@ -14,6 +14,7 @@ enum objsymb_type {
     OBJSYMB_CONSTANT,
     OBJSYMB_REGISTER,
     OBJSYMB_LABEL,
+    OBJSYMB_MU,
 };
 
 /* A structure representing an symbol in the object file. */
@@ -42,8 +43,8 @@ struct objfile {
     struct objsymb **const_symbs; /* Constant symbols. */
     struct objsymb **reg_symbs;   /* Register symbols. */
     struct objsymb **label_symbs; /* Label symbols. */
-    struct objsymb **mu_c_symbs;  /* Microcode (fake) symbols. */
-    struct objsymb **mu_r_symbs;  /* Microcode (fake) symbols. */
+    struct objsymb **mu_c_symbs;  /* Microcode constant symbols. */
+    struct objsymb **mu_r_symbs;  /* Microcode register symbols. */
 };
 
 /* Functions. */
@@ -124,9 +125,15 @@ struct objsymb *objfile_resolve(const struct objfile *objf,
                                 enum objsymb_type type,
                                 const struct string *name);
 
+/* Writes out the binary file.
+ * The name of the file to write is given by `filename`.
+ * Returns TRUE on success.
+ */
+int objfile_write_binary(const struct objfile *objf,
+                         const char *filename);
+
 /* Dumps the constant rom to a file.
  * The file is named `filename`.
- * It uses little-endian for encoding the 16-bit constants.
  * Returns TRUE on success.
  */
 int objfile_dump_constant_rom(const struct objfile *objf,
@@ -134,7 +141,6 @@ int objfile_dump_constant_rom(const struct objfile *objf,
 
 /* Dumps the microcode rom to a file.
  * The file is named `filename`.
- * It uses little-endian for encoding the 32-bit microcodes.
  * Returns TRUE on success.
  */
 int objfile_dump_microcode_rom(const struct objfile *objf,

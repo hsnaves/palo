@@ -193,13 +193,13 @@ int simulator_load_constant_rom(struct simulator *sim,
     size_t size;
 
     size = CONSTANT_SIZE * sizeof(uint16_t);
-    if (unlikely(!serdes_create(&sd, size))) {
+    if (unlikely(!serdes_create(&sd, size, FALSE))) {
         report_error("simulator: load_constant_rom: "
                      "could not create deserializer");
         return FALSE;
     }
 
-    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
+    if (unlikely(!serdes_read(&sd, filename))) {
         report_error("simulator: load_constant_rom: "
                      "could not read file");
         serdes_destroy(&sd);
@@ -235,13 +235,13 @@ int simulator_load_microcode_rom(struct simulator *sim,
     offset = (bank) ? MICROCODE_SIZE : 0;
 
     size = MICROCODE_SIZE * sizeof(uint32_t);
-    if (unlikely(!serdes_create(&sd, size))) {
+    if (unlikely(!serdes_create(&sd, size, FALSE))) {
         report_error("simulator: load_microcode_rom: "
                      "could not create deserializer");
         return FALSE;
     }
 
-    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
+    if (unlikely(!serdes_read(&sd, filename))) {
         report_error("simulator: load_microcode_rom: "
                      "could not read file");
         serdes_destroy(&sd);
@@ -2014,7 +2014,7 @@ int simulator_save_state(const struct simulator *sim,
 {
     struct serdes sd;
 
-    if (unlikely(!serdes_create(&sd, STATE_SIZE))) {
+    if (unlikely(!serdes_create(&sd, STATE_SIZE, FALSE))) {
         report_error("simulator: save_state: "
                      "could not create serializer");
         return FALSE;
@@ -2047,13 +2047,13 @@ int simulator_load_state(struct simulator *sim,
 {
     struct serdes sd;
 
-    if (unlikely(!serdes_create(&sd, STATE_SIZE))) {
+    if (unlikely(!serdes_create(&sd, STATE_SIZE, FALSE))) {
         report_error("simulator: load_state: "
                      "could not create deserializer");
         return FALSE;
     }
 
-    if (unlikely(!serdes_read(&sd, filename, FALSE))) {
+    if (unlikely(!serdes_read(&sd, filename))) {
         report_error("simulator: load_state: "
                      "could not read file");
         serdes_destroy(&sd);

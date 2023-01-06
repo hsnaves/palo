@@ -128,7 +128,7 @@ int fs_load_image(struct fs *fs, const char *filename)
 
         meta_ptr = (uint16_t *) pg;
         for (j = 1; j < meta_len; j++) {
-            /* Process data in little endian format. */
+            /* Process data in little-endian format. */
             c = fgetc(fp);
             if (c == EOF) goto error_eof;
             w = (uint16_t) (c & 0xFF);
@@ -197,7 +197,7 @@ int fs_save_image(const struct fs *fs, const char *filename)
         for (j = 1; j < meta_len; j++) {
             w = meta_ptr[j];
 
-            /* Process data in little endian format. */
+            /* Process data in little-endian format. */
             c = fputc((int) (w & 0xFF), fp);
             if (c == EOF) goto error;
 
