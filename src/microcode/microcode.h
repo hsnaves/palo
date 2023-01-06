@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "common/utils.h"
+#include "common/string_buffer.h"
 
 /* Constants. */
 #define CONSTANT_SIZE                    256

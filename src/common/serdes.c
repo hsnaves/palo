@@ -24,10 +24,18 @@ int serdes_create(struct serdes *sd, size_t size)
 {
     serdes_initvar(sd);
 
+    if (unlikely(size == 0)) {
+        report_error("serdes: create: "
+                     "invalid size");
+        serdes_destroy(sd);
+        return FALSE;
+    }
+
     sd->buffer = malloc(size);
     if (unlikely(!sd->buffer)) {
         report_error("serdes: create: "
                      "memory exhausted");
+        serdes_destroy(sd);
         return FALSE;
     }
 

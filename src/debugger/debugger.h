@@ -40,8 +40,6 @@ struct debugger {
     char *cmd_buf;                /* Buffer for command. */
     size_t cmd_buf_size;          /* Size of the command buffer. */
 
-    char *out_buf;                /* Buffer for output. */
-    size_t out_buf_size;          /* Size of the output buffer. */
     struct string_buffer output;  /* The string buffer for output. */
     int use_debugger;             /* To use the debugger. */
 };

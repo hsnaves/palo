@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "microcode/nova.h"
+#include "common/string_buffer.h"
 #include "common/utils.h"
 
 /* Functions. */

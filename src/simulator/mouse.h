@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "common/serdes.h"
+#include "common/string_buffer.h"
 
 /* Constants. */
 #define MOUSE_BASE                    0xFE18
@@ -88,6 +89,12 @@ void mouse_move(struct mouse *mous, int16_t dx, int16_t dy);
 
 /* Clears the pending mouse movements. */
 void mouse_clear_movement(struct mouse *mous);
+
+/* Prints the state of the registers.
+ * The output is written to `output`.
+ */
+void mouse_print_registers(struct mouse *mous,
+                           struct string_buffer *output);
 
 /* Serializes the mouse object to `sd`. */
 void mouse_serialize(const struct mouse *mous, struct serdes *sd);

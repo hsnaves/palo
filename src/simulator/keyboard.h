@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "common/serdes.h"
+#include "common/string_buffer.h"
 
 /* Constants. */
 #define KEYBOARD_BASE                 0xFE1C
@@ -126,6 +127,12 @@ void keyboard_press_key(struct keyboard *keyb, enum alto_key key);
  * The key to release is given by `key`
  */
 void keyboard_release_key(struct keyboard *keyb, enum alto_key key);
+
+/* Prints the state of the registers.
+ * The output is written to `output`.
+ */
+void keyboard_print_registers(struct keyboard *keyb,
+                              struct string_buffer *output);
 
 /* Serializes the keyboard object to `sd`. */
 void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd);

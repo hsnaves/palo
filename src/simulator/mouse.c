@@ -135,6 +135,15 @@ void mouse_clear_movement(struct mouse *mous)
     mous->dy = 0;
 }
 
+void mouse_print_registers(struct mouse *mous,
+                           struct string_buffer *output)
+{
+    string_buffer_print(output, "BUTTONS: %07o\n", mous->buttons);
+    string_buffer_print(output, "DX: %d\n", mous->dx);
+    string_buffer_print(output, "DY: %d\n", mous->dy);
+    string_buffer_print(output, "DIR_X: %d\n", mous->dir_x);
+}
+
 void mouse_serialize(const struct mouse *mous, struct serdes *sd)
 {
     serdes_put16(sd, mous->buttons);

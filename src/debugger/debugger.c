@@ -25,7 +25,7 @@ void debugger_initvar(struct debugger *dbg)
 {
     dbg->bps = NULL;
     dbg->cmd_buf = NULL;
-    dbg->out_buf = NULL;
+    string_buffer_initvar(&dbg->output);
 }
 
 void debugger_destroy(struct debugger *dbg)
@@ -36,8 +36,7 @@ void debugger_destroy(struct debugger *dbg)
     if (dbg->cmd_buf) free((void *) dbg->cmd_buf);
     dbg->cmd_buf = NULL;
 
-    if (dbg->out_buf) free((void *) dbg->out_buf);
-    dbg->out_buf = NULL;
+    string_buffer_destroy(&dbg->output);
 }
 
 int debugger_create(struct debugger *dbg, int use_debugger,
@@ -47,15 +46,19 @@ int debugger_create(struct debugger *dbg, int use_debugger,
 
     dbg->max_breakpoints = MAX_BREAKPOINTS;
     dbg->cmd_buf_size = BUFFER_SIZE;
-    dbg->out_buf_size = BUFFER_SIZE;
 
     dbg->bps = (struct breakpoint *)
         malloc(dbg->max_breakpoints * sizeof(struct breakpoint));
     dbg->cmd_buf = (char *) malloc(dbg->cmd_buf_size);
-    dbg->out_buf = (char *) malloc(dbg->out_buf_size);
 
-    if (unlikely(!dbg->bps || !dbg->cmd_buf || !dbg->out_buf)) {
+    if (unlikely(!dbg->bps || !dbg->cmd_buf)) {
         report_error("debugger: create: memory exhausted");
+        debugger_destroy(dbg);
+        return FALSE;
+    }
+
+    if (unlikely(!string_buffer_create(&dbg->output, BUFFER_SIZE))) {
+        report_error("debugger: create: could not create string_buffer");
         debugger_destroy(dbg);
         return FALSE;
     }
@@ -63,9 +66,6 @@ int debugger_create(struct debugger *dbg, int use_debugger,
     dbg->use_debugger = use_debugger;
     dbg->sim = sim;
     dbg->ui = ui;
-
-    dbg->output.buf = dbg->out_buf;
-    dbg->output.buf_size = dbg->out_buf_size;
 
     return TRUE;
 }
@@ -262,7 +262,7 @@ void cmd_registers(struct debugger *dbg, int extra)
     sim = dbg->sim;
     string_buffer_reset(&dbg->output);
     simulator_disassemble(sim, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 
     string_buffer_reset(&dbg->output);
     if (extra) {
@@ -270,7 +270,7 @@ void cmd_registers(struct debugger *dbg, int extra)
     } else {
         simulator_print_registers(sim, &dbg->output);
     }
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 }
 
 /* Prints the nova registers. */
@@ -281,11 +281,11 @@ void cmd_nova_registers(struct debugger *dbg)
     sim = dbg->sim;
     string_buffer_reset(&dbg->output);
     simulator_nova_disassemble(sim, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 
     string_buffer_reset(&dbg->output);
     simulator_print_nova_registers(sim, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 }
 
 /* Shows the disk registers. */
@@ -296,7 +296,7 @@ void cmd_disk_registers(struct debugger *dbg)
     sim = dbg->sim;
     string_buffer_reset(&dbg->output);
     disk_print_registers(&sim->dsk, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 }
 
 /* Shows the display registers. */
@@ -307,7 +307,7 @@ void cmd_display_registers(struct debugger *dbg)
     sim = dbg->sim;
     string_buffer_reset(&dbg->output);
     display_print_registers(&sim->displ, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
 }
 
 /* Shows the ethernet registers. */
@@ -318,7 +318,29 @@ void cmd_ethernet_registers(struct debugger *dbg)
     sim = dbg->sim;
     string_buffer_reset(&dbg->output);
     ethernet_print_registers(&sim->ether, &dbg->output);
-    printf("%s\n", dbg->out_buf);
+    printf("%s\n", string_buffer_string(&dbg->output));
+}
+
+/* Shows the keyboard registers. */
+static
+void cmd_keyboard_registers(struct debugger *dbg)
+{
+    struct simulator *sim;
+    sim = dbg->sim;
+    string_buffer_reset(&dbg->output);
+    keyboard_print_registers(&sim->keyb, &dbg->output);
+    printf("%s\n", string_buffer_string(&dbg->output));
+}
+
+/* Shows the mouse registers. */
+static
+void cmd_mouse_registers(struct debugger *dbg)
+{
+    struct simulator *sim;
+    sim = dbg->sim;
+    string_buffer_reset(&dbg->output);
+    mouse_print_registers(&sim->mous, &dbg->output);
+    printf("%s\n", string_buffer_string(&dbg->output));
 }
 
 /* Dumps the contents of memory.
@@ -1043,6 +1065,8 @@ void cmd_help(struct debugger *dbg)
     printf("  dsk              Print the disk registers\n");
     printf("  displ            Print the display registers\n");
     printf("  ether            Print the ethernet registers\n");
+    printf("  keyb             Print the keyboard registers\n");
+    printf("  mous             Print the mouse registers\n");
     printf("  d [addr] [num]   Dump the memory contents\n");
     printf("  w addr val       Writes a word to memory\n");
     printf("  c                Continue execution\n");
@@ -1164,6 +1188,16 @@ int debugger_debug(struct gui *ui)
 
         if (strcmp(cmd, "ether") == 0) {
             cmd_ethernet_registers(dbg);
+            continue;
+        }
+
+        if (strcmp(cmd, "keyb") == 0) {
+            cmd_keyboard_registers(dbg);
+            continue;
+        }
+
+        if (strcmp(cmd, "mous") == 0) {
+            cmd_mouse_registers(dbg);
             continue;
         }
 

@@ -6,6 +6,7 @@
 #include "simulator/intr.h"
 #include "microcode/microcode.h"
 #include "common/serdes.h"
+#include "common/string_buffer.h"
 #include "common/utils.h"
 
 /* Constants. */

@@ -149,6 +149,16 @@ void keyboard_release_key(struct keyboard *keyb, enum alto_key key)
     keyb->keys[word_index] &= (~mask);
 }
 
+void keyboard_print_registers(struct keyboard *keyb,
+                              struct string_buffer *output)
+{
+    unsigned int i;
+    for (i = 0; i < 4; i++) {
+        string_buffer_print(output, "KEYS[%d]: %07o\n",
+                            i, keyb->keys[i]);
+    }
+}
+
 void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd)
 {
     serdes_put16_array(sd, keyb->keys, 4);

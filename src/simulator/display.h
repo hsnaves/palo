@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "common/serdes.h"
-#include "common/utils.h"
+#include "common/string_buffer.h"
 
 /* Constants. */
 #define DISPLAY_WIDTH                    606

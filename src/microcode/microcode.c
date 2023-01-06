@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "microcode/microcode.h"
+#include "common/string_buffer.h"
 #include "common/utils.h"
 
 /* Functions. */
@@ -40,20 +41,10 @@ static
 void decode_nondata_function(struct decoder *dec,
                              struct string_buffer *output)
 {
-    char f1_buffer[20];
-    char f2_buffer[20];
-    struct string_buffer f1_op;
-    struct string_buffer f2_op;
+    const char *f1_op;
+    const char *f2_op;
 
-    f1_op.buf = f1_buffer;
-    f1_op.buf_size = sizeof(f1_buffer);
-    string_buffer_reset(&f1_op);
-
-    f2_op.buf = f2_buffer;
-    f2_op.buf_size = sizeof(f2_buffer);
-    string_buffer_reset(&f2_op);
-
-    f1_buffer[0] = '\0';
+    f1_op = "";
     switch (dec->mc.f1) {
     case F1_NONE:
     case F1_LOAD_MAR:
@@ -63,17 +54,17 @@ void decode_nondata_function(struct decoder *dec,
     case F1_CONSTANT:
         break;
     case F1_TASK:
-        string_buffer_print(&f1_op, "TASK");
+        f1_op = "TASK";
         break;
     case F1_BLOCK:
-        string_buffer_print(&f1_op, "BLOCK");
+        f1_op = "BLOCK";
         break;
     default:
         if (dec->mc.ram_task) {
             switch (dec->mc.f1) {
             case F1_RAM_SWMODE:
                 if (dec->mc.task == TASK_EMULATOR) {
-                    string_buffer_print(&f1_op, "SWMODE");
+                    f1_op = "SWMODE";
                 } else {
                     /* Invalid F1 function. */
                     dec->error = TRUE;
@@ -81,10 +72,10 @@ void decode_nondata_function(struct decoder *dec,
                 }
                 goto process_f2;
             case F1_RAM_WRTRAM:
-                string_buffer_print(&f1_op, "WRTRAM");
+                f1_op = "WRTRAM";
                 goto process_f2;
             case F1_RAM_RDRAM:
-                string_buffer_print(&f1_op, "RDRAM");
+                f1_op = "RDRAM";
                 goto process_f2;
             case F1_RAM_LOAD_SRB:
                 if (dec->mc.task != TASK_EMULATOR)
@@ -97,7 +88,7 @@ void decode_nondata_function(struct decoder *dec,
         case TASK_EMULATOR:
             switch (dec->mc.f1) {
             case F1_EMU_STARTF:
-                string_buffer_print(&f1_op, "STARTF");
+                f1_op = "STARTF";
                 break;
             case F1_EMU_LOAD_RMR:
             case F1_EMU_LOAD_ESRB:
@@ -114,13 +105,13 @@ void decode_nondata_function(struct decoder *dec,
         case TASK_DISK_WORD:
             switch (dec->mc.f1) {
             case F1_DSK_STROBE:
-                string_buffer_print(&f1_op, "STROBE");
+                f1_op = "STROBE";
                 break;
             case F1_DSK_INCRECNO:
-                string_buffer_print(&f1_op, "INCRECNO");
+                f1_op = "INCRECNO";
                 break;
             case F1_DSK_CLRSTAT:
-                string_buffer_print(&f1_op, "CLRSTAT");
+                f1_op = "CLRSTAT";
                 break;
             case F1_DSK_LOAD_KSTAT:
             case F1_DSK_LOAD_KCOMM:
@@ -137,13 +128,13 @@ void decode_nondata_function(struct decoder *dec,
         case TASK_ETHERNET:
             switch (dec->mc.f1) {
             case F1_ETH_EILFCT:
-                string_buffer_print(&f1_op, "EILFCT");
+                f1_op = "EILFCT";
                 break;
             case F1_ETH_EPFCT:
-                string_buffer_print(&f1_op, "EPFCT");
+                f1_op = "EPFCT";
                 break;
             case F1_ETH_EWFCT:
-                string_buffer_print(&f1_op, "EWFCT");
+                f1_op = "EWFCT";
                 break;
             default:
                 /* Invalid F1 function. */
@@ -160,36 +151,36 @@ void decode_nondata_function(struct decoder *dec,
     }
 
 process_f2:
-    f2_buffer[0] = '\0';
+    f2_op = "";
     switch (dec->mc.f2) {
     case F2_NONE:
     case F2_STORE_MD:
     case F2_CONSTANT:
         break;
     case F2_BUSEQ0:
-        string_buffer_print(&f2_op, "BUS=0");
+        f2_op = "BUS=0";
         break;
     case F2_SHLT0:
-        string_buffer_print(&f2_op, "SH<0");
+        f2_op = "SH<0";
         break;
     case F2_SHEQ0:
-        string_buffer_print(&f2_op, "SH=0");
+        f2_op = "SH=0";
         break;
     case F2_BUS:
-        string_buffer_print(&f2_op, "BUS");
+        f2_op = "BUS";
         break;
     case F2_ALUCY:
-        string_buffer_print(&f2_op, "ALUCY");
+        f2_op = "ALUCY";
         break;
     default:
         switch (dec->mc.task) {
         case TASK_EMULATOR:
             switch (dec->mc.f2) {
             case F2_EMU_BUSODD:
-                string_buffer_print(&f2_op, "BUSODD");
+                f2_op = "BUSODD";
                 break;
             case F2_EMU_IDISP:
-                string_buffer_print(&f2_op, "IDISP");
+                f2_op = "IDISP";
                 break;
             case F2_EMU_MAGIC:
             case F2_EMU_LOAD_DNS:
@@ -208,25 +199,25 @@ process_f2:
         case TASK_DISK_WORD:
             switch (dec->mc.f2) {
             case F2_DSK_INIT:
-                string_buffer_print(&f2_op, "INIT");
+                f2_op = "INIT";
                 break;
             case F2_DSK_RWC:
-                string_buffer_print(&f2_op, "RWC");
+                f2_op = "RWC";
                 break;
             case F2_DSK_RECNO:
-                string_buffer_print(&f2_op, "RECNO");
+                f2_op = "RECNO";
                 break;
             case F2_DSK_XFRDAT:
-                string_buffer_print(&f2_op, "XFRDAT");
+                f2_op = "XFRDAT";
                 break;
             case F2_DSK_SWRNRDY:
-                string_buffer_print(&f2_op, "SWRNRDY");
+                f2_op = "SWRNRDY";
                 break;
             case F2_DSK_NFER:
-                string_buffer_print(&f2_op, "NFER");
+                f2_op = "NFER";
                 break;
             case F2_DSK_STROBON:
-                string_buffer_print(&f2_op, "STROBON");
+                f2_op = "STROBON";
                 break;
             default:
                 /* Invalid F2 function. */
@@ -237,22 +228,22 @@ process_f2:
         case TASK_ETHERNET:
             switch (dec->mc.f2) {
             case F2_ETH_EOSFCT:
-                string_buffer_print(&f2_op, "EOSFCT");
+                f2_op = "EOSFCT";
                 break;
             case F2_ETH_ERBFCT:
-                string_buffer_print(&f2_op, "ERBFCT");
+                f2_op = "ERBFCT";
                 break;
             case F2_ETH_EEFCT:
-                string_buffer_print(&f2_op, "EEFCT");
+                f2_op = "EEFCT";
                 break;
             case F2_ETH_EBFCT:
-                string_buffer_print(&f2_op, "EBFCT");
+                f2_op = "EBFCT";
                 break;
             case F2_ETH_ECBFCT:
-                string_buffer_print(&f2_op, "ECBFCT");
+                f2_op = "ECBFCT";
                 break;
             case F2_ETH_EISFCT:
-                string_buffer_print(&f2_op, "EISFCT");
+                f2_op = "EISFCT";
                 break;
             case F2_ETH_EODFCT:
                 /* Nothing to do here. */
@@ -289,10 +280,10 @@ process_f2:
         case TASK_DISPLAY_HORIZONTAL:
             switch (dec->mc.f2) {
             case F2_DH_EVENFIELD:
-                string_buffer_print(&f2_op, "EVENFIELD");
+                f2_op = "EVENFIELD";
                 break;
             case F2_DH_SETMODE:
-                string_buffer_print(&f2_op, "SETMODE");
+                f2_op = "SETMODE";
                 break;
             default:
                 /* Invalid F2 function. */
@@ -303,7 +294,7 @@ process_f2:
         case TASK_DISPLAY_VERTICAL:
             switch (dec->mc.f2) {
             case F2_DV_EVENFIELD:
-                string_buffer_print(&f2_op, "EVENFIELD");
+                f2_op = "EVENFIELD";
                 break;
             default:
                 /* Invalid F2 function. */
@@ -320,10 +311,10 @@ process_f2:
     }
 
     string_buffer_print(output, "%s%s%s%s",
-                        f1_buffer,
-                        (f1_buffer[0] && f2_buffer[0]) ? ", " : "",
-                        f2_buffer,
-                        (f1_buffer[0] || f2_buffer[0]) ? ", " : "");
+                        f1_op,
+                        (f1_op[0] && f2_op[0]) ? ", " : "",
+                        f2_op,
+                        (f1_op[0] || f2_op[0]) ? ", " : "");
 }
 
 /* Decodes the bus RHS (source).
@@ -524,9 +515,9 @@ void decode_bus_assign(struct decoder *dec,
                        struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_bus_lhs(dec, FALSE, output);
-    dec->has_bus_assignment = (len != output->len);
+    dec->has_bus_assignment = (len != string_buffer_length(output));
     if (!dec->has_bus_assignment) return;
     decode_bus_rhs(dec, output);
     string_buffer_print(output, ", ");
@@ -630,9 +621,9 @@ void decode_alu_assign(struct decoder *dec,
                        struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_alu_lhs(dec, output);
-    dec->has_alu_assignment = (len != output->len);
+    dec->has_alu_assignment = (len != string_buffer_length(output));
     if (!dec->has_alu_assignment) return;
     decode_alu_rhs(dec, output);
     string_buffer_print(output, ", ");
@@ -690,9 +681,9 @@ void decode_lreg_assign(struct decoder *dec,
                         struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_lreg_lhs(dec, output);
-    if (len == output->len) return;
+    if (len == string_buffer_length(output)) return;
     decode_lreg_rhs(dec, output);
     string_buffer_print(output, ", ");
 }
@@ -731,9 +722,9 @@ void decode_mreg_assign(struct decoder *dec,
                         struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_mreg_lhs(dec, output);
-    if (len == output->len) return;
+    if (len == string_buffer_length(output)) return;
     decode_mreg_rhs(dec, output);
     string_buffer_print(output, ", ");
 }
@@ -806,9 +797,9 @@ void decode_sink_bus_assign(struct decoder *dec,
                             struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_sink_bus_lhs(dec, output);
-    if (len == output->len) return;
+    if (len == string_buffer_length(output)) return;
     decode_bus_rhs(dec, output);
     string_buffer_print(output, ", ");
 }
@@ -845,9 +836,9 @@ void decode_sink_const_assign(struct decoder *dec,
                               struct string_buffer *output)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     decode_sink_const_lhs(dec, output);
-    if (len == output->len) return;
+    if (len == string_buffer_length(output)) return;
     decode_sink_const_rhs(dec, output);
     string_buffer_print(output, ", ");
 }
@@ -863,9 +854,9 @@ void decode_goto(struct decoder *dec,
                  size_t orig_len)
 {
     size_t len;
-    len = output->len;
+    len = string_buffer_length(output);
     (*dec->goto_cb)(dec, dec->mc.next, output);
-    if (len == output->len && len != orig_len) {
+    if (len == string_buffer_length(output) && len != orig_len) {
         /* Rewinds the ", " at the end of the string. */
         string_buffer_rewind(output, 2);
         return;
@@ -883,7 +874,7 @@ void decoder_decode(struct decoder *dec,
     dec->has_bus_assignment = FALSE;
     dec->has_alu_assignment = FALSE;
 
-    len = output->len;
+    len = string_buffer_length(output);
 
     decode_nondata_function(dec, output);
     if (dec->error) goto decode_error;
@@ -911,8 +902,9 @@ void decoder_decode(struct decoder *dec,
     return;
 
 decode_error:
-    if (output->len > len) {
-        string_buffer_rewind(output, output->len - len);
+    if (string_buffer_length(output) > len) {
+        string_buffer_rewind(output,
+                             string_buffer_length(output) - len);
     }
     string_buffer_print(output, "<invalid>");
 }
