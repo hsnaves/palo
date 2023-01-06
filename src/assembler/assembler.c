@@ -110,6 +110,7 @@ struct instruction {
 };
 
 /* Functions. */
+
 void assembler_initvar(struct assembler *as)
 {
     allocator_initvar(&as->salloc);
@@ -185,17 +186,17 @@ int assembler_create(struct assembler *as)
     return TRUE;
 }
 
-/* Finds an empty slot for the constant.
+/* Finds an empty address for the constant.
  * The parameter `val` is the value of the constant,
  * the parameter `bs` is for the lower 3 bits of address,
  * and is only used when `has_bs_mask` is set to TRUE.
- * Returns the slot number.
+ * Returns the address number.
  */
 static
-uint16_t find_constant_slot(struct assembler *as, uint16_t val,
-                            uint16_t bs, int has_bs_mask)
+uint16_t find_constant_address(struct assembler *as, uint16_t val,
+                               uint16_t bs, int has_bs_mask)
 {
-    uint16_t slot;
+    uint16_t address;
 
     /* According to page 77 of AltoSubsystems_Oct79.pdf,
      *
@@ -214,20 +215,20 @@ uint16_t find_constant_slot(struct assembler *as, uint16_t val,
      *   Here n specifies the desired bus source value, v is the constant
      *   value.
      */
-    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
-        if (as->const_sts[slot]) {
-            if (as->consts[slot] != val) continue;
+    for (address = 0; address < CONSTANT_SIZE; address++) {
+        if (as->const_sts[address]) {
+            if (as->consts[address] != val) continue;
         }
         if (!has_bs_mask) break;
-        if ((slot & 7) == bs) break;
+        if ((address & 7) == bs) break;
     }
-    return slot;
+    return address;
 }
 
 int assembler_resolve_constants(struct assembler *as)
 {
     struct statement *st;
-    uint16_t slot, bs;
+    uint16_t address, bs;
     uint16_t val;
     int has_bs_mask;
 
@@ -263,16 +264,16 @@ int assembler_resolve_constants(struct assembler *as)
             default:
                 goto skip;
             }
-            slot = find_constant_slot(as, val, bs, has_bs_mask);
-            if (slot >= CONSTANT_SIZE) {
+            address = find_constant_address(as, val, bs, has_bs_mask);
+            if (address >= CONSTANT_SIZE) {
                 report_error("assembler: resolve_constants: %s:%d: overflow",
                              st->filename, st->line_num);
                 return FALSE;
             }
-            st->chain = as->const_sts[slot];
-            as->const_sts[slot] = st;
-            as->consts[slot] = val;
-            st->v.decl.si->address = slot;
+            st->chain = as->const_sts[address];
+            as->const_sts[address] = st;
+            as->consts[address] = val;
+            st->v.decl.si->address = address;
             break;
 
         default:
@@ -286,15 +287,16 @@ int assembler_resolve_constants(struct assembler *as)
     return TRUE;
 }
 
-/* Finds an empty slot for the microcode and assignes the labels.
+/* Finds an empty address for the microcode and assignes the labels.
  * The pointer to the address_predefinition is in `apdef`. The
  * parameters `filename` and `line_num` are for error reporting.
- * Returns the slot number.
+ * Returns the address number.
  */
 static
-uint16_t find_microcode_slot(struct assembler *as,
-                             struct address_predefinition *apdef,
-                             const char *filename, unsigned int line_num)
+uint16_t find_microcode_address(struct assembler *as,
+                                struct address_predefinition *apdef,
+                                const char *filename,
+                                unsigned int line_num)
 {
     uint16_t address, j, num, num_labels;
     uint16_t mask1, mask2, not_mask2;
@@ -356,7 +358,7 @@ uint16_t find_microcode_slot(struct assembler *as,
 
         if (address == MICROCODE_SIZE) {
             report_error("assembler: resolve_labels: %s:%d: "
-                         "no free slots available",
+                         "no free addresses available",
                          filename, line_num);
             return address;
         }
@@ -428,7 +430,7 @@ uint16_t find_microcode_slot(struct assembler *as,
 
         if (address == MICROCODE_SIZE) {
             report_error("assembler: resolve_labels: %s:%d: "
-                         "no free slots available",
+                         "no free addresses available",
                          filename, line_num);
             return address;
         }
@@ -465,9 +467,9 @@ int assembler_resolve_labels(struct assembler *as)
             break;
 
         case ST_ADDRESS_PREDEFINITION:
-            address = find_microcode_slot(as, &st->v.addr,
-                                          st->filename,
-                                          st->line_num);
+            address = find_microcode_address(as, &st->v.addr,
+                                             st->filename,
+                                             st->line_num);
             if (address == MICROCODE_SIZE)
                 return FALSE;
             break;
@@ -487,7 +489,7 @@ int assembler_resolve_labels(struct assembler *as)
                 address = si->address;
             } else {
                 /* We create a fake address predefinition just
-                 * to call find_microcode_slot() to resolve the
+                 * to call find_microcode_address() to resolve the
                  * address of this statement.
                  *
                  * According to page 79 of AltoSubsystems_Oct79.pdf,
@@ -503,9 +505,9 @@ int assembler_resolve_labels(struct assembler *as)
                 apdef.extended = FALSE;
                 apdef.labels = NULL;
                 apdef.num_labels = 0;
-                address = find_microcode_slot(as, &apdef,
-                                              st->filename,
-                                              st->line_num);
+                address = find_microcode_address(as, &apdef,
+                                                 st->filename,
+                                                 st->line_num);
                 if (address >= MICROCODE_SIZE)
                     return FALSE;
                 si = st->v.exec.si;
@@ -1204,55 +1206,38 @@ int assembler_assemble(struct assembler *as)
     return (!error);
 }
 
-int assembler_dump_constant_rom(struct assembler *as,
-                                const char *filename)
+int assembler_produce_objfile(const struct assembler *as,
+                              struct objfile *objf)
 {
-    struct serdes sd;
-    size_t size;
+    struct statement *st;
+    uint16_t address, value;
+    uint32_t microcode;
 
-    size = CONSTANT_SIZE * sizeof(uint16_t);
-    if (unlikely(!serdes_create(&sd, size))) {
-        report_error("assembler: dump_constant_rom: "
-                     "could not create serializer");
-        return FALSE;
+    objfile_clear(objf);
+
+    for (address = 0; address < CONSTANT_SIZE; address++) {
+        st = as->const_sts[address];
+        value = as->consts[address];
+        while (st) {
+            if (unlikely(!objfile_add_constant(objf, &st->v.decl.name,
+                                               address, value))) {
+                report_error("assembler: dump: "
+                             "could not add constant");
+                return FALSE;
+            }
+            st = st->chain;
+        }
     }
 
-    serdes_put16_array(&sd, as->consts, CONSTANT_SIZE);
-
-    if (unlikely(!serdes_write(&sd, filename))) {
-        report_error("assembler: dump_constant_rom: "
-                     "could not write file");
-        serdes_destroy(&sd);
-        return FALSE;
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        microcode = as->microcode[address];
+        if (unlikely(!objfile_add_microcode(objf, address, microcode))) {
+            report_error("assembler: dump: "
+                         "could not add microcode");
+            return FALSE;
+        }
     }
 
-    serdes_destroy(&sd);
-    return TRUE;
-}
-
-int assembler_dump_microcode_rom(struct assembler *as,
-                                 const char *filename)
-{
-    struct serdes sd;
-    size_t size;
-
-    size = MICROCODE_SIZE * sizeof(uint32_t);
-    if (unlikely(!serdes_create(&sd, size))) {
-        report_error("assembler: dump_microcode_rom: "
-                     "could not create serializer");
-        return FALSE;
-    }
-
-    serdes_put32_array(&sd, as->microcode, MICROCODE_SIZE);
-
-    if (unlikely(!serdes_write(&sd, filename))) {
-        report_error("assembler: dump_microcode_rom: "
-                     "could not write file");
-        serdes_destroy(&sd);
-        return FALSE;
-    }
-
-    serdes_destroy(&sd);
     return TRUE;
 }
 
@@ -1261,22 +1246,24 @@ static
 void print_constants(struct assembler *as, FILE *fp)
 {
     struct statement *st;
-    uint16_t slot;
+    uint16_t address;
     char buffer[64];
 
     fprintf(fp, "--- CONSTANTS ---\n");
     fprintf(fp, "ADDRESS  VALUE     NAME          "
                 "DEFINITION             LOCATION\n");
-    for (slot = 0; slot < CONSTANT_SIZE; slot++) {
-        st = as->const_sts[slot];
+    for (address = 0; address < CONSTANT_SIZE; address++) {
+        st = as->const_sts[address];
         if (!st) {
-            fprintf(fp, "%03o      %o\n", slot, as->consts[slot]);
+            fprintf(fp, "%03o      %o\n",
+                    address, as->consts[address]);
             continue;
         }
 
         while (st) {
-            if (st == as->const_sts[slot]) {
-                fprintf(fp, "%03o      %-6o    ", slot, as->consts[slot]);
+            if (st == as->const_sts[address]) {
+                fprintf(fp, "%03o      %-6o    ",
+                        address, as->consts[address]);
             } else {
                 fprintf(fp, "                   ");
             }

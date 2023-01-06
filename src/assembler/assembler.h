@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "parser/parser.h"
+#include "assembler/objfile.h"
 #include "common/allocator.h"
 
 /* Data structures and types. */
@@ -56,21 +57,12 @@ int assembler_resolve_labels(struct assembler *as);
  */
 int assembler_assemble(struct assembler *as);
 
-/* Dumps the constant rom to a file.
- * The file is named `filename`.
- * It uses little-endian for encoding the 16-bit constants.
+/* Converts the output of the assembler to an objfile.
+ * The resulting objfile is in the parameter `objf`.
  * Returns TRUE on success.
  */
-int assembler_dump_constant_rom(struct assembler *as,
-                                const char *filename);
-
-/* Dumps the microcode rom to a file.
- * The file is named `filename`.
- * It uses little-endian for encoding the 32-bit microcodes.
- * Returns TRUE on success.
- */
-int assembler_dump_microcode_rom(struct assembler *as,
-                                 const char *filename);
+int assembler_produce_objfile(const struct assembler *as,
+                              struct objfile *objf);
 
 /* Prints the assembly listing.
  * The listing is printed to file `filename`.

@@ -82,50 +82,62 @@ int table_add(struct table *t, struct string_node *n)
     unsigned int slot;
 
     if (t->num_elements >= 2 * t->num_slots) {
-        struct string_node **new_table;
-        struct string_node **nn_ptr;
-        struct string_node *nn;
-        unsigned int new_slot;
-        unsigned int new_num_slots;
-        size_t size;
-
-        new_num_slots = 2 * t->num_slots;
-        size = new_num_slots * sizeof(struct string_node *);
-        new_table = (struct string_node **) malloc(size);
-        if (unlikely(!new_table)) {
-            report_error("table: add: memory exhausted");
+        if (unlikely(!table_rehash(t, 2 * t->num_slots))) {
+            report_error("table: add: could not re-hash");
             return FALSE;
         }
-        memset(new_table, 0, size);
-
-        for (slot = 0; slot < t->num_slots; slot++) {
-            nn = t->table[slot];
-            while (nn) {
-                t->table[slot] = nn->next;
-
-                /* Add nodes in reverse order to keep the
-                 * the original ordering.
-                 */
-                new_slot = nn->str.hash % new_num_slots;
-                nn_ptr = &new_table[new_slot];
-                nn->next = NULL;
-                while (nn_ptr[0]) {
-                    nn_ptr = &nn_ptr[0]->next;
-                }
-                nn_ptr[0] = nn;
-
-                nn = t->table[slot];
-            }
-        }
-
-        free((void *) t->table);
-        t->table = new_table;
-        t->num_slots = new_num_slots;
     }
 
     slot = n->str.hash % t->num_slots;
     n->next = t->table[slot];
     t->table[slot] = n;
     t->num_elements++;
+    return TRUE;
+}
+
+int table_rehash(struct table *t, unsigned int num_slots)
+{
+    struct string_node **new_table;
+    struct string_node **nn_ptr;
+    struct string_node *nn;
+    unsigned int slot, new_slot;
+    size_t size;
+
+    if (unlikely(num_slots <= t->num_slots)) {
+        report_error("table: rehash: "
+                     "must increase the number of slots");
+        return FALSE;
+    }
+
+    size = num_slots * sizeof(struct string_node *);
+    new_table = (struct string_node **) malloc(size);
+    if (unlikely(!new_table)) {
+        report_error("table: rehash: memory exhausted");
+        return FALSE;
+    }
+    memset(new_table, 0, size);
+
+    for (slot = 0; slot < t->num_slots; slot++) {
+        nn = t->table[slot];
+        while (nn) {
+            t->table[slot] = nn->next;
+
+            /* Add nodes in reverse order to keep the
+             * the original ordering.
+             */
+            new_slot = nn->str.hash % num_slots;
+            nn_ptr = &new_table[new_slot];
+            nn->next = NULL;
+            while (nn_ptr[0]) {
+                nn_ptr = &nn_ptr[0]->next;
+            }
+            nn_ptr[0] = nn;
+            nn = t->table[slot];
+        }
+    }
+
+    free((void *) t->table);
+    t->table = new_table;
+    t->num_slots = num_slots;
     return TRUE;
 }

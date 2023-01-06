@@ -260,11 +260,11 @@ void cmd_registers(struct debugger *dbg, int extra)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     simulator_disassemble(sim, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     if (extra) {
         simulator_print_extra_registers(sim, &dbg->output);
     } else {
@@ -279,11 +279,11 @@ void cmd_nova_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     simulator_nova_disassemble(sim, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     simulator_print_nova_registers(sim, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -294,7 +294,7 @@ void cmd_disk_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     disk_print_registers(&sim->dsk, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -305,7 +305,7 @@ void cmd_display_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     display_print_registers(&sim->displ, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -316,7 +316,7 @@ void cmd_ethernet_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     ethernet_print_registers(&sim->ether, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -327,7 +327,7 @@ void cmd_keyboard_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     keyboard_print_registers(&sim->keyb, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -338,7 +338,7 @@ void cmd_mouse_registers(struct debugger *dbg)
 {
     struct simulator *sim;
     sim = dbg->sim;
-    string_buffer_reset(&dbg->output);
+    string_buffer_clear(&dbg->output);
     mouse_print_registers(&sim->mous, &dbg->output);
     printf("%s\n", string_buffer_string(&dbg->output));
 }

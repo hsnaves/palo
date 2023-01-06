@@ -44,7 +44,7 @@ int string_buffer_create(struct string_buffer *sb, size_t size)
     return TRUE;
 }
 
-void string_buffer_reset(struct string_buffer *sb)
+void string_buffer_clear(struct string_buffer *sb)
 {
     sb->pos = 0;
 }

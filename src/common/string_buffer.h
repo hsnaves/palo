@@ -34,8 +34,8 @@ void string_buffer_destroy(struct string_buffer *sb);
  */
 int string_buffer_create(struct string_buffer *sb, size_t size);
 
-/* Resets the string buffer. */
-void string_buffer_reset(struct string_buffer *sb);
+/* Clears the string buffer. */
+void string_buffer_clear(struct string_buffer *sb);
 
 /* Prints a string (as in printf() function) to the buffer. */
 void string_buffer_print(struct string_buffer *sb,

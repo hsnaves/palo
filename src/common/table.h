@@ -69,5 +69,11 @@ struct string_node *table_find(struct table *t, const struct string *str);
  */
 int table_add(struct table *t, struct string_node *n);
 
+/* Re-hashes the table with a different number of slots.
+ * The new number of slots is given by the parameter `num_slots`.
+ * Returns TRUE on success.
+ */
+int table_rehash(struct table *t, unsigned int num_slots);
+
 
 #endif /* __COMMON_TABLE_H */

@@ -1,4 +1,4 @@
-ASSEMBLER_OBJS := assembler/assembler.o
+ASSEMBLER_OBJS := assembler/assembler.o assembler/objfile.o
 COMMON_OBJS := common/allocator.o common/table.o common/serdes.o \
  common/string_buffer.o common/utils.o
 DEBUGGER_OBJS := debugger/debugger.o
@@ -25,8 +25,11 @@ OBJS := $(ASSEMBLER_OBJS) $(COMMON_OBJS) $(DEBUGGER_OBJS) $(FS_OBJS) \
 
 assembler/assembler.o: assembler/assembler.c assembler/assembler.h \
  parser/parser.h parser/lexer.h common/allocator.h common/table.h \
- microcode/microcode.h common/string_buffer.h common/serdes.h \
- common/utils.h
+ assembler/objfile.h microcode/microcode.h common/string_buffer.h \
+ common/serdes.h common/utils.h
+assembler/objfile.o: assembler/objfile.c assembler/objfile.h \
+ common/allocator.h common/table.h microcode/microcode.h \
+ common/string_buffer.h common/serdes.h common/utils.h
 common/allocator.o: common/allocator.c common/allocator.h common/utils.h
 common/table.o: common/table.c common/table.h common/utils.h
 common/serdes.o: common/serdes.c common/serdes.h common/utils.h
@@ -41,7 +44,7 @@ microcode/microcode.o: microcode/microcode.c microcode/microcode.h \
 microcode/nova.o: microcode/nova.c microcode/nova.h \
  common/string_buffer.h common/utils.h
 pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
- common/allocator.h common/table.h common/utils.h
+ common/allocator.h common/table.h assembler/objfile.h common/utils.h
 fs/basic.o: fs/basic.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/check.o: fs/check.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/dir.o: fs/dir.c fs/fs.h fs/fs_internal.h common/utils.h

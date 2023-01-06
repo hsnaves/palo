@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "assembler/assembler.h"
+#include "assembler/objfile.h"
 #include "parser/parser.h"
 #include "common/utils.h"
 
@@ -27,6 +28,7 @@ int main(int argc, char **argv)
     const char *microcode_filename;
     const char *fn;
     struct assembler as;
+    struct objfile objf;
     int i, is_last;
 
     input_filename = NULL;
@@ -73,9 +75,15 @@ int main(int argc, char **argv)
     }
 
     assembler_initvar(&as);
+    objfile_initvar(&objf);
 
     if (unlikely(!assembler_create(&as))) {
         report_error("main: could not create assembler");
+        goto error;
+    }
+
+    if (unlikely(!objfile_create(&objf))) {
+        report_error("main: could not create objfile");
         goto error;
     }
 
@@ -105,9 +113,14 @@ int main(int argc, char **argv)
         goto error;
     }
 
+    if (unlikely(!assembler_produce_objfile(&as, &objf))) {
+        report_error("main: could not produce output");
+        goto error;
+    }
+
     fn = constant_filename;
     if (fn) {
-        if (unlikely(!assembler_dump_constant_rom(&as, fn))) {
+        if (unlikely(!objfile_dump_constant_rom(&objf, fn))) {
             report_error("main: could not write constant rom");
             goto error;
         }
@@ -115,7 +128,7 @@ int main(int argc, char **argv)
 
     fn = microcode_filename;
     if (fn) {
-        if (unlikely(!assembler_dump_microcode_rom(&as, fn))) {
+        if (unlikely(!objfile_dump_microcode_rom(&objf, fn))) {
             report_error("main: could not write microcode rom");
             goto error;
         }
@@ -130,9 +143,11 @@ int main(int argc, char **argv)
     }
 
     assembler_destroy(&as);
+    objfile_destroy(&objf);
     return 0;
 
 error:
     assembler_destroy(&as);
+    objfile_destroy(&objf);
     return 1;
 }
