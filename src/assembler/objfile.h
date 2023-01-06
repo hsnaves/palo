@@ -14,7 +14,6 @@ enum objsymb_type {
     OBJSYMB_CONSTANT,
     OBJSYMB_REGISTER,
     OBJSYMB_LABEL,
-    OBJSYMB_MU,
 };
 
 /* A structure representing an symbol in the object file. */
@@ -23,7 +22,6 @@ struct objsymb {
     enum objsymb_type type;       /* The type of the symbol. */
     uint16_t value;               /* The value of the symbol. */
     struct objsymb *next;         /* The next symbol in the list. */
-    struct objsymb *chain;        /* To chain object symbols together. */
 };
 
 /* Structure to represent the object file. */
@@ -33,6 +31,9 @@ struct objfile {
     struct table symbols;         /* Hash table for resolving symbols. */
     uint16_t *consts;             /* The value of the constants. */
     uint32_t *microcode;          /* The microcode. */
+    uint8_t *has_microcode;       /* Boolean mask telling which addresses
+                                   * are used.
+                                   */
 
     unsigned int num_symbs;       /* The number of symbols. */
     struct objsymb *first_symb;   /* The first symbol defined. */
@@ -41,7 +42,8 @@ struct objfile {
     struct objsymb **const_symbs; /* Constant symbols. */
     struct objsymb **reg_symbs;   /* Register symbols. */
     struct objsymb **label_symbs; /* Label symbols. */
-    struct objsymb **mu_symbs;    /* Microcode (fake) symbols. */
+    struct objsymb **mu_c_symbs;  /* Microcode (fake) symbols. */
+    struct objsymb **mu_r_symbs;  /* Microcode (fake) symbols. */
 };
 
 /* Functions. */
@@ -96,11 +98,31 @@ int objfile_add_label(struct objfile *objf,
 
 /* Adds a microcode to the object file.
  * The microcode address is given by `address`, and the microcode itself
- * is given by `microcode`.
+ * is given by `mcode`.
  * Returns TRUE on success.
  */
-int objfile_add_microcode(struct objfile *objf, uint16_t address,
-                          uint32_t microcode);
+int objfile_add_microcode(struct objfile *objf,
+                          uint16_t address, uint32_t mcode);
+
+/* Adds a microcode, but ensures that the symbols resolve correctly.
+ * It accepts the same parameters as objfile_add_microcode(), and in
+ * addition, it accepts `c_name` and `r_name`. The `c_name` parameter,
+ * if not NULL, indicates the name of the constant used by this microcode.
+ * Similarly, `r_name` indicates the name of the register used by this
+ * microcode.
+ * Returns TRUE on success.
+ */
+int objfile_add_microcode_symbols(struct objfile *objf,
+                                  const struct string *c_name,
+                                  const struct string *r_name,
+                                  uint16_t address, uint32_t mcode);
+
+/* Resolves a symbol by the type `type` and the name `name`.
+ * Returns the resolved symbol (or NULL if there is no such symbol).
+ */
+struct objsymb *objfile_resolve(const struct objfile *objf,
+                                enum objsymb_type type,
+                                const struct string *name);
 
 /* Dumps the constant rom to a file.
  * The file is named `filename`.

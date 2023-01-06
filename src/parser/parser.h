@@ -19,7 +19,7 @@ struct symbol_info;
 struct parser_node {
     struct string name;           /* The name of the node. */
     struct parser_node *next;     /* The next node. */
-    void *extra;                  /* Extra information. */
+    struct symbol_info *si;       /* Extra symbol information. */
 };
 
 /* An enumeration with the possible types of declaration types. */
@@ -68,7 +68,17 @@ struct executable_statement {
     struct string label;          /* The label of this statement. */
     struct clause *clauses;       /* The list of clauses. */
     struct symbol_info *si;       /* Symbol info for the label. */
-    uint16_t address;             /* Address of this statement. */
+    uint16_t address;             /* Address of this statement
+                                   * (used by the assembler).
+                                   */
+    const struct string *c_name;  /* If this statement uses any
+                                   * constants, this points to the
+                                   * constant used (used by the assembler).
+                                   */
+    const struct string *r_name;  /* If this statement uses any
+                                   * register, this points to the
+                                   * register used (used by the assembler).
+                                   */
 };
 
 /* Possible errors found during parsing. */
@@ -112,7 +122,8 @@ struct statement {
 
     struct statement *next;       /* A pointer to the next statement. */
     struct statement *chain;      /* An extra pointer to chain statements
-                                   * together: this is used by the assembler.
+                                   * together (this is used by the
+                                   * assembler).
                                    */
 };
 
@@ -132,7 +143,9 @@ struct symbol_info {
                                    * this is a pointer to the statement
                                    * containing it.
                                    */
-    uint16_t address;             /* The address of the symbol. */
+    uint16_t address;             /* The address of the symbol
+                                   * (used by the assembler).
+                                   */
     void *extra;                  /* Extra information. */
 };
 

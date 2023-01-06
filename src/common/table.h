@@ -34,6 +34,11 @@ struct table {
  */
 unsigned int string_hash(const char *s, size_t len);
 
+/* Compare two strings for equality.
+ * Returns TRUE if they are equal.
+ */
+int string_equal(const struct string *s1, const struct string *s2);
+
 /* Initializes the table variable.
  * Note that this does not create the object yet.
  * This obeys the initvar / destroy / create protocol.
@@ -59,7 +64,8 @@ void table_clear(struct table *t);
  * The string must have its hash computed already.
  * Returns a pointer to the node structure holding this entry in the table.
  */
-struct string_node *table_find(struct table *t, const struct string *str);
+struct string_node *table_find(const struct table *t,
+                               const struct string *str);
 
 /* Adds a string_node to the table.
  * The parameter `n` contains the node to be added. The string in `n->str`

@@ -235,15 +235,14 @@ int assembler_resolve_constants(struct assembler *as)
     memset(as->consts, -1, CONSTANT_SIZE * sizeof(uint16_t));
     memset(as->const_sts, 0, CONSTANT_SIZE * sizeof(struct statement *));
 
-    st = as->p.first;
-    while (st) {
+    for (st = as->p.first; st; st = st->next) {
         switch (st->st_type) {
         case ST_DECLARATION:
             switch (st->v.decl.d_type) {
             case DECL_SYMBOL:
                 /* To handle the special case of 0 constant. */
                 if (LITERAL_SYMB_TYPE(st->v.decl.n2) != LST_CONSTANT)
-                    goto skip;
+                    continue;
                 val = LITERAL_SYMB_VALUE(st->v.decl.n2);
                 bs = 0;
                 has_bs_mask = FALSE;
@@ -262,7 +261,7 @@ int assembler_resolve_constants(struct assembler *as)
                 break;
 
             default:
-                goto skip;
+                continue;
             }
             address = find_constant_address(as, val, bs, has_bs_mask);
             if (address >= CONSTANT_SIZE) {
@@ -279,9 +278,6 @@ int assembler_resolve_constants(struct assembler *as)
         default:
             break;
         }
-
-    skip:
-        st = st->next;
     }
 
     return TRUE;
@@ -366,7 +362,7 @@ uint16_t find_microcode_address(struct assembler *as,
         j = 0;
         for (num = 0; num < num_labels; num++) {
             if (!pn) break;
-            si = (struct symbol_info *) pn->extra;
+            si = pn->si;
             pn = pn->next;
 
             if (num > 0) {
@@ -437,7 +433,7 @@ uint16_t find_microcode_address(struct assembler *as,
 
         for (j = 0; j < len; j++) {
             if (!pn) break;
-            si = (struct symbol_info *) pn->extra;
+            si = pn->si;
             pn = pn->next;
 
             if (!si) continue;
@@ -946,6 +942,7 @@ int process_assignment_clause(struct instruction *insn,
                 if (!set_bs(insn, BS_TASK_SPECIFIC2))
                     return FALSE;
             }
+            st->v.exec.r_name = &decl->name;
         } else {
             report_error("assembler: assemble: %s:%d: "
                          "%s has no valid declaration as RDEST (%d)",
@@ -999,6 +996,7 @@ int process_assignment_clause(struct instruction *insn,
         } else if (lst == LST_L_RHS) {
         } else if (lst == LST_CONSTANT) {
             insn->has_special_constant = TRUE;
+            st->v.exec.c_name = &decl->name;
         } else if (lst == LST_LMRSHLMLSH) {
             if (!set_f1(insn, val))
                 return FALSE;
@@ -1017,10 +1015,12 @@ int process_assignment_clause(struct instruction *insn,
             return FALSE;
         if (!set_bs(insn, CONST_ADDR_BS(decl->si->address)))
             return FALSE;
+        st->v.exec.c_name = &decl->name;
     } else if (decl->d_type == DECL_M_CONSTANT) {
         insn->has_m_constant = TRUE;
         if (!set_rsel(insn, CONST_ADDR_RSEL(decl->si->address)))
             return FALSE;
+        st->v.exec.c_name = &decl->name;
     } else if (decl->d_type == DECL_R_MEMORY) {
         if (decl->n1 <= R_MASK) {
             if (!set_rsel(insn, decl->n1 & R_MASK))
@@ -1033,6 +1033,7 @@ int process_assignment_clause(struct instruction *insn,
             if (!set_bs(insn, BS_TASK_SPECIFIC1))
                 return FALSE;
         }
+        st->v.exec.r_name = &decl->name;
     }
 
     if (si_extra) {
@@ -1097,6 +1098,8 @@ int assemble_one(struct assembler *as, struct statement *st,
     insn.next_st = next_st;
 
     error = FALSE;
+    st->v.exec.c_name = NULL;
+    st->v.exec.r_name = NULL;
     cl = st->v.exec.clauses;
     while (cl) {
         switch (cl->c_type) {
@@ -1209,32 +1212,71 @@ int assembler_assemble(struct assembler *as)
 int assembler_produce_objfile(const struct assembler *as,
                               struct objfile *objf)
 {
-    struct statement *st;
+    const struct statement *st;
     uint16_t address, value;
-    uint32_t microcode;
+    uint32_t mcode;
 
     objfile_clear(objf);
+    for (st = as->p.first; st; st = st->next) {
+        switch (st->st_type) {
+        case ST_DECLARATION:
+            switch (st->v.decl.d_type) {
+            case DECL_SYMBOL:
+                if (LITERAL_SYMB_TYPE(st->v.decl.n2) != LST_CONSTANT)
+                    continue;
+                /* fallthrough */
+            case DECL_CONSTANT:
+            case DECL_M_CONSTANT:
+                address = st->v.decl.si->address;
+                value = as->consts[address];
+                if (unlikely(!objfile_add_constant(objf,
+                                                   &st->v.decl.name,
+                                                   address, value))) {
+                    report_error("assembler: produce_objfile: "
+                                 "could not add constant");
+                    return FALSE;
+                }
+                break;
+            case DECL_R_MEMORY:
+                address = st->v.decl.n1;
+                if (unlikely(!objfile_add_register(objf,
+                                                   &st->v.decl.name,
+                                                   address))) {
+                    report_error("assembler: produce_objfile: "
+                                 "could not add register");
+                    return FALSE;
+                }
+                break;
+            default:
+                break;
+            }
+            break;
+        case ST_EXECUTABLE:
+            address = st->v.exec.address;
+            mcode = as->microcode[address];
 
-    for (address = 0; address < CONSTANT_SIZE; address++) {
-        st = as->const_sts[address];
-        value = as->consts[address];
-        while (st) {
-            if (unlikely(!objfile_add_constant(objf, &st->v.decl.name,
-                                               address, value))) {
-                report_error("assembler: dump: "
-                             "could not add constant");
+            if (st->v.exec.label.s) {
+                if (unlikely(!objfile_add_label(objf,
+                                                &st->v.exec.label,
+                                                address))) {
+                    report_error("assembler: produce_objfile: "
+                                 "could not add label");
+                    return FALSE;
+                }
+            }
+            if (unlikely(!objfile_add_microcode_symbols(
+                             objf,
+                             st->v.exec.c_name,
+                             st->v.exec.r_name,
+                             address,
+                             mcode))) {
+                report_error("assembler: produce_objfile: "
+                             "could not add microcode");
                 return FALSE;
             }
-            st = st->chain;
-        }
-    }
-
-    for (address = 0; address < MICROCODE_SIZE; address++) {
-        microcode = as->microcode[address];
-        if (unlikely(!objfile_add_microcode(objf, address, microcode))) {
-            report_error("assembler: dump: "
-                         "could not add microcode");
-            return FALSE;
+            break;
+        default:
+            break;
         }
     }
 
@@ -1300,16 +1342,13 @@ void print_r_memory_declarations(struct assembler *as, FILE *fp)
 
     fprintf(fp, "--- R MEMORY DECLARATIONS ---\n");
     fprintf(fp, "NAME          DEFINITION  LOCATION\n");
-    st = as->p.first;
-    while (st) {
-        if (st->st_type != ST_DECLARATION) goto skip;
-        if (st->v.decl.d_type != DECL_R_MEMORY) goto skip;
+    for (st = as->p.first; st; st = st->next) {
+        if (st->st_type != ST_DECLARATION) continue;
+        if (st->v.decl.d_type != DECL_R_MEMORY) continue;
 
         fprintf(fp, "$%-12s ", st->v.decl.name.s);
         fprintf(fp, "$R%-2o        ", st->v.decl.n1);
         fprintf(fp, "%s:%u\n", st->filename, st->line_num);
-    skip:
-        st = st->next;
     }
 }
 
@@ -1333,10 +1372,9 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
     fprintf(fp, "--- LITERAL SYMBOLS ---\n");
     fprintf(fp, "NAME          TYPE  VAL   "
                 "RHS_TYPE RHS_VAL REQ DEF EXTRA LOCATION\n");
-    st = as->p.first;
-    while (st) {
-        if (st->st_type != ST_DECLARATION) goto skip;
-        if (st->v.decl.d_type != DECL_SYMBOL) goto skip;
+    for (st = as->p.first; st; st = st->next) {
+        if (st->st_type != ST_DECLARATION) continue;
+        if (st->v.decl.d_type != DECL_SYMBOL) continue;
 
         fprintf(fp, "$%-12s ", st->v.decl.name.s);
         fprintf(fp, "%02o    ", LITERAL_SYMB_TYPE(st->v.decl.n1));
@@ -1349,8 +1387,6 @@ void print_literal_symbols(struct assembler *as, FILE *fp)
         fprintf(fp, "%o     ", LITERAL_ATTRB_EXTRA(st->v.decl.n3));
 
         fprintf(fp, "%s:%u\n", st->filename, st->line_num);
-    skip:
-        st = st->next;
     }
 
     fprintf(fp, "\n");

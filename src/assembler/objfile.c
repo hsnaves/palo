@@ -22,11 +22,13 @@ void objfile_initvar(struct objfile *objf)
 
     objf->consts = NULL;
     objf->microcode = NULL;
+    objf->has_microcode = NULL;
 
     objf->const_symbs = NULL;
     objf->reg_symbs = NULL;
     objf->label_symbs = NULL;
-    objf->mu_symbs = NULL;
+    objf->mu_c_symbs = NULL;
+    objf->mu_r_symbs = NULL;
 }
 
 void objfile_destroy(struct objfile *objf)
@@ -37,6 +39,9 @@ void objfile_destroy(struct objfile *objf)
     if (objf->microcode) free((void *) objf->microcode);
     objf->microcode = NULL;
 
+    if (objf->has_microcode) free((void *) objf->has_microcode);
+    objf->has_microcode = NULL;
+
     if (objf->const_symbs) free((void *) objf->const_symbs);
     objf->const_symbs = NULL;
 
@@ -46,8 +51,11 @@ void objfile_destroy(struct objfile *objf)
     if (objf->label_symbs) free((void *) objf->label_symbs);
     objf->label_symbs = NULL;
 
-    if (objf->mu_symbs) free((void *) objf->mu_symbs);
-    objf->mu_symbs = NULL;
+    if (objf->mu_c_symbs) free((void *) objf->mu_c_symbs);
+    objf->mu_c_symbs = NULL;
+
+    if (objf->mu_r_symbs) free((void *) objf->mu_r_symbs);
+    objf->mu_r_symbs = NULL;
 
     table_destroy(&objf->symbols);
     allocator_destroy(&objf->oalloc);
@@ -83,6 +91,8 @@ int objfile_create(struct objfile *objf)
         malloc(CONSTANT_SIZE * sizeof(uint16_t));
     objf->microcode = (uint32_t *)
         malloc(MICROCODE_SIZE * sizeof(uint32_t));
+    objf->has_microcode = (uint8_t *)
+        malloc(MICROCODE_SIZE * sizeof(uint8_t));
 
     objf->const_symbs = (struct objsymb **)
         malloc(CONSTANT_SIZE * sizeof(struct objsymb *));
@@ -90,12 +100,15 @@ int objfile_create(struct objfile *objf)
         malloc(REG_SIZE * sizeof(struct objsymb *));
     objf->label_symbs = (struct objsymb **)
         malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
-    objf->mu_symbs = (struct objsymb **)
+    objf->mu_c_symbs = (struct objsymb **)
+        malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
+    objf->mu_r_symbs = (struct objsymb **)
         malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
 
     if (unlikely(!objf->consts || !objf->microcode
-                 || !objf->const_symbs || !objf->reg_symbs
-                 || !objf->label_symbs || !objf->mu_symbs)) {
+                 || !objf->has_microcode || !objf->const_symbs
+                 || !objf->reg_symbs || !objf->label_symbs
+                 || !objf->mu_c_symbs || !objf->mu_r_symbs)) {
         report_error("objfile: create: memory exhausted");
         objfile_destroy(objf);
         return FALSE;
@@ -126,8 +139,10 @@ void objfile_clear(struct objfile *objf)
     for (i = 0; i < MICROCODE_SIZE; i++) {
         /* Jump to the last address in rom. */
         objf->microcode[i] = 0xFFF77BFF;
+        objf->has_microcode[i] = 0;
         objf->label_symbs[i] = NULL;
-        objf->mu_symbs[i] = NULL;
+        objf->mu_c_symbs[i] = NULL;
+        objf->mu_r_symbs[i] = NULL;
     }
 
     table_clear(&objf->symbols);
@@ -147,30 +162,18 @@ struct objsymb *new_objsymb(struct objfile *objf,
                             const struct string *name)
 {
     struct objsymb *osym;
-    const struct string_node *n;
     const struct objsymb *other;
-    size_t offset;
+    const struct string_node *n;
 
-    n = NULL;
-    other = NULL;
-    if (name) {
-        n = table_find(&objf->symbols, name);
-        if (n) {
-            offset = offsetof(struct objsymb, n);
-            other = (const struct objsymb *) &(((char *) n)[-offset]);
-
-            if (other->type == type) {
-                if (other->value != value) {
-                    report_error("objfile: new_objsymb: "
-                                 "repeated name with different values: "
-                                 "%s -> %u vs %u (type: %u)",
-                                 other->n.str.s, other->value,
-                                 value, type);
-                    return NULL;
-                }
-            } else {
-                other = NULL;
-            }
+    other = objfile_resolve(objf, type, name);
+    if (other) {
+        if (other->value != value) {
+            report_error("objfile: new_objsymb: "
+                         "repeated name with different values: "
+                         "%s -> %u vs %u (type: %u)",
+                         other->n.str.s, other->value,
+                         value, type);
+            return NULL;
         }
     }
 
@@ -184,24 +187,27 @@ struct objsymb *new_objsymb(struct objfile *objf,
     osym->type = type;
     osym->value = value;
 
-    if (name) {
-        if (n) {
-            /* To avoid allocating memory. */
-            osym->n = *n;
-        } else {
-            /* Make a copy of the name. */
-            osym->n.str.s = allocator_dup(&objf->salloc,
-                                          name->s, name->len);
-            if (unlikely(!osym->n.str.s)) {
-                report_error("objfile: new_objsymb: "
-                             "memory exhausted for strings");
-                return NULL;
-            }
-            osym->n.str.len = name->len;
-            osym->n.str.hash = name->hash;
+    n = table_find(&objf->symbols, name);
+    if (n) {
+        /* To avoid allocating memory.
+         * That is, strings are interned.
+         */
+        osym->n = *n;
+    } else {
+        /* Make a copy of the name. */
+        osym->n.str.s = allocator_dup(&objf->salloc,
+                                      name->s, name->len);
+        if (unlikely(!osym->n.str.s)) {
+            report_error("objfile: new_objsymb: "
+                         "memory exhausted for strings");
+            return NULL;
         }
-        osym->n.next = NULL;
+        osym->n.str.len = name->len;
+        osym->n.str.hash = name->hash;
+    }
+    osym->n.next = NULL;
 
+    if (!other) {
         if (unlikely(!table_add(&objf->symbols, &osym->n))) {
             report_error("objsfile: new_objsymb: "
                          "could not add symbol to hash table");
@@ -234,6 +240,12 @@ int objfile_add_constant(struct objfile *objf,
         return FALSE;
     }
 
+    if (unlikely(!name)) {
+        report_error("objfile: add_constant: "
+                     "name is NULL");
+        return FALSE;
+    }
+
     osym = new_objsymb(objf, OBJSYMB_CONSTANT, address, name);
     if (unlikely(!osym)) {
         report_error("objfile: add_constant: "
@@ -242,7 +254,6 @@ int objfile_add_constant(struct objfile *objf,
     }
 
     objf->consts[address] = value;
-    osym->chain = objf->const_symbs[address];
     objf->const_symbs[address] = osym;
 
     return TRUE;
@@ -260,6 +271,12 @@ int objfile_add_register(struct objfile *objf,
         return FALSE;
     }
 
+    if (unlikely(!name)) {
+        report_error("objfile: add_register: "
+                     "name is NULL");
+        return FALSE;
+    }
+
     osym = new_objsymb(objf, OBJSYMB_REGISTER, address, name);
     if (unlikely(!osym)) {
         report_error("objfile: add_register: "
@@ -267,7 +284,6 @@ int objfile_add_register(struct objfile *objf,
         return FALSE;
     }
 
-    osym->chain = objf->reg_symbs[address];
     objf->reg_symbs[address] = osym;
 
     return TRUE;
@@ -285,6 +301,12 @@ int objfile_add_label(struct objfile *objf,
         return FALSE;
     }
 
+    if (unlikely(!name)) {
+        report_error("objfile: add_label: "
+                     "name is NULL");
+        return FALSE;
+    }
+
     if (objf->label_symbs[address]) {
         report_error("objfile: add_label: "
                      "label already defined for given address: %u",
@@ -299,16 +321,16 @@ int objfile_add_label(struct objfile *objf,
         return FALSE;
     }
 
-    osym->chain = NULL;
     objf->label_symbs[address] = osym;
 
     return TRUE;
 }
 
-int objfile_add_microcode(struct objfile *objf, uint16_t address,
-                          uint32_t microcode)
+int objfile_add_microcode(struct objfile *objf,
+                          uint16_t address, uint32_t mcode)
 {
-    struct objsymb *osym;
+    struct microcode mc;
+    uint16_t rsel;
 
     if (unlikely(address >= MICROCODE_SIZE)) {
         report_error("objfile: add_microcode: "
@@ -316,24 +338,137 @@ int objfile_add_microcode(struct objfile *objf, uint16_t address,
         return FALSE;
     }
 
-    if (objf->mu_symbs[address]) {
+    if (objf->has_microcode[address]) {
         report_error("objfile: add_microcode: "
                      "microcode already defined for given address: %u",
                      address);
         return FALSE;
     }
 
-    osym = new_objsymb(objf, OBJSYMB_MU, address, NULL);
-    if (unlikely(!osym)) {
-        report_error("objfile: add_microcode: "
-                     "could not create symbol");
+    /* The sys_type, and the task are irrelevant for the
+     * microcode_predecode().
+     */
+    microcode_predecode(&mc, ALTO_I, address, mcode, TASK_EMULATOR);
+
+    rsel = mc.rsel;
+    if (mc.bs == BS_TASK_SPECIFIC1 || mc.bs == BS_TASK_SPECIFIC2)
+        rsel = mc.rsel + (R_MASK + 1);
+
+    objf->microcode[address] = mcode;
+    objf->has_microcode[address] = TRUE;
+
+    objf->mu_c_symbs[address] = objf->const_symbs[mc.const_addr];
+    objf->mu_r_symbs[address] = objf->reg_symbs[rsel];
+
+    return TRUE;
+}
+
+int objfile_add_microcode_symbols(struct objfile *objf,
+                                  const struct string *c_name,
+                                  const struct string *r_name,
+                                  uint16_t address, uint32_t mcode)
+{
+    const struct objsymb *osym;
+    const struct objsymb *other;
+    struct microcode mc;
+    uint16_t addr, val;
+    uint16_t rsel;
+
+    /* The sys_type, and the task are irrelevant for the
+     * microcode_predecode().
+     */
+    microcode_predecode(&mc, ALTO_I, address, mcode, TASK_EMULATOR);
+
+    rsel = mc.rsel;
+    if (mc.bs == BS_TASK_SPECIFIC1 || mc.bs == BS_TASK_SPECIFIC2)
+        rsel = mc.rsel + (R_MASK + 1);
+
+    if (c_name && (mc.use_constant || mc.bs_use_crom)) {
+        osym = objfile_resolve(objf, OBJSYMB_CONSTANT, c_name);
+        if (unlikely(!osym)) {
+            report_error("objfile: add_microcode_symbols: "
+                         "could not find constant");
+            return FALSE;
+        }
+
+        addr = mc.const_addr;
+        other = objf->const_symbs[addr];
+        if (unlikely(!other)) {
+            report_error("objfile: add_microcode_symbols: "
+                         "no defined constant");
+            return FALSE;
+        }
+
+        /* Can compare string pointers here, because strings
+         * are interned and thus unique.
+         */
+        if (osym->n.str.s != other->n.str.s) {
+            val = objf->consts[addr];
+            if (unlikely(!objfile_add_constant(objf, c_name, addr, val))) {
+                report_error("objfile: add_microcode_symbols: "
+                             "could not add constant");
+                return FALSE;
+            }
+        }
+    }
+
+    if (r_name) {
+        osym = objfile_resolve(objf, OBJSYMB_REGISTER, r_name);
+        if (unlikely(!osym)) {
+            report_error("objfile: add_microcode_symbols: "
+                         "could not find register");
+            return FALSE;
+        }
+
+        addr = rsel;
+        other = objf->reg_symbs[addr];
+        if (unlikely(!other)) {
+            report_error("objfile: add_microcode_symbols: "
+                         "no defined register");
+            return FALSE;
+        }
+
+        /* Can compare string pointers here, because strings
+         * are interned and thus unique.
+         */
+        if (osym->n.str.s != other->n.str.s) {
+            if (unlikely(!objfile_add_register(objf, r_name, addr))) {
+                report_error("objfile: add_microcode_symbols: "
+                             "could not add register");
+                return FALSE;
+            }
+        }
+    }
+
+    if (unlikely(!objfile_add_microcode(objf, address, mcode))) {
+        report_error("objfile: add_microcode_symbols: "
+                     "could not add microcode");
         return FALSE;
     }
 
-    objf->microcode[address] = microcode;
-    objf->mu_symbs[address] = osym;
-
     return TRUE;
+}
+
+
+struct objsymb *objfile_resolve(const struct objfile *objf,
+                                enum objsymb_type type,
+                                const struct string *name)
+{
+    const struct string_node *n;
+    struct objsymb *osym;
+    size_t offset;
+
+    n = table_find(&objf->symbols, name);
+    if (!n) return NULL;
+
+    while (n) {
+        offset = offsetof(struct objsymb, n);
+        osym = (struct objsymb *) &(((char *) n)[-offset]);
+        if (osym->type == type) return osym;
+        n = n->next;
+    }
+
+    return NULL;
 }
 
 int objfile_dump_constant_rom(const struct objfile *objf,

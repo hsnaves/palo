@@ -735,7 +735,7 @@ int parse_address_predefinition(struct parser *p)
 
         pn->name = si->n.str;
         pn->next = NULL;
-        pn->extra = si;
+        pn->si = si;
 
         if (last) last->next = pn;
         if (!st->v.addr.labels)
@@ -886,7 +886,7 @@ int parse_executable_statement(struct parser *p)
 
         lhs->name = name;
         lhs->next = NULL;
-        lhs->extra = NULL;
+        lhs->si = NULL;
         lhs_last = lhs;
         cl->lhs = lhs;
 
@@ -910,7 +910,7 @@ int parse_executable_statement(struct parser *p)
 
             lhs->name = name;
             lhs->next = NULL;
-            lhs->extra = NULL;
+            lhs->si = NULL;
 
             lhs_last->next = lhs;
             lhs_last = lhs;

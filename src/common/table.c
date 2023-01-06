@@ -23,6 +23,15 @@ unsigned int string_hash(const char *s, size_t len)
     return hash;
 }
 
+int string_equal(const struct string *s1, const struct string *s2)
+{
+    if (s1->hash == s2->hash && s1->len == s2->len) {
+        if (strncmp(s1->s, s2->s, s1->len) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
 void table_initvar(struct table *t)
 {
     t->table = NULL;
@@ -59,7 +68,8 @@ void table_clear(struct table *t)
     memset(t->table, 0, size);
 }
 
-struct string_node *table_find(struct table *t, const struct string *str)
+struct string_node *table_find(const struct table *t,
+                               const struct string *str)
 {
     struct string_node *n;
     unsigned int slot;
@@ -67,10 +77,8 @@ struct string_node *table_find(struct table *t, const struct string *str)
     slot =str->hash % t->num_slots;
     n = t->table[slot];
     while (n) {
-        if (n->str.hash == str->hash && n->str.len == str->len) {
-            if (strncmp(str->s, n->str.s, str->len) == 0)
-                return n;
-        }
+        if (string_equal(&n->str, str))
+            return n;
         n = n->next;
     }
 
