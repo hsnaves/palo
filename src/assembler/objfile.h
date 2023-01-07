@@ -4,8 +4,10 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/allocator.h"
 #include "common/table.h"
+#include "common/string_buffer.h"
 
 /* Data structures and types. */
 
@@ -45,6 +47,9 @@ struct objfile {
     struct objsymb **label_symbs; /* Label symbols. */
     struct objsymb **mu_c_symbs;  /* Microcode constant symbols. */
     struct objsymb **mu_r_symbs;  /* Microcode register symbols. */
+
+    char *tbuf;                   /* Temporary buffer. */
+    size_t tbuf_size;             /* Size of the temporary buffer. */
 };
 
 /* Functions. */
@@ -132,6 +137,13 @@ struct objsymb *objfile_resolve(const struct objfile *objf,
 int objfile_write_binary(const struct objfile *objf,
                          const char *filename);
 
+/* Loads the binary file.
+ * The name of the file to load is given by `filename`.
+ * Returns TRUE on success.
+ */
+int objfile_load_binary(struct objfile *objf,
+                        const char *filename);
+
 /* Dumps the constant rom to a file.
  * The file is named `filename`.
  * Returns TRUE on success.
@@ -145,6 +157,13 @@ int objfile_dump_constant_rom(const struct objfile *objf,
  */
 int objfile_dump_microcode_rom(const struct objfile *objf,
                                const char *filename);
+
+/* Disassembles a microinstruction given by `mc`.
+ * The output is written to `output`.
+ */
+void objfile_disassemble(const struct objfile *objf,
+                         const struct microcode *mc,
+                         struct string_buffer *output);
 
 
 #endif /* __ASSEMBLER_OBJFILE_H */

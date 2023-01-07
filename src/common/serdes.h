@@ -104,6 +104,14 @@ void serdes_get16_array(struct serdes *sd, uint16_t *arr, size_t num);
  */
 void serdes_get32_array(struct serdes *sd, uint32_t *arr, size_t num);
 
+/* Deserializes a string.
+ * The string is deserialized into the buffer `str`, which is of size
+ * `size`. No more than `size` bytes are written to `str`, including
+ * the NUL terminating byte.
+ * Returns the length of the deserialized string.
+ */
+size_t serdes_get_string(struct serdes *sd, char *str, size_t size);
+
 /* Serializes an uint8_t value.
  * The value to serialize is in the parameter `v`.
  */
@@ -141,5 +149,10 @@ void serdes_put16_array(struct serdes *sd, const uint16_t *arr, size_t num);
  * The number of elements is given by `num`.
  */
 void serdes_put32_array(struct serdes *sd, const uint32_t *arr, size_t num);
+
+/* Serializes a NUL terminated string.
+ * The string is given by the parameter `str`.
+ */
+void serdes_put_string(struct serdes *sd, const char *str);
 
 #endif /* __COMMON_SERDES_H */

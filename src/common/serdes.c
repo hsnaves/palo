@@ -215,6 +215,23 @@ void serdes_get32_array(struct serdes *sd, uint32_t *arr, size_t num)
     }
 }
 
+size_t serdes_get_string(struct serdes *sd, char *str, size_t size)
+{
+    size_t i;
+    uint8_t v;
+
+    for (i = 0; i < size; i++) {
+        str[i] = (char) serdes_get8(sd);
+        if (!str[i]) return i;
+    }
+
+    while (TRUE) {
+        v = serdes_get8(sd);
+        if (!v) return i;
+        i++;
+    }
+}
+
 void serdes_put8(struct serdes *sd, uint8_t v)
 {
     if ((sd->pos + 1 > sd->size) && sd->extend) {
@@ -281,5 +298,19 @@ void serdes_put32_array(struct serdes *sd, const uint32_t *arr, size_t num)
     size_t i;
     for (i = 0; i < num; i++) {
         serdes_put32(sd, arr[i]);
+    }
+}
+
+void serdes_put_string(struct serdes *sd, const char *str)
+{
+    size_t i;
+    uint8_t v;
+
+    i = 0;
+    while (TRUE) {
+        v = (uint8_t) str[i];
+        serdes_put8(sd, v);
+        if (!v) break;
+        i++;
     }
 }

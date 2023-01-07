@@ -1,6 +1,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "assembler/objfile.h"
 #include "microcode/microcode.h"
@@ -29,6 +30,8 @@ void objfile_initvar(struct objfile *objf)
     objf->label_symbs = NULL;
     objf->mu_c_symbs = NULL;
     objf->mu_r_symbs = NULL;
+
+    objf->tbuf = NULL;
 }
 
 void objfile_destroy(struct objfile *objf)
@@ -56,6 +59,9 @@ void objfile_destroy(struct objfile *objf)
 
     if (objf->mu_r_symbs) free((void *) objf->mu_r_symbs);
     objf->mu_r_symbs = NULL;
+
+    if (objf->tbuf) free((void *) objf->tbuf);
+    objf->tbuf = NULL;
 
     table_destroy(&objf->symbols);
     allocator_destroy(&objf->oalloc);
@@ -105,10 +111,14 @@ int objfile_create(struct objfile *objf)
     objf->mu_r_symbs = (struct objsymb **)
         malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
 
+    objf->tbuf_size = 4096;
+    objf->tbuf = (char *) malloc(objf->tbuf_size);
+
     if (unlikely(!objf->consts || !objf->microcode
                  || !objf->has_microcode || !objf->const_symbs
                  || !objf->reg_symbs || !objf->label_symbs
-                 || !objf->mu_c_symbs || !objf->mu_r_symbs)) {
+                 || !objf->mu_c_symbs || !objf->mu_r_symbs
+                 || !objf->tbuf)) {
         report_error("objfile: create: memory exhausted");
         objfile_destroy(objf);
         return FALSE;
@@ -505,10 +515,10 @@ uint16_t revbits(uint16_t x, int n, uint16_t mask)
 }
 
 /* Auxiliary function to serialize the objfile.
- * The objfile `objf` is serialized to `sd`.
+ * The objfile `objf` is to be serialized into `sd`.
  */
 static
-void serialize_objfile(const struct objfile *objf,
+void objfile_serialize(const struct objfile *objf,
                        struct serdes *sd)
 {
     const struct objsymb *osym;
@@ -520,15 +530,14 @@ void serialize_objfile(const struct objfile *objf,
     serdes_put16(sd, 4); /* block_type */
     serdes_put16(sd, 3); /* mem_num */
     serdes_put16(sd, 16); /* num_bits */
-    serdes_put8_array(sd, (const uint8_t *) "R", 1);
-    serdes_put8(sd, 0); /* end of string */
+    serdes_put_string(sd, "R");
 
     /* Define CONSTANT memory. */
     serdes_put16(sd, 4); /* block_type */
     serdes_put16(sd, 1); /* mem_num */
     serdes_put16(sd, 16); /* num_bits */
-    serdes_put8_array(sd, (const uint8_t *) "CONSTANT", 8);
-    serdes_put16(sd, 0); /* end of string */
+    serdes_put_string(sd, "CONSTANT");
+    serdes_put8(sd, 0); /* for alignment */
 
     for (address = 0; address < CONSTANT_SIZE; address++) {
         if (!objf->const_symbs[address]) continue;
@@ -553,8 +562,7 @@ void serialize_objfile(const struct objfile *objf,
     serdes_put16(sd, 4); /* block_type */
     serdes_put16(sd, 2); /* mem_num */
     serdes_put16(sd, 32); /* num_bits */
-    serdes_put8_array(sd, (const uint8_t *) "INSTRUCTION", 11);
-    serdes_put8(sd, 0); /* end of string */
+    serdes_put_string(sd, "INSTRUCTION");
 
     for (address = 0; address < MICROCODE_SIZE; address++) {
         if (!objf->has_microcode[address]) continue;
@@ -613,6 +621,214 @@ void serialize_objfile(const struct objfile *objf,
     serdes_put16(sd, 0);
 }
 
+/* Auxiliary function to deserialize the objfile.
+ * The objfile `objf` is serialized to `sd`.
+ * Returns TRUE on success.
+ */
+static
+int objfile_deserialize(struct objfile *objf,
+                        struct serdes *sd)
+{
+    struct string name;
+    uint16_t block_type;
+    uint16_t mem_num, mem_width, mem_addr;
+    uint16_t curr_mem, curr_addr;
+    uint16_t exp_mem_num, exp_mem_width;
+    uint16_t line_num, exp_line_num;
+    uint16_t w, addr, val, tmp1, tmp2;
+    uint32_t mcode;
+    int r_defined, m_defined, c_defined;
+    int prev_defined;
+    size_t len;
+
+    r_defined = FALSE;
+    m_defined = FALSE;
+    c_defined = FALSE;
+    prev_defined = FALSE;
+
+    curr_mem = 0xFFFF;
+    curr_addr = 0;
+
+    objfile_clear(objf);
+    while (TRUE) {
+        block_type = serdes_get16(sd);
+        if (block_type == 0) break;
+
+        if (block_type == 4) { /* Define memory */
+            mem_num = serdes_get16(sd);
+            mem_width = serdes_get16(sd);
+            len = serdes_get_string(sd, objf->tbuf, objf->tbuf_size);
+            if (!(len & 1)) serdes_get8(sd); /* for alignment */
+            if (len + 1 > objf->tbuf_size) {
+                report_error("objfile: deserialize: "
+                             "string too large");
+                return FALSE;
+            }
+
+            if (strcmp(objf->tbuf, "R") == 0) {
+                exp_mem_num = 3;
+                exp_mem_width = 16;
+                prev_defined = r_defined;
+                r_defined = TRUE;
+            } else if (strcmp(objf->tbuf, "CONSTANT") == 0) {
+                exp_mem_num = 1;
+                exp_mem_width = 16;
+                prev_defined = c_defined;
+                c_defined = TRUE;
+            } else if (strcmp(objf->tbuf, "INSTRUCTION") == 0) {
+                exp_mem_num = 2;
+                exp_mem_width = 32;
+                prev_defined = m_defined;
+                m_defined = TRUE;
+            } else {
+                report_error("objfile: deserialize: "
+                             "invalid memory `%s`", objf->tbuf);
+                return FALSE;
+            }
+
+            if (unlikely(mem_num != exp_mem_num)) {
+                report_error("objfile: deserialize: "
+                             "invalid number for `%s`: %u",
+                             objf->tbuf, mem_num);
+                return FALSE;
+            }
+
+            if (unlikely(mem_width != exp_mem_width)) {
+                report_error("objfile: deserialize: "
+                             "invalid width for `%s`: %u",
+                             objf->tbuf, mem_width);
+                return FALSE;
+            }
+
+            if (unlikely(prev_defined)) {
+                report_error("objfile: deserialize: "
+                             "memory `%s` already defined",
+                             objf->tbuf);
+                return FALSE;
+            }
+
+            continue;
+        }
+
+        if (block_type == 2) { /* Set address */
+            mem_num = serdes_get16(sd);
+            mem_addr = serdes_get16(sd);
+
+            curr_mem = mem_num;
+            if (mem_num == 1) {
+                prev_defined = c_defined;
+                curr_addr = (revbits((mem_addr >> 1) & 0xF, 4, 1) << 4)
+                    + ((mem_addr >> 4) & 0xE) + (mem_addr & 1);
+            } else if (mem_num == 2) {
+                prev_defined = m_defined;
+                curr_addr = revbits((~mem_addr) & 0xFF, 8, 1)
+                    + (mem_addr & 0xFF00);
+            } else {
+                report_error("objfile: deserialize: "
+                             "invalid memory number: %u",
+                             mem_num);
+                return FALSE;
+            }
+
+            if (unlikely(!prev_defined)) {
+                report_error("objfile: deserialize: "
+                             "memory number %u not yet defined",
+                             mem_num);
+                return FALSE;
+            }
+            continue;
+        }
+
+        if (block_type == 1) { /* data word */
+            line_num = serdes_get16(sd);
+            if (curr_mem == 1) {
+                w = serdes_get16(sd);
+                w = ~w;
+                exp_line_num = 0;
+
+                objf->consts[curr_addr] = w;
+            } else if (curr_mem == 2) {
+                mcode = serdes_get32(sd);
+
+                tmp1 = revbits(mcode & 0xFFFF, 4, 0x1111);
+                tmp2 = revbits((mcode >> 16) & 0xFFFF, 4, 0x1111);
+                mcode = ((uint32_t) tmp1) + (((uint32_t) tmp2) << 16);
+                mcode ^= 0x88400;
+
+                exp_line_num = 5 + (mcode >> 16);
+
+                objf->microcode[curr_addr] = mcode;
+            } else {
+                report_error("objfile: deserialize: "
+                             "invalid memory number: %u",
+                             curr_mem);
+                return FALSE;
+            }
+
+            if (unlikely(line_num != exp_line_num)) {
+                report_error("objfile: deserialize: "
+                             "invalid line_num: expecting %u, but got %u",
+                             exp_line_num, line_num);
+                return FALSE;
+            }
+            curr_addr++;
+            continue;
+        }
+
+        if (block_type == 5) { /* define symbol */
+            mem_num = serdes_get16(sd);
+            addr = serdes_get16(sd);
+
+            len = serdes_get_string(sd, objf->tbuf, objf->tbuf_size);
+            if (!(len & 1)) serdes_get8(sd); /* for alignment */
+            if (len + 1 > objf->tbuf_size) {
+                report_error("objfile: deserialize: "
+                             "string too large");
+                return FALSE;
+            }
+
+            name.s = objf->tbuf;
+            name.len = len;
+            name.hash = string_hash(name.s, name.len);
+
+            if (mem_num == 1) {
+                val = objf->consts[addr];
+                if (unlikely(!objfile_add_constant(objf, &name,
+                                                   addr, val))) {
+                    report_error("objfile: deserialize: "
+                                 "cannot add constant");
+                    return FALSE;
+                }
+            } else if (mem_num == 2) {
+                if (unlikely(!objfile_add_label(objf, &name, addr))) {
+                    report_error("objfile: deserialize: "
+                                 "cannot add label");
+                    return FALSE;
+                }
+            } else if (mem_num == 3) {
+                if (unlikely(!objfile_add_register(objf, &name, addr))) {
+                    report_error("objfile: deserialize: "
+                                 "cannot add register");
+                    return FALSE;
+                }
+            } else {
+                report_error("objfile: deserialize: "
+                             "invalid memory number: %u",
+                             mem_num);
+                return FALSE;
+            }
+
+            continue;
+        }
+
+        report_error("objfile: deserialize: "
+                     "block_type: %u", block_type);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 int objfile_write_binary(const struct objfile *objf,
                          const char *filename)
 {
@@ -626,7 +842,8 @@ int objfile_write_binary(const struct objfile *objf,
         return FALSE;
     }
 
-    serialize_objfile(objf, &sd);
+    objfile_serialize(objf, &sd);
+
     if (unlikely(!serdes_verify(&sd))) {
         report_error("objfile: write_binary: "
                      "could not serialize");
@@ -644,6 +861,42 @@ int objfile_write_binary(const struct objfile *objf,
     serdes_destroy(&sd);
     return TRUE;
 }
+
+int objfile_load_binary(struct objfile *objf,
+                        const char *filename)
+{
+    struct serdes sd;
+    size_t pos, size;
+
+    size = 102400;
+    if (unlikely(!serdes_create(&sd, size, TRUE))) {
+        report_error("objfile: load_binary: "
+                     "could not create serializer");
+        return FALSE;
+    }
+
+    if (unlikely(!serdes_read(&sd, filename))) {
+        report_error("objfile: load_binary: "
+                     "could not read file");
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    pos = sd.pos;
+    serdes_rewind(&sd);
+    objfile_deserialize(objf, &sd);
+
+    if (unlikely(sd.pos != pos)) {
+        report_error("objfile: load_binary: "
+                     "invalid file `%s`", filename);
+        serdes_destroy(&sd);
+        return FALSE;
+    }
+
+    serdes_destroy(&sd);
+    return TRUE;
+}
+
 
 int objfile_dump_constant_rom(const struct objfile *objf,
                               const char *filename)
@@ -697,3 +950,54 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
     return TRUE;
 }
 
+/* Auxiliary function used by objfile_disassemble().
+ * Callback to print constants.
+ */
+static
+void disasm_constant_cb(struct decoder *dec, uint16_t val,
+                        struct string_buffer *output)
+{
+    const struct objfile *objf;
+    objf = (const struct objfile *) dec->arg;
+    string_buffer_print(output, "%o", objf->consts[val]);
+}
+
+/* Auxiliary function used by objfile_disassemble().
+ * Callback to print R registers.
+ */
+static
+void disasm_register_cb(struct decoder *dec, uint16_t val,
+                        struct string_buffer *output)
+{
+    UNUSED(dec);
+    if (val <= R_MASK) {
+        string_buffer_print(output, "R%o", val);
+    } else {
+        string_buffer_print(output, "S%o", val & R_MASK);
+    }
+}
+
+/* Auxiliary function used by objfile_disassemble().
+ * Callback to print GOTO statements.
+ */
+static
+void disasm_goto_cb(struct decoder *dec, uint16_t val,
+                    struct string_buffer *output)
+{
+    UNUSED(dec);
+    string_buffer_print(output, ":%05o", val);
+}
+
+void objfile_disassemble(const struct objfile *objf,
+                         const struct microcode *mc,
+                         struct string_buffer *output)
+{
+    struct decoder dec;
+
+    dec.arg = (void *) objf;
+    dec.const_cb = &disasm_constant_cb;
+    dec.reg_cb = &disasm_register_cb;
+    dec.goto_cb = &disasm_goto_cb;
+
+    decoder_decode(&dec, mc, output);
+}

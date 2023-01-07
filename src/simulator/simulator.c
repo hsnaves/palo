@@ -1737,7 +1737,7 @@ int simulator_update(struct simulator *sim,
  */
 static
 void disasm_constant_cb(struct decoder *dec, uint16_t val,
-                            struct string_buffer *output)
+                        struct string_buffer *output)
 {
     const struct simulator *sim;
     sim = (const struct simulator *) dec->arg;
