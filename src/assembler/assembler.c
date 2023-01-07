@@ -463,7 +463,7 @@ int assembler_resolve_labels(struct assembler *as)
             break;
 
         case ST_ADDRESS_PREDEFINITION:
-            address = find_microcode_address(as, &st->v.addr,
+            address = find_microcode_address(as, &st->v.apdef,
                                              st->filename,
                                              st->line_num);
             if (address == MICROCODE_SIZE)
@@ -477,7 +477,7 @@ int assembler_resolve_labels(struct assembler *as)
                  * address resolution to use the fake address
                  * predefintion below.
                  */
-                if (!si->addr) si = NULL;
+                if (!si->apdef) si = NULL;
             }
 
             if (si) {
@@ -594,6 +594,7 @@ int process_goto_clause(struct instruction *insn,
                      cl->name.s);
         return FALSE;
     }
+    st->v.exec.g_name = &si->n.str;
 
     if (si->exec) {
         insn->goto_st = si->exec;
@@ -1100,6 +1101,7 @@ int assemble_one(struct assembler *as, struct statement *st,
     error = FALSE;
     st->v.exec.c_name = NULL;
     st->v.exec.r_name = NULL;
+    st->v.exec.g_name = NULL;
     cl = st->v.exec.clauses;
     while (cl) {
         switch (cl->c_type) {
@@ -1255,7 +1257,7 @@ int assembler_produce_objfile(const struct assembler *as,
             address = st->v.exec.address;
             mcode = as->microcode[address];
 
-            if (st->v.exec.label.s) {
+            if (st->v.exec.si) {
                 if (unlikely(!objfile_add_label(objf,
                                                 &st->v.exec.label,
                                                 address))) {

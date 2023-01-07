@@ -660,24 +660,24 @@ int parse_address_predefinition(struct parser *p)
     st = new_statement(p);
     if (unlikely(!st)) return ERROR;
     st->st_type = ST_ADDRESS_PREDEFINITION;
-    st->v.addr.extended = extended;
-    st->v.addr.labels = NULL;
-    st->v.addr.num_labels = 0;
+    st->v.apdef.extended = extended;
+    st->v.apdef.labels = NULL;
+    st->v.apdef.num_labels = 0;
 
-    ret = parse_octal(p, &st->v.addr.n, FALSE);
+    ret = parse_octal(p, &st->v.apdef.n, FALSE);
     if (ret != OK) return ret;
 
     ret = consume_punctuation(p, ',');
     if (ret != OK) return ret;
 
-    ret = parse_octal(p, &st->v.addr.k, FALSE);
+    ret = parse_octal(p, &st->v.apdef.k, FALSE);
     if (ret != OK) return ret;
 
     if (extended) {
         ret = consume_punctuation(p, ',');
         if (ret != OK) return ret;
 
-        ret = parse_octal(p, &st->v.addr.l, FALSE);
+        ret = parse_octal(p, &st->v.apdef.l, FALSE);
         if (ret != OK) return ret;
     }
 
@@ -738,9 +738,9 @@ int parse_address_predefinition(struct parser *p)
         pn->si = si;
 
         if (last) last->next = pn;
-        if (!st->v.addr.labels)
-            st->v.addr.labels = pn;
-        st->v.addr.num_labels++;
+        if (!st->v.apdef.labels)
+            st->v.apdef.labels = pn;
+        st->v.apdef.num_labels++;
         last = pn;
     }
 
@@ -752,7 +752,7 @@ int parse_address_predefinition(struct parser *p)
     while (si) {
         symbol_infos = (struct symbol_info *) si->extra;
         si->extra = NULL;
-        si->addr = st;
+        si->apdef = st;
         si = symbol_infos;
     }
 
@@ -932,7 +932,7 @@ int parse_executable_statement(struct parser *p)
     if (si) {
         /* Set the symbol information. */
         if (si->exec) {
-            /* In case label is already defined. */
+            /* In case label is already defined by an exec statement. */
             st = add_error(p, ERR_ALREADY_DEFINED);
             if (unlikely(!st)) return ERROR;
             st->v.err.name = si->n.str;

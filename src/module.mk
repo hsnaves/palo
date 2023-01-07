@@ -45,7 +45,8 @@ microcode/nova.o: microcode/nova.c microcode/nova.h \
  common/string_buffer.h common/utils.h
 pmu.o: pmu.c assembler/assembler.h parser/parser.h parser/lexer.h \
  common/allocator.h common/table.h assembler/objfile.h \
- microcode/microcode.h common/string_buffer.h common/utils.h
+ microcode/microcode.h common/string_buffer.h common/serdes.h \
+ common/utils.h
 fs/basic.o: fs/basic.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/check.o: fs/check.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/dir.o: fs/dir.c fs/fs.h fs/fs_internal.h common/utils.h

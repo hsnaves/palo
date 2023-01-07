@@ -79,6 +79,10 @@ struct executable_statement {
                                    * register, this points to the
                                    * register used (used by the assembler).
                                    */
+    const struct string *g_name;  /* If the statement has a GOTO clause,
+                                   * this pointer refers to the label of the
+                                   * GOTO clause (used by the assembler).
+                                   */
 };
 
 /* Possible errors found during parsing. */
@@ -112,7 +116,7 @@ struct statement {
     enum statement_type st_type;  /* The type of the statement. */
     union {
         struct declaration decl;
-        struct address_predefinition addr;
+        struct address_predefinition apdef;
         struct executable_statement exec;
         struct erroneous_statement err;
     } v;                          /* The information about the statement. */
@@ -134,14 +138,16 @@ struct symbol_info {
                                    * declaration, this is pointer to
                                    * the declaration defining it.
                                    */
-    struct statement *addr;       /* If the symbol was defined in an
+    struct statement *apdef;      /* If the symbol was defined in an
                                    * address predefinition, this should
                                    * be pointing to the corresponding
                                    * statement.
                                    */
     struct statement *exec;       /* If the symbol was defined as a label,
                                    * this is a pointer to the statement
-                                   * containing it.
+                                   * containing it. For labels, the `addr`
+                                   * field might also be non-NULL, in
+                                   * case the label was predefined earlier.
                                    */
     uint16_t address;             /* The address of the symbol
                                    * (used by the assembler).

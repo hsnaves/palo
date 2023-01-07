@@ -7,6 +7,7 @@
 #include "microcode/microcode.h"
 #include "common/allocator.h"
 #include "common/table.h"
+#include "common/serdes.h"
 #include "common/string_buffer.h"
 
 /* Data structures and types. */
@@ -129,6 +130,20 @@ int objfile_add_microcode_symbols(struct objfile *objf,
 struct objsymb *objfile_resolve(const struct objfile *objf,
                                 enum objsymb_type type,
                                 const struct string *name);
+
+/* Checks if the contants in `consts` match the contants in the obfile.
+ * Returns TRUE if they match
+ */
+int objfile_check_constants(const struct objfile *objf,
+                            const uint8_t consts[CONSTANT_SIZE]);
+
+/* Serializes the objfile `objf` into `sd`. */
+void objfile_serialize(const struct objfile *objf, struct serdes *sd);
+
+/* Deserializes the objfile `obf` from `sd`.
+ * Returns TRUE on success.
+ */
+int objfile_deserialize(struct objfile *objf, struct serdes *sd);
 
 /* Writes out the binary file.
  * The name of the file to write is given by `filename`.
