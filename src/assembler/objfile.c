@@ -1040,41 +1040,36 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
 }
 
 /* Auxiliary function used by objfile_disassemble().
- * Callback to print constants.
+ * Callback to print constants, registers, labels, etc.
  */
 static
-void disasm_constant_cb(struct decoder *dec, uint16_t val,
-                        struct string_buffer *output)
+void disasm_decode_cb(struct decoder *dec,
+                      enum decode_type dec_type, uint16_t val)
 {
     const struct objfile *objf;
+    struct string_buffer *output;
+
     objf = (const struct objfile *) dec->arg;
-    string_buffer_print(output, "%o", objf->consts[val]);
-}
+    output = dec->output;
 
-/* Auxiliary function used by objfile_disassemble().
- * Callback to print R registers.
- */
-static
-void disasm_register_cb(struct decoder *dec, uint16_t val,
-                        struct string_buffer *output)
-{
-    UNUSED(dec);
-    if (val <= R_MASK) {
-        string_buffer_print(output, "R%o", val);
-    } else {
-        string_buffer_print(output, "S%o", val & R_MASK);
+    switch (dec_type) {
+    case DECODE_CONST:
+        string_buffer_print(output, "%o", objf->consts[val]);
+        break;
+    case DECODE_REG:
+        if (val <= R_MASK) {
+            string_buffer_print(output, "R%o", val);
+        } else {
+            string_buffer_print(output, "S%o", val & R_MASK);
+        }
+        break;
+    case DECODE_LABEL:
+        string_buffer_print(output, "%05o", val);
+        break;
+    case DECODE_MEMORY:
+        string_buffer_print(output, "%07o", val);
+        break;
     }
-}
-
-/* Auxiliary function used by objfile_disassemble().
- * Callback to print GOTO statements.
- */
-static
-void disasm_goto_cb(struct decoder *dec, uint16_t val,
-                    struct string_buffer *output)
-{
-    UNUSED(dec);
-    string_buffer_print(output, ":%05o", val);
 }
 
 void objfile_disassemble(const struct objfile *objf,
@@ -1084,9 +1079,9 @@ void objfile_disassemble(const struct objfile *objf,
     struct decoder dec;
 
     dec.arg = (void *) objf;
-    dec.const_cb = &disasm_constant_cb;
-    dec.reg_cb = &disasm_register_cb;
-    dec.goto_cb = &disasm_goto_cb;
+    dec.dec_cb = &disasm_decode_cb;
+    dec.mc = *mc;
+    dec.output = output;
 
-    decoder_decode(&dec, mc, output);
+    decoder_decode(&dec);
 }

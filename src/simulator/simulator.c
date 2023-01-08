@@ -1733,41 +1733,36 @@ int simulator_update(struct simulator *sim,
 }
 
 /* Auxiliary function used by simulator_disassemble().
- * Callback to print constants.
+ * Callback to print constants, registers, labels, etc.
  */
 static
-void disasm_constant_cb(struct decoder *dec, uint16_t val,
-                        struct string_buffer *output)
+void disasm_decode_cb(struct decoder *dec,
+                      enum decode_type dec_type, uint16_t val)
 {
     const struct simulator *sim;
+    struct string_buffer *output;
+
     sim = (const struct simulator *) dec->arg;
-    string_buffer_print(output, "%o", sim->consts[val]);
-}
+    output = dec->output;
 
-/* Auxiliary function used by simulator_disassemble().
- * Callback to print R registers.
- */
-static
-void disasm_register_cb(struct decoder *dec, uint16_t val,
-                        struct string_buffer *output)
-{
-    UNUSED(dec);
-    if (val <= R_MASK) {
-        string_buffer_print(output, "R%o", val);
-    } else {
-        string_buffer_print(output, "S%o", val & R_MASK);
+    switch (dec_type) {
+    case DECODE_CONST:
+        string_buffer_print(output, "%o", sim->consts[val]);
+        break;
+    case DECODE_REG:
+        if (val <= R_MASK) {
+            string_buffer_print(output, "R%o", val);
+        } else {
+            string_buffer_print(output, "S%o", val & R_MASK);
+        }
+        break;
+    case DECODE_LABEL:
+        string_buffer_print(output, "%05o", val);
+        break;
+    case DECODE_MEMORY:
+        string_buffer_print(output, "%07o", val);
+        break;
     }
-}
-
-/* Auxiliary function used by simulator_disassemble().
- * Callback to print GOTO statements.
- */
-static
-void disasm_goto_cb(struct decoder *dec, uint16_t val,
-                    struct string_buffer *output)
-{
-    UNUSED(dec);
-    string_buffer_print(output, ":%05o", val);
 }
 
 void simulator_disassemble(const struct simulator *sim,
@@ -1787,11 +1782,11 @@ void simulator_disassemble(const struct simulator *sim,
                         sim->ctask, sim->mpc, sim->mir);
 
     dec.arg = (void *) sim;
-    dec.const_cb = &disasm_constant_cb;
-    dec.reg_cb = &disasm_register_cb;
-    dec.goto_cb = &disasm_goto_cb;
+    dec.dec_cb = &disasm_decode_cb;
+    dec.mc = mc;
+    dec.output = output;
 
-    decoder_decode(&dec, &mc, output);
+    decoder_decode(&dec);
 }
 
 void simulator_print_registers(const struct simulator *sim,

@@ -34,12 +34,9 @@ void microcode_predecode(struct microcode *mc,
     mc->ram_task = ((1 << mc->task) & TASK_RAM_MASK);
 }
 
-/* Decodes the non-data function part of the instruction.
- * The output string is placed in `output`.
- */
+/* Decodes the non-data function part of the instruction. */
 static
-void decode_nondata_function(struct decoder *dec,
-                             struct string_buffer *output)
+void decode_nondata_function(struct decoder *dec)
 {
     const char *f1_op;
     const char *f2_op;
@@ -310,23 +307,23 @@ process_f2:
         break;
     }
 
-    string_buffer_print(output, "%s%s%s%s",
+    string_buffer_print(dec->output, "%s%s%s%s",
                         f1_op,
                         (f1_op[0] && f2_op[0]) ? ", " : "",
                         f2_op,
                         (f1_op[0] || f2_op[0]) ? ", " : "");
 }
 
-/* Decodes the bus RHS (source).
- * The output string is placed in `output`.
- */
+/* Decodes the bus RHS (source). */
 static
-void decode_bus_rhs(struct decoder *dec,
-                    struct string_buffer *output)
+void decode_bus_rhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if (dec->mc.use_constant) {
         /* Decode the constant. */
-        (*dec->const_cb)(dec, dec->mc.const_addr, output);
+        (*dec->dec_cb)(dec, DECODE_CONST, dec->mc.const_addr);
         return;
     }
 
@@ -341,7 +338,7 @@ void decode_bus_rhs(struct decoder *dec,
                 break;
             }
         }
-        (*dec->reg_cb)(dec, dec->mc.rsel, output);
+        (*dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
         break;
     case BS_LOAD_R:
         string_buffer_print(output, "0");
@@ -376,8 +373,8 @@ void decode_bus_rhs(struct decoder *dec,
                 if (dec->mc.rsel == 0) {
                     string_buffer_print(output, "M");
                 } else {
-                    (*dec->reg_cb)(dec, dec->mc.rsel | (R_MASK + 1),
-                                   output);
+                    (*dec->dec_cb)(dec, DECODE_REG,
+                                   dec->mc.rsel | (R_MASK + 1));
                 }
                 break;
             } else if (dec->mc.bs == BS_RAM_LOAD_S_LOCATION) {
@@ -407,12 +404,13 @@ void decode_bus_rhs(struct decoder *dec,
 /* Decodes the bus LHS (destinations).
  * If `force` parameter is set to TRUE, the output is produced
  * even when the ALUF is ALU_BUS.
- * The output string is placed in `output`.
  */
 static
-void decode_bus_lhs(struct decoder *dec, int force,
-                    struct string_buffer *output)
+void decode_bus_lhs(struct decoder *dec, int force)
 {
+    struct string_buffer *output;
+    output = dec->output;
+
     /* If ALUF is BUS, then we skip the BUS assignments, and
      * merge them with the ALU assigments.
      */
@@ -507,31 +505,31 @@ void decode_bus_lhs(struct decoder *dec, int force,
     }
 }
 
-/* Decodes the bus assignments..
- * The output string is placed in `output`.
- */
+/* Decodes the bus assignments. */
 static
-void decode_bus_assign(struct decoder *dec,
-                       struct string_buffer *output)
+void decode_bus_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_bus_lhs(dec, FALSE, output);
+    decode_bus_lhs(dec, FALSE);
     dec->has_bus_assignment = (len != string_buffer_length(output));
     if (!dec->has_bus_assignment) return;
-    decode_bus_rhs(dec, output);
+    decode_bus_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
-/* Decodes the alu RHS (source).
- * The output string is placed in `output`.
- */
+/* Decodes the alu RHS (source). */
 static
-void decode_alu_rhs(struct decoder *dec,
-                    struct string_buffer *output)
+void decode_alu_rhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if (dec->mc.aluf != ALU_T) {
-        decode_bus_rhs(dec, output);
+        decode_bus_rhs(dec);
     }
 
     switch (dec->mc.aluf) {
@@ -579,15 +577,15 @@ void decode_alu_rhs(struct decoder *dec,
     }
 }
 
-/* Decodes the alu LHS (destinations).
- * The output string is placed in `output`.
- */
+/* Decodes the alu LHS (destinations). */
 static
-void decode_alu_lhs(struct decoder *dec,
-                    struct string_buffer *output)
+void decode_alu_lhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if (dec->mc.aluf == ALU_BUS) {
-        decode_bus_lhs(dec, TRUE, output);
+        decode_bus_lhs(dec, TRUE);
     }
 
     if (dec->mc.load_t && dec->mc.load_t_from_alu) {
@@ -613,29 +611,29 @@ void decode_alu_lhs(struct decoder *dec,
     }
 }
 
-/* Decodes the alu assignments..
- * The output string is placed in `output`.
- */
+/* Decodes the alu assignments. */
 static
-void decode_alu_assign(struct decoder *dec,
-                       struct string_buffer *output)
+void decode_alu_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_alu_lhs(dec, output);
+    decode_alu_lhs(dec);
     dec->has_alu_assignment = (len != string_buffer_length(output));
     if (!dec->has_alu_assignment) return;
-    decode_alu_rhs(dec, output);
+    decode_alu_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
-/* Decodes the L register RHS (source).
- * The output string is placed in `output`.
- */
+/* Decodes the L register RHS (source). */
 static
-void decode_lreg_rhs(struct decoder *dec,
-                     struct string_buffer *output)
+void decode_lreg_rhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     switch (dec->mc.f1) {
     case F1_LLSH1:
         if (dec->mc.f2 == F2_EMU_MAGIC) {
@@ -660,82 +658,82 @@ void decode_lreg_rhs(struct decoder *dec,
     }
 }
 
-/* Decodes the L register LHS (destinations).
- * The output string is placed in `output`.
- */
+/* Decodes the L register LHS (destinations). */
 static
-void decode_lreg_lhs(struct decoder *dec,
-                     struct string_buffer *output)
+void decode_lreg_lhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if ((!dec->mc.use_constant) && dec->mc.bs == BS_LOAD_R) {
-        (*dec->reg_cb)(dec, dec->mc.rsel, output);
+        (*dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
         string_buffer_print(output, "<- ");
     }
 }
 
-/* Decodes assigments from the L register.
- * The output string is placed in `output`.
- */
+/* Decodes assigments from the L register. */
 static
-void decode_lreg_assign(struct decoder *dec,
-                        struct string_buffer *output)
+void decode_lreg_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_lreg_lhs(dec, output);
+    decode_lreg_lhs(dec);
     if (len == string_buffer_length(output)) return;
-    decode_lreg_rhs(dec, output);
+    decode_lreg_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
-/* Decodes the M register RHS (source).
- * The output string is placed in `output`.
- */
+/* Decodes the M register RHS (source). */
 static
-void decode_mreg_rhs(struct decoder *dec,
-                     struct string_buffer *output)
+void decode_mreg_rhs(struct decoder *dec)
 {
-    UNUSED(dec);
+    struct string_buffer *output;
+
+    output = dec->output;
     string_buffer_print(output, "M");
 }
 
-/* Decodes the M register LHS (destinations).
- * The output string is placed in `output`.
- */
+/* Decodes the M register LHS (destinations). */
 static
-void decode_mreg_lhs(struct decoder *dec,
-                     struct string_buffer *output)
+void decode_mreg_lhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if ((!dec->mc.use_constant) && dec->mc.ram_task
         && dec->mc.bs == BS_RAM_LOAD_S_LOCATION) {
 
-        (*dec->reg_cb)(dec, dec->mc.rsel | (R_MASK + 1), output);
+        (*dec->dec_cb)(dec, DECODE_REG,
+                       dec->mc.rsel | (R_MASK + 1));
         string_buffer_print(output, "<- ");
     }
 }
 
-/* Decodes assigments from the M register.
- * The output string is placed in `output`.
- */
+/* Decodes assigments from the M register. */
 static
-void decode_mreg_assign(struct decoder *dec,
-                        struct string_buffer *output)
+void decode_mreg_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_mreg_lhs(dec, output);
+    decode_mreg_lhs(dec);
     if (len == string_buffer_length(output)) return;
-    decode_mreg_rhs(dec, output);
+    decode_mreg_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
-/* Decodes the SINK (bus) register destinations.
- * The output string is placed in `output`.
- */
+/* Decodes the SINK (bus) register destinations. */
 static
-void decode_sink_bus_lhs(struct decoder *dec,
-                         struct string_buffer *output)
+void decode_sink_bus_lhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if (dec->has_bus_assignment) return;
     if (dec->mc.aluf != ALU_T) {
         if (dec->has_alu_assignment) return;
@@ -789,38 +787,35 @@ do_sink:
     string_buffer_print(output, "SINK<- ");
 }
 
-/* Decodes assigments to the SINK register (for bus).
- * The output string is placed in `output`.
- */
+/* Decodes assigments to the SINK register (for bus). */
 static
-void decode_sink_bus_assign(struct decoder *dec,
-                            struct string_buffer *output)
+void decode_sink_bus_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_sink_bus_lhs(dec, output);
+    decode_sink_bus_lhs(dec);
     if (len == string_buffer_length(output)) return;
-    decode_bus_rhs(dec, output);
+    decode_bus_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
-/* Decodes the SINK RHS (source) (for constants).
- * The output string is placed in `output`.
- */
+/* Decodes the SINK RHS (source) (for constants). */
 static
-void decode_sink_const_rhs(struct decoder *dec,
-                           struct string_buffer *output)
+void decode_sink_const_rhs(struct decoder *dec)
 {
-    (dec->reg_cb)(dec, dec->mc.rsel, output);
+    (dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
 }
 
-/* Decodes the SINK RHS (destinations) (for constants).
- * The output string is placed in `output`.
- */
+/* Decodes the SINK RHS (destinations) (for constants). */
 static
-void decode_sink_const_lhs(struct decoder *dec,
-                           struct string_buffer *output)
+void decode_sink_const_lhs(struct decoder *dec)
 {
+    struct string_buffer *output;
+
+    output = dec->output;
     if (dec->mc.use_constant) return;
     if (!dec->mc.bs_use_crom) return;
     if (dec->mc.rsel == 0) return;
@@ -828,84 +823,86 @@ void decode_sink_const_lhs(struct decoder *dec,
     string_buffer_print(output, "SINK<- ");
 }
 
-/* Decodes assigments to the SINK register (for constants).
- * The output string is placed in `output`.
- */
+/* Decodes assigments to the SINK register (for constants). */
 static
-void decode_sink_const_assign(struct decoder *dec,
-                              struct string_buffer *output)
+void decode_sink_const_assign(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    decode_sink_const_lhs(dec, output);
+    decode_sink_const_lhs(dec);
     if (len == string_buffer_length(output)) return;
-    decode_sink_const_rhs(dec, output);
+    decode_sink_const_rhs(dec);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the GOTO part of the instruction.
- * The output string is placed in `output`.
  * The original length of the `output` buffer (at the begining of
  * decoder_decode()) is in `orig_len`.
  */
 static
-void decode_goto(struct decoder *dec,
-                 struct string_buffer *output,
-                 size_t orig_len)
+void decode_goto(struct decoder *dec, size_t orig_len)
 {
+    struct string_buffer *output;
     size_t len;
+
+    output = dec->output;
     len = string_buffer_length(output);
-    (*dec->goto_cb)(dec, dec->mc.next, output);
-    if (len == string_buffer_length(output) && len != orig_len) {
-        /* Rewinds the ", " at the end of the string. */
-        string_buffer_rewind(output, 2);
-        return;
+    string_buffer_print(output, ":");
+    (*dec->dec_cb)(dec, DECODE_LABEL, dec->mc.next);
+    if (len + 1 == string_buffer_length(output)) {
+        /* Rewinds the ":" at the end of the string. */
+        string_buffer_rewind(output, 1);
+        if (len != orig_len) {
+            /* Rewinds the ", " at the end of the string. */
+            string_buffer_rewind(output, 2);
+        }
     }
 }
 
-void decoder_decode(struct decoder *dec,
-                    const struct microcode *mc,
-                    struct string_buffer *output)
+void decoder_decode(struct decoder *dec)
 {
+    struct string_buffer *output;
     size_t len;
 
-    dec->mc = *mc;
     dec->error = FALSE;
     dec->has_bus_assignment = FALSE;
     dec->has_alu_assignment = FALSE;
 
+    output = dec->output;
     len = string_buffer_length(output);
 
-    decode_nondata_function(dec, output);
+    decode_nondata_function(dec);
     if (dec->error) goto decode_error;
 
-    decode_bus_assign(dec, output);
+    decode_bus_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_alu_assign(dec, output);
+    decode_alu_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_lreg_assign(dec, output);
+    decode_lreg_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_mreg_assign(dec, output);
+    decode_mreg_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_sink_bus_assign(dec, output);
+    decode_sink_bus_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_sink_const_assign(dec, output);
+    decode_sink_const_assign(dec);
     if (dec->error) goto decode_error;
 
-    decode_goto(dec, output, len);
+    decode_goto(dec, len);
     if (dec->error) goto decode_error;
     return;
 
 decode_error:
     if (string_buffer_length(output) > len) {
-        string_buffer_rewind(output,
-                             string_buffer_length(output) - len);
+        len = string_buffer_length(output) - len;
+        string_buffer_rewind(output, len);
     }
     string_buffer_print(output, "<invalid>");
 }
-
