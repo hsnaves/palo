@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "microcode/nova.h"
+#include "microcode/microcode.h"
 #include "common/string_buffer.h"
 #include "common/utils.h"
 
@@ -18,23 +19,25 @@ void nova_insn_predecode(struct nova_insn *ni,
  * Output is appended to `output`.
  */
 static
-void decode_mgroup(struct nova_decoder *ndec,
-                   struct string_buffer *output)
+void decode_mgroup(struct decoder *dec,
+                   const struct nova_insn *ni)
 {
+    struct string_buffer *output;
     uint16_t dest_ac;
     uint16_t disp;
     uint16_t addressing;
     uint16_t func;
     int indirect;
 
-    disp = (ndec->ni.insn & 0xFF);
+    output = dec->output;
+    disp = (ni->insn & 0xFF);
     /* Sign extends. */
     if (disp & 0x80) disp |= 0xFF00;
 
-    addressing = (ndec->ni.insn >> 8) & 3;
-    indirect = (ndec->ni.insn >> 10) & 1;
-    dest_ac = (ndec->ni.insn >> 11) & 3;
-    func = (ndec->ni.insn >> 13) & 3;
+    addressing = (ni->insn >> 8) & 3;
+    indirect = (ni->insn >> 10) & 1;
+    dest_ac = (ni->insn >> 11) & 3;
+    func = (ni->insn >> 13) & 3;
 
     if (func == 1) {
         string_buffer_print(output, "LDA ");
@@ -68,21 +71,23 @@ void decode_mgroup(struct nova_decoder *ndec,
  * Output is appended to `output`.
  */
 static
-void decode_jgroup(struct nova_decoder *ndec,
-                   struct string_buffer *output)
+void decode_jgroup(struct decoder *dec,
+                   const struct nova_insn *ni)
 {
+    struct string_buffer *output;
     uint16_t disp;
     uint16_t addressing;
     uint16_t jfunc;
     int indirect;
 
-    disp = (ndec->ni.insn & 0xFF);
+    output = dec->output;
+    disp = (ni->insn & 0xFF);
     /* Sign extends. */
     if (disp & 0x80) disp |= 0xFF00;
 
-    addressing = (ndec->ni.insn >> 8) & 3;
-    indirect = (ndec->ni.insn >> 10) & 1;
-    jfunc = (ndec->ni.insn >> 11) & 3;
+    addressing = (ni->insn >> 8) & 3;
+    indirect = (ni->insn >> 10) & 1;
+    jfunc = (ni->insn >> 11) & 3;
 
     switch (jfunc) {
     case 0:
@@ -123,9 +128,10 @@ void decode_jgroup(struct nova_decoder *ndec,
  * Output is appended to `output`.
  */
 static
-void decode_agroup(struct nova_decoder *ndec,
-                   struct string_buffer *output)
+void decode_agroup(struct decoder *dec,
+                   const struct nova_insn *ni)
 {
+    struct string_buffer *output;
     uint16_t src_ac;
     uint16_t dest_ac;
     uint16_t afunc;
@@ -134,13 +140,14 @@ void decode_agroup(struct nova_decoder *ndec,
     int no_load;
     uint16_t skip;
 
-    skip = ndec->ni.insn & 7;
-    no_load = (ndec->ni.insn >> 3) & 1;
-    carry = (ndec->ni.insn >> 4) & 3;
-    shift = (ndec->ni.insn >> 6) & 3;
-    afunc = (ndec->ni.insn >> 8) & 7;
-    dest_ac = (ndec->ni.insn >> 11) & 3;
-    src_ac = (ndec->ni.insn >> 13) & 3;
+    output = dec->output;
+    skip = ni->insn & 7;
+    no_load = (ni->insn >> 3) & 1;
+    carry = (ni->insn >> 4) & 3;
+    shift = (ni->insn >> 6) & 3;
+    afunc = (ni->insn >> 8) & 7;
+    dest_ac = (ni->insn >> 11) & 3;
+    src_ac = (ni->insn >> 13) & 3;
 
     switch (afunc) {
     case 0:
@@ -230,21 +237,21 @@ void decode_agroup(struct nova_decoder *ndec,
     }
 }
 
-/* Decodes a S-group class instruction.
- * Output is appended to `output`.
- */
+/* Decodes a S-group class instruction. */
 static
-void decode_sgroup(struct nova_decoder *ndec,
-                   struct string_buffer *output)
+void decode_sgroup(struct decoder *dec,
+                   const struct nova_insn *ni)
 {
+    struct string_buffer *output;
     uint16_t aug_func;
     uint16_t disp;
 
-    disp = (ndec->ni.insn & 0xFF);
+    output = dec->output;
+    disp = (ni->insn & 0xFF);
     /* Sign extends. */
     if (disp & 0x80) disp |= 0xFF00;
 
-    aug_func = (ndec->ni.insn >> 8) & 31;
+    aug_func = (ni->insn >> 8) & 31;
 
     switch (aug_func) {
     case 0:
@@ -292,26 +299,24 @@ void decode_sgroup(struct nova_decoder *ndec,
 }
 
 
-void nova_decoder_decode(struct nova_decoder *ndec,
-                         const struct nova_insn *ni,
-                         struct string_buffer *output)
+void nova_insn_decode(struct decoder *dec,
+                      const struct nova_insn *ni)
 {
-    ndec->ni = *ni;
-    ndec->error = FALSE;
+    if (dec->error) return;
 
     switch ((ni->insn >> 13) & 7) {
     case 0:
-        decode_jgroup(ndec, output);
+        decode_jgroup(dec, ni);
         break;
     case 1:
     case 2:
-        decode_mgroup(ndec, output);
+        decode_mgroup(dec, ni);
         break;
     case 3:
-        decode_sgroup(ndec, output);
+        decode_sgroup(dec, ni);
         break;
     default:
-        decode_agroup(ndec, output);
+        decode_agroup(dec, ni);
         break;
     }
 }

@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/string_buffer.h"
 
 /* Data structures and types. */
@@ -16,12 +17,6 @@ struct nova_insn {
     uint16_t insn;                /* The instruction itself. */
 };
 
-/* The nova instruction decoder. */
-struct nova_decoder {
-    struct nova_insn ni;          /* The nova instruction.. */
-    int error;                    /* Indicates an error. */
-};
-
 /* Functions. */
 
 /* Predecodes the nova instruction.
@@ -31,13 +26,9 @@ struct nova_decoder {
 void nova_insn_predecode(struct nova_insn *ni,
                          uint16_t address, uint16_t insn);
 
-/* Decodes the nova instruction from the decoder `ndec` into the
- * output buffer `output`. The details of the instruction are
- * given by `ni`.
- */
-void nova_decoder_decode(struct nova_decoder *ndec,
-                         const struct nova_insn *ni,
-                         struct string_buffer *output);
+/* Decodes the nova instruction `ni` using the decoder `dec`. */
+void nova_insn_decode(struct decoder *dec,
+                      const struct nova_insn *ni);
 
 
 #endif /* __MICROCODE_NOVA_H */

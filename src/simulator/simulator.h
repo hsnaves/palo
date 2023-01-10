@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "microcode/microcode.h"
+#include "microcode/nova.h"
 #include "simulator/disk.h"
 #include "simulator/display.h"
 #include "simulator/ethernet.h"
@@ -149,11 +150,17 @@ int simulator_update(struct simulator *sim,
                      const struct mouse *mous,
                      uint8_t *display_data);
 
-/* Disassembles the current microinstruction.
- * The output is written to `output`.
+/* Predecodes the current microinstruction.
+ * The output is written to `mc`.
  */
-void simulator_disassemble(const struct simulator *sim,
-                           struct string_buffer *output);
+void simulator_predecode(const struct simulator *sim,
+                         struct microcode *mc);
+
+/* Predecodes a nova instruction.
+ * The output is written to `ni`.
+ */
+void simulator_nova_predecode(const struct simulator *sim,
+                              struct nova_insn *ni);
 
 /* Prints the state of the registers.
  * The output is written to `output`.
@@ -166,12 +173,6 @@ void simulator_print_registers(const struct simulator *sim,
  */
 void simulator_print_extra_registers(const struct simulator *sim,
                                      struct string_buffer *output);
-
-/* Disassembles the current NOVA instruction.
- * The output is written to `output`.
- */
-void simulator_nova_disassemble(const struct simulator *sim,
-                                struct string_buffer *output);
 
 /* Prints the state of the NOVA registers.
  * The output is written to `output`.

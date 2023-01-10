@@ -227,15 +227,22 @@ enum decode_type {
     DECODE_REG,                   /* To decode a register. */
     DECODE_LABEL,                 /* To decode a label. */
     DECODE_MEMORY,                /* To decode a memory location. */
+    DECODE_VALUE,                 /* A general 16-bit value. */
+    DECODE_VALUE32,               /* A general 32-bit value. */
+    DECODE_SVALUE32,              /* A signed 32-bit value. */
 };
 
 /* The general decoder callback function type.
  * It is used to decode the constants, the R registers names,
- * and the GOTO destination labels.
+ * and the GOTO destination labels. The value `val` is of type
+ * uint32_t because it fits all the possible values one would like to
+ * decode. The extra argument passed by the callback is in `arg`.
+ * It is usually the value in `dec->arg`, but it could be different.
  */
 struct decoder;
 typedef void (*decoder_cb)(struct decoder *dec,
-                           enum decode_type dec_type, uint16_t val);
+                           enum decode_type dec_type, uint32_t val,
+                           void *arg);
 
 /* The microcode decoder.
  * This structure can also be used to decode other things, like
@@ -243,15 +250,9 @@ typedef void (*decoder_cb)(struct decoder *dec,
  */
 struct decoder {
     struct string_buffer *output; /* The output buffer. */
-
-    struct microcode mc;          /* The microcode itself. */
-
-    int error;                    /* Indicates an error. */
-    int has_bus_assignment;       /* Decoding detected bus assignment. */
-    int has_alu_assignment;       /* Decoding detected alu assignment. */
+    int error;                    /* Indicates an error was detected. */
 
     decoder_cb dec_cb;            /* To decode constants, registers, etc. */
-
     void *arg;                    /* Extra parameter used by the
                                    * callbacks.
                                    */
@@ -269,8 +270,8 @@ void microcode_predecode(struct microcode *mc,
                          uint16_t address, uint32_t mcode,
                          uint8_t task);
 
-/* Decodes the microinstruction from the decoder `dec`. */
-void decoder_decode(struct decoder *dec);
+/* Decodes the microinstruction `mc` using the decoder `dec`. */
+void microcode_decode(struct decoder *dec, const struct microcode *mc);
 
 
 #endif /* __MICROCODE_MICROCODE_H */

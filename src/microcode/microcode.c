@@ -5,6 +5,17 @@
 #include "common/string_buffer.h"
 #include "common/utils.h"
 
+/* Data structures and types. */
+
+/* Extra information for the decoder. */
+struct microcode_decode_extra {
+    int has_bus_assignment;       /* Decoding detected bus assignment. */
+    int has_alu_assignment;       /* Decoding detected alu assignment. */
+    void *orig_arg;               /* The original extra argument
+                                   * for the callbacks.
+                                   */
+};
+
 /* Functions. */
 
 void microcode_predecode(struct microcode *mc,
@@ -36,13 +47,14 @@ void microcode_predecode(struct microcode *mc,
 
 /* Decodes the non-data function part of the instruction. */
 static
-void decode_nondata_function(struct decoder *dec)
+void decode_nondata_function(struct decoder *dec,
+                             const struct microcode *mc)
 {
     const char *f1_op;
     const char *f2_op;
 
     f1_op = "";
-    switch (dec->mc.f1) {
+    switch (mc->f1) {
     case F1_NONE:
     case F1_LOAD_MAR:
     case F1_LLSH1:
@@ -57,10 +69,10 @@ void decode_nondata_function(struct decoder *dec)
         f1_op = "BLOCK";
         break;
     default:
-        if (dec->mc.ram_task) {
-            switch (dec->mc.f1) {
+        if (mc->ram_task) {
+            switch (mc->f1) {
             case F1_RAM_SWMODE:
-                if (dec->mc.task == TASK_EMULATOR) {
+                if (mc->task == TASK_EMULATOR) {
                     f1_op = "SWMODE";
                 } else {
                     /* Invalid F1 function. */
@@ -75,15 +87,15 @@ void decode_nondata_function(struct decoder *dec)
                 f1_op = "RDRAM";
                 goto process_f2;
             case F1_RAM_LOAD_SRB:
-                if (dec->mc.task != TASK_EMULATOR)
+                if (mc->task != TASK_EMULATOR)
                     goto process_f2;
                 break;
             }
         }
 
-        switch (dec->mc.task) {
+        switch (mc->task) {
         case TASK_EMULATOR:
-            switch (dec->mc.f1) {
+            switch (mc->f1) {
             case F1_EMU_STARTF:
                 f1_op = "STARTF";
                 break;
@@ -100,7 +112,7 @@ void decode_nondata_function(struct decoder *dec)
             break;
         case TASK_DISK_SECTOR:
         case TASK_DISK_WORD:
-            switch (dec->mc.f1) {
+            switch (mc->f1) {
             case F1_DSK_STROBE:
                 f1_op = "STROBE";
                 break;
@@ -123,7 +135,7 @@ void decode_nondata_function(struct decoder *dec)
             }
             break;
         case TASK_ETHERNET:
-            switch (dec->mc.f1) {
+            switch (mc->f1) {
             case F1_ETH_EILFCT:
                 f1_op = "EILFCT";
                 break;
@@ -149,7 +161,7 @@ void decode_nondata_function(struct decoder *dec)
 
 process_f2:
     f2_op = "";
-    switch (dec->mc.f2) {
+    switch (mc->f2) {
     case F2_NONE:
     case F2_STORE_MD:
     case F2_CONSTANT:
@@ -170,9 +182,9 @@ process_f2:
         f2_op = "ALUCY";
         break;
     default:
-        switch (dec->mc.task) {
+        switch (mc->task) {
         case TASK_EMULATOR:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_EMU_BUSODD:
                 f2_op = "BUSODD";
                 break;
@@ -194,7 +206,7 @@ process_f2:
             break;
         case TASK_DISK_SECTOR:
         case TASK_DISK_WORD:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_DSK_INIT:
                 f2_op = "INIT";
                 break;
@@ -223,7 +235,7 @@ process_f2:
             }
             break;
         case TASK_ETHERNET:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_ETH_EOSFCT:
                 f2_op = "EOSFCT";
                 break;
@@ -252,7 +264,7 @@ process_f2:
             }
             break;
         case TASK_DISPLAY_WORD:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_DW_LOAD_DDR:
                 /* Nothing to do here. */
                 break;
@@ -263,7 +275,7 @@ process_f2:
             }
             break;
         case TASK_CURSOR:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_CUR_LOAD_XPREG:
             case F2_CUR_LOAD_CSR:
                 /* Nothing to do here. */
@@ -275,7 +287,7 @@ process_f2:
             }
             break;
         case TASK_DISPLAY_HORIZONTAL:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_DH_EVENFIELD:
                 f2_op = "EVENFIELD";
                 break;
@@ -289,7 +301,7 @@ process_f2:
             }
             break;
         case TASK_DISPLAY_VERTICAL:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_DV_EVENFIELD:
                 f2_op = "EVENFIELD";
                 break;
@@ -314,42 +326,53 @@ process_f2:
                         (f1_op[0] || f2_op[0]) ? ", " : "");
 }
 
+/* Decodes a value using the callback. */
+static
+void decode_using_callback(struct decoder *dec,
+                           enum decode_type dec_type, uint32_t val)
+{
+    const struct microcode_decode_extra *extra;
+    extra = (const struct microcode_decode_extra *) dec->arg;
+    (dec->dec_cb)(dec, dec_type, val, extra->orig_arg);
+}
+
 /* Decodes the bus RHS (source). */
 static
-void decode_bus_rhs(struct decoder *dec)
+void decode_bus_rhs(struct decoder *dec,
+                    const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if (dec->mc.use_constant) {
+    if (mc->use_constant) {
         /* Decode the constant. */
-        (*dec->dec_cb)(dec, DECODE_CONST, dec->mc.const_addr);
+        decode_using_callback(dec, DECODE_CONST, mc->const_addr);
         return;
     }
 
-    switch (dec->mc.bs) {
+    switch (mc->bs) {
     case BS_READ_R:
-        if (dec->mc.task == TASK_EMULATOR && dec->mc.rsel == 0) {
-            if (dec->mc.f2 == F2_EMU_ACDEST) {
+        if (mc->task == TASK_EMULATOR && mc->rsel == 0) {
+            if (mc->f2 == F2_EMU_ACDEST) {
                 string_buffer_print(output, "ACDEST");
                 break;
-            } else if (dec->mc.f2 == F2_EMU_ACSOURCE) {
+            } else if (mc->f2 == F2_EMU_ACSOURCE) {
                 string_buffer_print(output, "ACSOURCE");
                 break;
             }
         }
-        (*dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
+        decode_using_callback(dec, DECODE_REG, mc->rsel);
         break;
     case BS_LOAD_R:
         string_buffer_print(output, "0");
         break;
     case BS_NONE:
-        if (dec->mc.task == TASK_EMULATOR && dec->mc.f1 == F1_EMU_RSNF) {
+        if (mc->task == TASK_EMULATOR && mc->f1 == F1_EMU_RSNF) {
             string_buffer_print(output, "RSNF");
-        } else if (dec->mc.task == TASK_ETHERNET) {
-            if (dec->mc.f1 == F1_ETH_EILFCT) {
+        } else if (mc->task == TASK_ETHERNET) {
+            if (mc->f1 == F1_ETH_EILFCT) {
                 string_buffer_print(output, "EILFCT");
-            } else if (dec->mc.f1 == F1_ETH_EPFCT) {
+            } else if (mc->f1 == F1_ETH_EPFCT) {
                 string_buffer_print(output, "EPFCT");
             } else {
                 string_buffer_print(output, "-1");
@@ -368,30 +391,30 @@ void decode_bus_rhs(struct decoder *dec)
         string_buffer_print(output, "DISP");
         break;
     default:
-        if (dec->mc.ram_task) {
-            if (dec->mc.bs == BS_RAM_READ_S_LOCATION) {
-                if (dec->mc.rsel == 0) {
+        if (mc->ram_task) {
+            if (mc->bs == BS_RAM_READ_S_LOCATION) {
+                if (mc->rsel == 0) {
                     string_buffer_print(output, "M");
                 } else {
-                    (*dec->dec_cb)(dec, DECODE_REG,
-                                   dec->mc.rsel | (R_MASK + 1));
+                    decode_using_callback(dec, DECODE_REG,
+                                          mc->rsel | (R_MASK + 1));
                 }
                 break;
-            } else if (dec->mc.bs == BS_RAM_LOAD_S_LOCATION) {
+            } else if (mc->bs == BS_RAM_LOAD_S_LOCATION) {
                 string_buffer_print(output, "0");
                 break;
             }
-        } else if (dec->mc.task == TASK_ETHERNET) {
-            if (dec->mc.bs == BS_ETH_EIDFCT) {
+        } else if (mc->task == TASK_ETHERNET) {
+            if (mc->bs == BS_ETH_EIDFCT) {
                 string_buffer_print(output, "EIDFCT");
                 break;
             }
-        } else if ((dec->mc.task == TASK_DISK_SECTOR)
-                   || (dec->mc.task == TASK_DISK_WORD)) {
-            if (dec->mc.bs == BS_DSK_READ_KSTAT) {
+        } else if ((mc->task == TASK_DISK_SECTOR)
+                   || (mc->task == TASK_DISK_WORD)) {
+            if (mc->bs == BS_DSK_READ_KSTAT) {
                 string_buffer_print(output, "KSTAT");
                 break;
-            } else if (dec->mc.bs == BS_DSK_READ_KDATA) {
+            } else if (mc->bs == BS_DSK_READ_KDATA) {
                 string_buffer_print(output, "KDATA");
                 break;
             }
@@ -406,7 +429,8 @@ void decode_bus_rhs(struct decoder *dec)
  * even when the ALUF is ALU_BUS.
  */
 static
-void decode_bus_lhs(struct decoder *dec, int force)
+void decode_bus_lhs(struct decoder *dec,
+                    const struct microcode *mc, int force)
 {
     struct string_buffer *output;
     output = dec->output;
@@ -414,21 +438,21 @@ void decode_bus_lhs(struct decoder *dec, int force)
     /* If ALUF is BUS, then we skip the BUS assignments, and
      * merge them with the ALU assigments.
      */
-    if (dec->mc.aluf == ALU_BUS && !force) return;
+    if (mc->aluf == ALU_BUS && !force) return;
 
-    if (dec->mc.load_t && (!dec->mc.load_t_from_alu)) {
+    if (mc->load_t && (!mc->load_t_from_alu)) {
         string_buffer_print(output, "T<- ");
     }
 
-    if (dec->mc.task != TASK_EMULATOR) {
-        if (dec->mc.f1 == F1_RAM_LOAD_SRB && dec->mc.ram_task) {
+    if (mc->task != TASK_EMULATOR) {
+        if (mc->f1 == F1_RAM_LOAD_SRB && mc->ram_task) {
             string_buffer_print(output, "SRB<- ");
         }
     }
 
-    switch (dec->mc.task) {
+    switch (mc->task) {
     case TASK_EMULATOR:
-        switch (dec->mc.f1) {
+        switch (mc->f1) {
         case F1_EMU_LOAD_RMR:
             string_buffer_print(output, "RMR<- ");
             break;
@@ -439,7 +463,7 @@ void decode_bus_lhs(struct decoder *dec, int force)
         break;
     case TASK_DISK_SECTOR:
     case TASK_DISK_WORD:
-        switch (dec->mc.f1) {
+        switch (mc->f1) {
         case F1_DSK_LOAD_KSTAT:
             string_buffer_print(output, "KSTAT<- ");
             break;
@@ -456,9 +480,9 @@ void decode_bus_lhs(struct decoder *dec, int force)
         break;
     }
 
-    switch (dec->mc.f2) {
+    switch (mc->f2) {
     case F2_STORE_MD:
-        if (dec->mc.f1 != F1_LOAD_MAR || dec->mc.sys_type == ALTO_I) {
+        if (mc->f1 != F1_LOAD_MAR || mc->sys_type == ALTO_I) {
             /* TODO: On Alto I MAR<- and <-MD in the same
              * microinstruction should be illegal.
              */
@@ -466,9 +490,9 @@ void decode_bus_lhs(struct decoder *dec, int force)
         }
         break;
     default:
-        switch (dec->mc.task) {
+        switch (mc->task) {
         case TASK_EMULATOR:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_EMU_LOAD_DNS:
                 string_buffer_print(output, "DNS<- ");
                 break;
@@ -478,21 +502,21 @@ void decode_bus_lhs(struct decoder *dec, int force)
             }
             break;
         case TASK_ETHERNET:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_ETH_EODFCT:
                 string_buffer_print(output, "EODFCT<- ");
                 break;
             }
             break;
         case TASK_DISPLAY_WORD:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_DW_LOAD_DDR:
                 string_buffer_print(output, "DDR<- ");
                 break;
             }
             break;
         case TASK_CURSOR:
-            switch (dec->mc.f2) {
+            switch (mc->f2) {
             case F2_CUR_LOAD_XPREG:
                 string_buffer_print(output, "XPREG<- ");
                 break;
@@ -507,32 +531,37 @@ void decode_bus_lhs(struct decoder *dec, int force)
 
 /* Decodes the bus assignments. */
 static
-void decode_bus_assign(struct decoder *dec)
+void decode_bus_assign(struct decoder *dec,
+                       const struct microcode *mc)
 {
     struct string_buffer *output;
+    struct microcode_decode_extra *extra;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_bus_lhs(dec, FALSE);
-    dec->has_bus_assignment = (len != string_buffer_length(output));
-    if (!dec->has_bus_assignment) return;
-    decode_bus_rhs(dec);
+    decode_bus_lhs(dec, mc, FALSE);
+
+    extra = (struct microcode_decode_extra *) dec->arg;
+    extra->has_bus_assignment = (len != string_buffer_length(output));
+    if (!extra->has_bus_assignment) return;
+    decode_bus_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the alu RHS (source). */
 static
-void decode_alu_rhs(struct decoder *dec)
+void decode_alu_rhs(struct decoder *dec,
+                    const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if (dec->mc.aluf != ALU_T) {
-        decode_bus_rhs(dec);
+    if (mc->aluf != ALU_T) {
+        decode_bus_rhs(dec, mc);
     }
 
-    switch (dec->mc.aluf) {
+    switch (mc->aluf) {
     case ALU_BUS:
         break;
     case ALU_T:
@@ -579,31 +608,32 @@ void decode_alu_rhs(struct decoder *dec)
 
 /* Decodes the alu LHS (destinations). */
 static
-void decode_alu_lhs(struct decoder *dec)
+void decode_alu_lhs(struct decoder *dec,
+                    const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if (dec->mc.aluf == ALU_BUS) {
-        decode_bus_lhs(dec, TRUE);
+    if (mc->aluf == ALU_BUS) {
+        decode_bus_lhs(dec, mc, TRUE);
     }
 
-    if (dec->mc.load_t && dec->mc.load_t_from_alu) {
+    if (mc->load_t && mc->load_t_from_alu) {
         string_buffer_print(output, "T<- ");
     }
 
-    if (dec->mc.load_l) {
-        if (dec->mc.task == TASK_EMULATOR) {
+    if (mc->load_l) {
+        if (mc->task == TASK_EMULATOR) {
             string_buffer_print(output, "M<- ");
         }
         string_buffer_print(output, "L<- ");
     }
 
-    if (dec->mc.f1 == F1_LOAD_MAR) {
+    if (mc->f1 == F1_LOAD_MAR) {
         /* TODO: On Alto I MAR<- and <-MD in the same
          * microinstruction should be illegal.
          */
-        if (dec->mc.f2 == F2_STORE_MD && dec->mc.sys_type != ALTO_I) {
+        if (mc->f2 == F2_STORE_MD && mc->sys_type != ALTO_I) {
             string_buffer_print(output, "XMAR<- ");
         } else {
             string_buffer_print(output, "MAR<- ");
@@ -613,37 +643,42 @@ void decode_alu_lhs(struct decoder *dec)
 
 /* Decodes the alu assignments. */
 static
-void decode_alu_assign(struct decoder *dec)
+void decode_alu_assign(struct decoder *dec,
+                       const struct microcode *mc)
 {
     struct string_buffer *output;
+    struct microcode_decode_extra *extra;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_alu_lhs(dec);
-    dec->has_alu_assignment = (len != string_buffer_length(output));
-    if (!dec->has_alu_assignment) return;
-    decode_alu_rhs(dec);
+    decode_alu_lhs(dec, mc);
+
+    extra = (struct microcode_decode_extra *) dec->arg;
+    extra->has_alu_assignment = (len != string_buffer_length(output));
+    if (!extra->has_alu_assignment) return;
+    decode_alu_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the L register RHS (source). */
 static
-void decode_lreg_rhs(struct decoder *dec)
+void decode_lreg_rhs(struct decoder *dec,
+                     const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    switch (dec->mc.f1) {
+    switch (mc->f1) {
     case F1_LLSH1:
-        if (dec->mc.f2 == F2_EMU_MAGIC) {
+        if (mc->f2 == F2_EMU_MAGIC) {
             string_buffer_print(output, "L MLSH 1");
         } else {
             string_buffer_print(output, "L LSH 1");
         }
         break;
     case F1_LRSH1:
-        if (dec->mc.f2 == F2_EMU_MAGIC) {
+        if (mc->f2 == F2_EMU_MAGIC) {
             string_buffer_print(output, "L MRSH 1");
         } else {
             string_buffer_print(output, "L RSH 1");
@@ -660,107 +695,116 @@ void decode_lreg_rhs(struct decoder *dec)
 
 /* Decodes the L register LHS (destinations). */
 static
-void decode_lreg_lhs(struct decoder *dec)
+void decode_lreg_lhs(struct decoder *dec,
+                     const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if ((!dec->mc.use_constant) && dec->mc.bs == BS_LOAD_R) {
-        (*dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
+    if ((!mc->use_constant) && mc->bs == BS_LOAD_R) {
+        decode_using_callback(dec, DECODE_REG, mc->rsel);
         string_buffer_print(output, "<- ");
     }
 }
 
 /* Decodes assigments from the L register. */
 static
-void decode_lreg_assign(struct decoder *dec)
+void decode_lreg_assign(struct decoder *dec,
+                        const struct microcode *mc)
 {
     struct string_buffer *output;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_lreg_lhs(dec);
+    decode_lreg_lhs(dec, mc);
     if (len == string_buffer_length(output)) return;
-    decode_lreg_rhs(dec);
+    decode_lreg_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the M register RHS (source). */
 static
-void decode_mreg_rhs(struct decoder *dec)
+void decode_mreg_rhs(struct decoder *dec,
+                     const struct microcode *mc)
 {
     struct string_buffer *output;
 
+    UNUSED(mc);
     output = dec->output;
     string_buffer_print(output, "M");
 }
 
 /* Decodes the M register LHS (destinations). */
 static
-void decode_mreg_lhs(struct decoder *dec)
+void decode_mreg_lhs(struct decoder *dec,
+                     const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if ((!dec->mc.use_constant) && dec->mc.ram_task
-        && dec->mc.bs == BS_RAM_LOAD_S_LOCATION) {
+    if ((!mc->use_constant) && mc->ram_task
+        && mc->bs == BS_RAM_LOAD_S_LOCATION) {
 
-        (*dec->dec_cb)(dec, DECODE_REG,
-                       dec->mc.rsel | (R_MASK + 1));
+        decode_using_callback(dec, DECODE_REG,
+                              mc->rsel | (R_MASK + 1));
         string_buffer_print(output, "<- ");
     }
 }
 
 /* Decodes assigments from the M register. */
 static
-void decode_mreg_assign(struct decoder *dec)
+void decode_mreg_assign(struct decoder *dec,
+                        const struct microcode *mc)
 {
     struct string_buffer *output;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_mreg_lhs(dec);
+    decode_mreg_lhs(dec, mc);
     if (len == string_buffer_length(output)) return;
-    decode_mreg_rhs(dec);
+    decode_mreg_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the SINK (bus) register destinations. */
 static
-void decode_sink_bus_lhs(struct decoder *dec)
+void decode_sink_bus_lhs(struct decoder *dec,
+                         const struct microcode *mc)
 {
     struct string_buffer *output;
+    const struct microcode_decode_extra *extra;
 
     output = dec->output;
-    if (dec->has_bus_assignment) return;
-    if (dec->mc.aluf != ALU_T) {
-        if (dec->has_alu_assignment) return;
+    extra = (const struct microcode_decode_extra *) dec->arg;
+    if (extra->has_bus_assignment) return;
+    if (mc->aluf != ALU_T) {
+        if (extra->has_alu_assignment) return;
     }
 
-    if (dec->mc.use_constant)
+    if (mc->use_constant)
         goto do_sink;
 
-    switch (dec->mc.bs) {
+    switch (mc->bs) {
     case BS_READ_R:
-        if (dec->mc.rsel != 0) break;
-        if (dec->mc.task != TASK_EMULATOR)
+        if (mc->rsel != 0) break;
+        if (mc->task != TASK_EMULATOR)
             return;
-        if (dec->mc.f2 != F2_EMU_ACDEST && dec->mc.f2 != F2_EMU_ACSOURCE)
+        if (mc->f2 != F2_EMU_ACDEST && mc->f2 != F2_EMU_ACSOURCE)
             return;
         break;
     case BS_LOAD_R:
         return;
     case BS_NONE:
-        if (dec->mc.task == TASK_EMULATOR
-            && dec->mc.f1 == F1_EMU_RSNF)
+        if (mc->task == TASK_EMULATOR
+            && mc->f1 == F1_EMU_RSNF)
             break;
-        else if (dec->mc.task == TASK_ETHERNET
-                 && dec->mc.f1 == F1_ETH_EILFCT)
+        else if (mc->task == TASK_ETHERNET
+                 && mc->f1 == F1_ETH_EILFCT)
             break;
-        else if (dec->mc.task == TASK_ETHERNET
-                 && dec->mc.f1 == F1_ETH_EPFCT)
+        else if (mc->task == TASK_ETHERNET
+                 && mc->f1 == F1_ETH_EPFCT)
             break;
         return;
     case BS_READ_MD:
@@ -768,15 +812,15 @@ void decode_sink_bus_lhs(struct decoder *dec)
     case BS_READ_DISP:
         break;
     default:
-        if (dec->mc.task == TASK_ETHERNET
-            && dec->mc.bs == BS_ETH_EIDFCT)
+        if (mc->task == TASK_ETHERNET
+            && mc->bs == BS_ETH_EIDFCT)
             break;
 
-        if ((dec->mc.task == TASK_DISK_SECTOR)
-            || (dec->mc.task == TASK_DISK_WORD)) {
-            if (dec->mc.bs == BS_DSK_READ_KSTAT) {
+        if ((mc->task == TASK_DISK_SECTOR)
+            || (mc->task == TASK_DISK_WORD)) {
+            if (mc->bs == BS_DSK_READ_KSTAT) {
                 break;
-            } else if (dec->mc.bs == BS_DSK_READ_KDATA) {
+            } else if (mc->bs == BS_DSK_READ_KDATA) {
                 break;
             }
         }
@@ -789,52 +833,56 @@ do_sink:
 
 /* Decodes assigments to the SINK register (for bus). */
 static
-void decode_sink_bus_assign(struct decoder *dec)
+void decode_sink_bus_assign(struct decoder *dec,
+                            const struct microcode *mc)
 {
     struct string_buffer *output;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_sink_bus_lhs(dec);
+    decode_sink_bus_lhs(dec, mc);
     if (len == string_buffer_length(output)) return;
-    decode_bus_rhs(dec);
+    decode_bus_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
 /* Decodes the SINK RHS (source) (for constants). */
 static
-void decode_sink_const_rhs(struct decoder *dec)
+void decode_sink_const_rhs(struct decoder *dec,
+                           const struct microcode *mc)
 {
-    (dec->dec_cb)(dec, DECODE_REG, dec->mc.rsel);
+    decode_using_callback(dec, DECODE_REG, mc->rsel);
 }
 
 /* Decodes the SINK RHS (destinations) (for constants). */
 static
-void decode_sink_const_lhs(struct decoder *dec)
+void decode_sink_const_lhs(struct decoder *dec,
+                           const struct microcode *mc)
 {
     struct string_buffer *output;
 
     output = dec->output;
-    if (dec->mc.use_constant) return;
-    if (!dec->mc.bs_use_crom) return;
-    if (dec->mc.rsel == 0) return;
+    if (mc->use_constant) return;
+    if (!mc->bs_use_crom) return;
+    if (mc->rsel == 0) return;
 
     string_buffer_print(output, "SINK<- ");
 }
 
 /* Decodes assigments to the SINK register (for constants). */
 static
-void decode_sink_const_assign(struct decoder *dec)
+void decode_sink_const_assign(struct decoder *dec,
+                              const struct microcode *mc)
 {
     struct string_buffer *output;
     size_t len;
 
     output = dec->output;
     len = string_buffer_length(output);
-    decode_sink_const_lhs(dec);
+    decode_sink_const_lhs(dec, mc);
     if (len == string_buffer_length(output)) return;
-    decode_sink_const_rhs(dec);
+    decode_sink_const_rhs(dec, mc);
     string_buffer_print(output, ", ");
 }
 
@@ -843,7 +891,8 @@ void decode_sink_const_assign(struct decoder *dec)
  * decoder_decode()) is in `orig_len`.
  */
 static
-void decode_goto(struct decoder *dec, size_t orig_len)
+void decode_goto(struct decoder *dec,
+                 const struct microcode *mc, size_t orig_len)
 {
     struct string_buffer *output;
     size_t len;
@@ -851,7 +900,7 @@ void decode_goto(struct decoder *dec, size_t orig_len)
     output = dec->output;
     len = string_buffer_length(output);
     string_buffer_print(output, ":");
-    (*dec->dec_cb)(dec, DECODE_LABEL, dec->mc.next);
+    decode_using_callback(dec, DECODE_LABEL, mc->next);
     if (len + 1 == string_buffer_length(output)) {
         /* Rewinds the ":" at the end of the string. */
         string_buffer_rewind(output, 1);
@@ -862,41 +911,47 @@ void decode_goto(struct decoder *dec, size_t orig_len)
     }
 }
 
-void decoder_decode(struct decoder *dec)
+void microcode_decode(struct decoder *dec, const struct microcode *mc)
 {
     struct string_buffer *output;
+    struct microcode_decode_extra extra;
     size_t len;
 
-    dec->error = FALSE;
-    dec->has_bus_assignment = FALSE;
-    dec->has_alu_assignment = FALSE;
+    if (dec->error) return;
+
+    extra.has_bus_assignment = FALSE;
+    extra.has_alu_assignment = FALSE;
+    extra.orig_arg = dec->arg;
+    dec->arg = (void *) &extra;
 
     output = dec->output;
     len = string_buffer_length(output);
 
-    decode_nondata_function(dec);
+    decode_nondata_function(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_bus_assign(dec);
+    decode_bus_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_alu_assign(dec);
+    decode_alu_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_lreg_assign(dec);
+    decode_lreg_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_mreg_assign(dec);
+    decode_mreg_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_sink_bus_assign(dec);
+    decode_sink_bus_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_sink_const_assign(dec);
+    decode_sink_const_assign(dec, mc);
     if (dec->error) goto decode_error;
 
-    decode_goto(dec, len);
+    decode_goto(dec, mc, len);
     if (dec->error) goto decode_error;
+
+    dec->arg = extra.orig_arg;
     return;
 
 decode_error:
@@ -905,4 +960,5 @@ decode_error:
         string_buffer_rewind(output, len);
     }
     string_buffer_print(output, "<invalid>");
+    dec->arg = extra.orig_arg;
 }

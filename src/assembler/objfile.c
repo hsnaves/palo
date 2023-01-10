@@ -1044,30 +1044,46 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
  */
 static
 void disasm_decode_cb(struct decoder *dec,
-                      enum decode_type dec_type, uint16_t val)
+                      enum decode_type dec_type, uint32_t val,
+                      void *arg)
 {
     const struct objfile *objf;
     struct string_buffer *output;
 
-    objf = (const struct objfile *) dec->arg;
+    objf = (const struct objfile *) arg;
     output = dec->output;
 
     switch (dec_type) {
     case DECODE_CONST:
-        string_buffer_print(output, "%o", objf->consts[val]);
+        if (val < CONSTANT_SIZE) {
+            string_buffer_print(output, "%o", objf->consts[val]);
+        } else {
+            dec->error = TRUE;
+        }
         break;
     case DECODE_REG:
         if (val <= R_MASK) {
             string_buffer_print(output, "R%o", val);
-        } else {
+        } else if (val <= 2 * R_MASK + 1) {
             string_buffer_print(output, "S%o", val & R_MASK);
+        } else {
+            dec->error = TRUE;
         }
         break;
     case DECODE_LABEL:
-        string_buffer_print(output, "%05o", val);
+        string_buffer_print(output, "%05o", (uint16_t) val);
         break;
     case DECODE_MEMORY:
-        string_buffer_print(output, "%07o", val);
+        string_buffer_print(output, "%07o", (uint16_t) val);
+        break;
+    case DECODE_VALUE:
+        string_buffer_print(output, "%07o", (uint16_t) val);
+        break;
+    case DECODE_VALUE32:
+        string_buffer_print(output, "%012o", val);
+        break;
+    case DECODE_SVALUE32:
+        string_buffer_print(output, "%012o", (int32_t) val);
         break;
     }
 }
@@ -1080,8 +1096,8 @@ void objfile_disassemble(const struct objfile *objf,
 
     dec.arg = (void *) objf;
     dec.dec_cb = &disasm_decode_cb;
-    dec.mc = *mc;
     dec.output = output;
+    dec.error = FALSE;
 
-    decoder_decode(&dec);
+    microcode_decode(&dec, mc);
 }

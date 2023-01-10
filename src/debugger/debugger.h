@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "simulator/simulator.h"
 #include "gui/gui.h"
-#include "common/utils.h"
+#include "common/string_buffer.h"
 
 /* Data structures and types. */
 
@@ -68,6 +68,17 @@ void debugger_destroy(struct debugger *dbg);
  */
 int debugger_create(struct debugger *ps, int use_debugger,
                     struct simulator *sim, struct gui *ui);
+
+
+/* Disassembles the current microinstruction into the debugger's
+ * output string buffer.
+ */
+void debugger_disassemble(struct debugger *dbg);
+
+/* Disassembles the current nova instruction into the debugger's
+ * output string buffer.
+ */
+void debugger_nova_disassemble(struct debugger *dbg);
 
 /* To run the debugger.
  * The parameter `ui` contains a reference to the gui object, which

@@ -1732,61 +1732,24 @@ int simulator_update(struct simulator *sim,
     return TRUE;
 }
 
-/* Auxiliary function used by simulator_disassemble().
- * Callback to print constants, registers, labels, etc.
- */
-static
-void disasm_decode_cb(struct decoder *dec,
-                      enum decode_type dec_type, uint16_t val)
+void simulator_predecode(const struct simulator *sim,
+                         struct microcode *mc)
 {
-    const struct simulator *sim;
-    struct string_buffer *output;
-
-    sim = (const struct simulator *) dec->arg;
-    output = dec->output;
-
-    switch (dec_type) {
-    case DECODE_CONST:
-        string_buffer_print(output, "%o", sim->consts[val]);
-        break;
-    case DECODE_REG:
-        if (val <= R_MASK) {
-            string_buffer_print(output, "R%o", val);
-        } else {
-            string_buffer_print(output, "S%o", val & R_MASK);
-        }
-        break;
-    case DECODE_LABEL:
-        string_buffer_print(output, "%05o", val);
-        break;
-    case DECODE_MEMORY:
-        string_buffer_print(output, "%07o", val);
-        break;
-    }
-}
-
-void simulator_disassemble(const struct simulator *sim,
-                           struct string_buffer *output)
-{
-    struct microcode mc;
-    struct decoder dec;
-
-    microcode_predecode(&mc,
+    microcode_predecode(mc,
                         sim->sys_type,
                         sim->mpc,
                         sim->mir,
                         sim->ctask);
+}
 
-    string_buffer_print(output,
-                        "%03o-%07o %012o --- ",
-                        sim->ctask, sim->mpc, sim->mir);
+void simulator_nova_predecode(const struct simulator *sim,
+                              struct nova_insn *ni)
+{
+    uint16_t address, insn;
 
-    dec.arg = (void *) sim;
-    dec.dec_cb = &disasm_decode_cb;
-    dec.mc = mc;
-    dec.output = output;
-
-    decoder_decode(&dec);
+    address = sim->r[6];
+    insn = simulator_read(sim, address, TASK_EMULATOR, FALSE);
+    nova_insn_predecode(ni, address, insn);
 }
 
 void simulator_print_registers(const struct simulator *sim,
@@ -1875,24 +1838,6 @@ void simulator_print_extra_registers(const struct simulator *sim,
     if (sim->error) {
         string_buffer_print(output, "\nsimulator in error state");
     }
-}
-
-void simulator_nova_disassemble(const struct simulator *sim,
-                                struct string_buffer *output)
-{
-    struct nova_insn ni;
-    struct nova_decoder ndec;
-    uint16_t address, insn;
-
-    address = sim->r[6];
-    insn = simulator_read(sim, address, TASK_EMULATOR, FALSE);
-    nova_insn_predecode(&ni, address, insn);
-
-    string_buffer_print(output,
-                        "%07o %07o --- ",
-                        ni.address, ni.insn);
-
-    nova_decoder_decode(&ndec, &ni, output);
 }
 
 void simulator_print_nova_registers(const struct simulator *sim,
