@@ -15,6 +15,7 @@
 struct palos {
     const char *const_filename;   /* The name of the constant rom. */
     const char *mcode_filename;   /* The name of the microcode rom. */
+    const char *binary_filename;  /* The name of the binary code file. */
     const char *disk1_filename;   /* Disk 1 image file. */
     const char *disk2_filename;   /* Disk 2 image file. */
 
@@ -54,9 +55,9 @@ void palos_destroy(struct palos *ps)
  * The `sys_type` variable specifies the system type.
  * The `use_debugger` specifies whether or not to use the debugger.
  * The name of the several filenames to load related to the constant rom,
- * microcode rom, and disk images are given by the parameters:
- * `const_filename`, `mcode_filename`, `disk1_filename`, and
- * `disk2_filename`, respectively.
+ * microcode rom, binary file, and disk images are given by the parameters:
+ * `const_filename`, `mcode_filename`, `binary_filename`, `disk1_filename`,
+ * and `disk2_filename`, respectively.
  * Returns TRUE on success.
  */
 static
@@ -65,6 +66,7 @@ int palos_create(struct palos *ps,
                  int use_debugger,
                  const char *const_filename,
                  const char *mcode_filename,
+                 const char *binary_filename,
                  const char *disk1_filename,
                  const char *disk2_filename)
 {
@@ -92,6 +94,7 @@ int palos_create(struct palos *ps,
 
     ps->const_filename = const_filename;
     ps->mcode_filename = mcode_filename;
+    ps->binary_filename = binary_filename;
     ps->disk1_filename = disk1_filename;
     ps->disk2_filename = disk2_filename;
 
@@ -118,6 +121,14 @@ int palos_run(struct palos *ps)
     if (fn) {
         if (unlikely(!simulator_load_microcode_rom(&ps->sim, fn, 0))) {
             report_error("palos: run: could not load microcode rom");
+            return FALSE;
+        }
+    }
+
+    fn = ps->binary_filename;
+    if (fn) {
+        if (unlikely(!debugger_load_binary(&ps->dbg, fn, 0))) {
+            report_error("palos: run: could not load binary file");
             return FALSE;
         }
     }
@@ -157,6 +168,7 @@ void usage(const char *prog_name)
     printf("where:\n");
     printf("  -c constant   Specify the constant rom file\n");
     printf("  -m micro      Specify the microcode rom file\n");
+    printf("  -b binary     Specify the binary code file\n");
     printf("  -1 disk1      Specify the disk 1 filename\n");
     printf("  -2 disk2      Specify the disk 2 filename\n");
     printf("  -i            Set system type to Alto I\n");
@@ -171,6 +183,7 @@ int main(int argc, char **argv)
 {
     const char *const_filename;
     const char *mcode_filename;
+    const char *binary_filename;
     const char *disk1_filename;
     const char *disk2_filename;
     enum system_type sys_type;
@@ -181,6 +194,7 @@ int main(int argc, char **argv)
     palos_initvar(&ps);
     const_filename = NULL;
     mcode_filename = NULL;
+    binary_filename = NULL;
     disk1_filename = NULL;
     disk2_filename = NULL;
     sys_type = ALTO_II_3KRAM;
@@ -200,6 +214,12 @@ int main(int argc, char **argv)
                 return 1;
             }
             mcode_filename = argv[++i];
+        } else if (strcmp("-b", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the binary code file");
+                return 1;
+            }
+            binary_filename = argv[++i];
         } else if (strcmp("-1", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the disk 1 file");
@@ -237,7 +257,8 @@ int main(int argc, char **argv)
 
     if (unlikely(!palos_create(&ps, sys_type, use_debugger,
                                const_filename, mcode_filename,
-                               disk1_filename, disk2_filename))) {
+                               binary_filename, disk1_filename,
+                               disk2_filename))) {
         report_error("main: could not create palos object");
         return 1;
     }

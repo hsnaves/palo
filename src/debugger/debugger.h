@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "simulator/simulator.h"
 #include "gui/gui.h"
+#include "assembler/objfile.h"
 #include "common/string_buffer.h"
 
 /* Data structures and types. */
@@ -33,6 +34,9 @@ struct breakpoint {
 struct debugger {
     struct simulator *sim;        /* The simulator. */
     struct gui *ui;               /* The user interface. */
+    struct objfile rom0f;         /* Object file for the ROM0. */
+
+    int use_octal;                /* To print numbers in octal. */
 
     size_t max_breakpoints;       /* The maximum number of breakpoints. */
     struct breakpoint *bps;       /* The breakpoints. */
@@ -69,6 +73,13 @@ void debugger_destroy(struct debugger *dbg);
 int debugger_create(struct debugger *ps, int use_debugger,
                     struct simulator *sim, struct gui *ui);
 
+
+/* Loads the binary file for rom bank `bank`..
+ * The name of the file to load is given by `filename`.
+ * Returns TRUE on success.
+ */
+int debugger_load_binary(struct debugger *dbg,
+                         const char *filename, uint8_t bank);
 
 /* Disassembles the current microinstruction into the debugger's
  * output string buffer.

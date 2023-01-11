@@ -13,6 +13,17 @@
 /* Constants. */
 #define REG_SIZE          (2 * (R_MASK + 1))
 
+/* Data structures and types. */
+
+/* Callback argument for the disassembler. */
+struct disasm_cb_arg {
+    const struct objfile *objf;   /* Reference to the objfile. */
+    unsigned int index;           /* Index of the current microcode. */
+    const char *const_name;       /* Name of the decoded constant. */
+    decoder_cb orig_dec_cb;       /* Original callback. */
+    void *orig_arg;               /* Original argument for callback. */
+};
+
 /* Functions. */
 
 void objfile_initvar(struct objfile *objf)
@@ -23,13 +34,11 @@ void objfile_initvar(struct objfile *objf)
 
     objf->consts = NULL;
     objf->microcode = NULL;
-    objf->has_microcode = NULL;
 
-    objf->const_symbs = NULL;
-    objf->reg_symbs = NULL;
-    objf->label_symbs = NULL;
-    objf->mu_c_symbs = NULL;
-    objf->mu_r_symbs = NULL;
+    objf->const_chain = NULL;
+    objf->reg_chain = NULL;
+    objf->label_chain = NULL;
+    objf->mu_chain = NULL;
 
     objf->tbuf = NULL;
 }
@@ -42,23 +51,17 @@ void objfile_destroy(struct objfile *objf)
     if (objf->microcode) free((void *) objf->microcode);
     objf->microcode = NULL;
 
-    if (objf->has_microcode) free((void *) objf->has_microcode);
-    objf->has_microcode = NULL;
+    if (objf->const_chain) free((void *) objf->const_chain);
+    objf->const_chain = NULL;
 
-    if (objf->const_symbs) free((void *) objf->const_symbs);
-    objf->const_symbs = NULL;
+    if (objf->reg_chain) free((void *) objf->reg_chain);
+    objf->reg_chain = NULL;
 
-    if (objf->reg_symbs) free((void *) objf->reg_symbs);
-    objf->reg_symbs = NULL;
+    if (objf->label_chain) free((void *) objf->label_chain);
+    objf->label_chain = NULL;
 
-    if (objf->label_symbs) free((void *) objf->label_symbs);
-    objf->label_symbs = NULL;
-
-    if (objf->mu_c_symbs) free((void *) objf->mu_c_symbs);
-    objf->mu_c_symbs = NULL;
-
-    if (objf->mu_r_symbs) free((void *) objf->mu_r_symbs);
-    objf->mu_r_symbs = NULL;
+    if (objf->mu_chain) free((void *) objf->mu_chain);
+    objf->mu_chain = NULL;
 
     if (objf->tbuf) free((void *) objf->tbuf);
     objf->tbuf = NULL;
@@ -97,27 +100,22 @@ int objfile_create(struct objfile *objf)
         malloc(CONSTANT_SIZE * sizeof(uint16_t));
     objf->microcode = (uint32_t *)
         malloc(MICROCODE_SIZE * sizeof(uint32_t));
-    objf->has_microcode = (uint8_t *)
-        malloc(MICROCODE_SIZE * sizeof(uint8_t));
 
-    objf->const_symbs = (struct objsymb **)
+    objf->const_chain = (struct objsymb **)
         malloc(CONSTANT_SIZE * sizeof(struct objsymb *));
-    objf->reg_symbs = (struct objsymb **)
+    objf->reg_chain = (struct objsymb **)
         malloc(REG_SIZE * sizeof(struct objsymb *));
-    objf->label_symbs = (struct objsymb **)
+    objf->label_chain = (struct objsymb **)
         malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
-    objf->mu_c_symbs = (struct objsymb **)
-        malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
-    objf->mu_r_symbs = (struct objsymb **)
+    objf->mu_chain = (struct objsymb **)
         malloc(MICROCODE_SIZE * sizeof(struct objsymb *));
 
     objf->tbuf_size = 4096;
     objf->tbuf = (char *) malloc(objf->tbuf_size);
 
     if (unlikely(!objf->consts || !objf->microcode
-                 || !objf->has_microcode || !objf->const_symbs
-                 || !objf->reg_symbs || !objf->label_symbs
-                 || !objf->mu_c_symbs || !objf->mu_r_symbs
+                 || !objf->const_chain || !objf->reg_chain
+                 || !objf->label_chain || !objf->mu_chain
                  || !objf->tbuf)) {
         report_error("objfile: create: memory exhausted");
         objfile_destroy(objf);
@@ -139,20 +137,18 @@ void objfile_clear(struct objfile *objf)
 
     for (i = 0; i < CONSTANT_SIZE; i++) {
         objf->consts[i] = 0xFFFFU;
-        objf->const_symbs[i] = NULL;
+        objf->const_chain[i] = NULL;
     }
 
     for (i = 0; i < REG_SIZE; i++) {
-        objf->reg_symbs[i] = NULL;
+        objf->reg_chain[i] = NULL;
     }
 
     for (i = 0; i < MICROCODE_SIZE; i++) {
         /* Jump to the last address in rom. */
         objf->microcode[i] = 0xFFF77BFF;
-        objf->has_microcode[i] = 0;
-        objf->label_symbs[i] = NULL;
-        objf->mu_c_symbs[i] = NULL;
-        objf->mu_r_symbs[i] = NULL;
+        objf->label_chain[i] = NULL;
+        objf->mu_chain[i] = NULL;
     }
 
     table_clear(&objf->symbols);
@@ -231,7 +227,7 @@ struct objsymb *new_objsymb(struct objfile *objf,
     }
 
     /* Adds the symbol to the list of symbols. */
-    objf->num_symbs++;
+    osym->index = ++(objf->num_symbs);
     if (objf->last_symb) {
         objf->last_symb->next = osym;
     }
@@ -269,7 +265,9 @@ int objfile_add_constant(struct objfile *objf,
     }
 
     objf->consts[address] = value;
-    objf->const_symbs[address] = osym;
+
+    osym->chain_next = objf->const_chain[address];
+    objf->const_chain[address] = osym;
 
     return TRUE;
 }
@@ -299,7 +297,8 @@ int objfile_add_register(struct objfile *objf,
         return FALSE;
     }
 
-    objf->reg_symbs[address] = osym;
+    osym->chain_next = objf->reg_chain[address];
+    objf->reg_chain[address] = osym;
 
     return TRUE;
 }
@@ -322,7 +321,7 @@ int objfile_add_label(struct objfile *objf,
         return FALSE;
     }
 
-    if (objf->label_symbs[address]) {
+    if (objf->label_chain[address]) {
         report_error("objfile: add_label: "
                      "label `%s` already defined for "
                      "the given address %07o",
@@ -337,7 +336,8 @@ int objfile_add_label(struct objfile *objf,
         return FALSE;
     }
 
-    objf->label_symbs[address] = osym;
+    /* No need to set-up the chain here, as labels are unique. */
+    objf->label_chain[address] = osym;
 
     return TRUE;
 }
@@ -346,8 +346,6 @@ int objfile_add_microcode(struct objfile *objf,
                           uint16_t address, uint32_t mcode)
 {
     struct objsymb *osym;
-    struct microcode mc;
-    uint16_t rsel;
 
     if (unlikely(address >= MICROCODE_SIZE)) {
         report_error("objfile: add_microcode: "
@@ -355,7 +353,7 @@ int objfile_add_microcode(struct objfile *objf,
         return FALSE;
     }
 
-    if (objf->has_microcode[address]) {
+    if (objf->mu_chain[address]) {
         report_error("objfile: add_microcode: "
                      "microcode already defined for "
                      "the given address %07o",
@@ -370,20 +368,9 @@ int objfile_add_microcode(struct objfile *objf,
         return FALSE;
     }
 
-    /* The sys_type, and the task are irrelevant for the
-     * microcode_predecode().
-     */
-    microcode_predecode(&mc, ALTO_I, address, mcode, TASK_EMULATOR);
-
-    rsel = mc.rsel;
-    if (mc.bs == BS_TASK_SPECIFIC1 || mc.bs == BS_TASK_SPECIFIC2)
-        rsel = mc.rsel + (R_MASK + 1);
-
     objf->microcode[address] = mcode;
-    objf->has_microcode[address] = TRUE;
-
-    objf->mu_c_symbs[address] = objf->const_symbs[mc.const_addr];
-    objf->mu_r_symbs[address] = objf->reg_symbs[rsel];
+    /* No need to set-up the chain here, as entries are unique. */
+    objf->mu_chain[address] = osym;
 
     return TRUE;
 }
@@ -417,7 +404,7 @@ int objfile_add_microcode_symbols(struct objfile *objf,
         }
 
         addr = mc.const_addr;
-        other = objf->const_symbs[addr];
+        other = objf->const_chain[addr];
         if (unlikely(!other)) {
             report_error("objfile: add_microcode_symbols: "
                          "no defined constant");
@@ -446,7 +433,7 @@ int objfile_add_microcode_symbols(struct objfile *objf,
         }
 
         addr = rsel;
-        other = objf->reg_symbs[addr];
+        other = objf->reg_chain[addr];
         if (unlikely(!other)) {
             report_error("objfile: add_microcode_symbols: "
                          "no defined register");
@@ -621,7 +608,7 @@ void objfile_serialize(const struct objfile *objf, struct serdes *sd)
     serdes_put8(sd, 0); /* for alignment */
 
     for (address = 0; address < CONSTANT_SIZE; address++) {
-        if (!objf->const_symbs[address]) continue;
+        if (!objf->const_chain[address]) continue;
 
         value = objf->consts[address];
         serialize_constant(sd, address, value);
@@ -881,6 +868,7 @@ int objfile_deserialize(struct objfile *objf, struct serdes *sd)
                              mem_num);
                 return FALSE;
             }
+            defined[mem_num - 1] = TRUE;
             break;
 
         case 2: /* Set address */
@@ -1047,57 +1035,111 @@ void disasm_decode_cb(struct decoder *dec,
                       enum decode_type dec_type, uint32_t val,
                       void *arg)
 {
-    const struct objfile *objf;
     struct string_buffer *output;
+    const struct objsymb *osym;
+    struct disasm_cb_arg *c_arg;
+    const struct objfile *objf;
+    unsigned int index;
+    decoder_cb orig_dec_cb;
+    void *orig_arg;
 
-    objf = (const struct objfile *) arg;
     output = dec->output;
+
+    c_arg = (struct disasm_cb_arg *) arg;
+    objf = c_arg->objf;
+    index = c_arg->index;
+    orig_dec_cb = c_arg->orig_dec_cb;
+    orig_arg = c_arg->orig_arg;
 
     switch (dec_type) {
     case DECODE_CONST:
-        if (val < CONSTANT_SIZE) {
-            string_buffer_print(output, "%o", objf->consts[val]);
-        } else {
+        if (val >= CONSTANT_SIZE) {
             dec->error = TRUE;
+            return;
+        }
+
+        osym = objf->const_chain[val];
+        if (!osym) {
+            orig_dec_cb(dec, DECODE_CONST, val, orig_arg);
+            return;
         }
         break;
+
     case DECODE_REG:
-        if (val <= R_MASK) {
-            string_buffer_print(output, "R%o", val);
-        } else if (val <= 2 * R_MASK + 1) {
-            string_buffer_print(output, "S%o", val & R_MASK);
-        } else {
+        if (val >= REG_SIZE) {
             dec->error = TRUE;
+            return;
+        }
+
+        osym = objf->reg_chain[val];
+        if (!osym) {
+            orig_dec_cb(dec, DECODE_REG, val, orig_arg);
+            return;
         }
         break;
+
     case DECODE_LABEL:
-        string_buffer_print(output, "%05o", (uint16_t) val);
-        break;
-    case DECODE_MEMORY:
-        string_buffer_print(output, "%07o", (uint16_t) val);
-        break;
-    case DECODE_VALUE:
-        string_buffer_print(output, "%07o", (uint16_t) val);
-        break;
-    case DECODE_VALUE32:
-        string_buffer_print(output, "%012o", val);
-        break;
-    case DECODE_SVALUE32:
-        string_buffer_print(output, "%012o", (int32_t) val);
-        break;
+        osym = objf->label_chain[val & (MICROCODE_SIZE - 1)];
+        if (!osym) {
+            /* Do not print any label here. */
+            /* orig_dec_cb(dec, DECODE_LABEL, val, orig_arg); */
+            return;
+        }
+
+        /* Safe to print symbol here as it is unique. */
+        string_buffer_print(output, "%s", osym->n.str.s);
+        return;
+
+    default:
+        orig_dec_cb(dec, dec_type, val, orig_arg);
+        return;
+
     }
+
+    while (TRUE) {
+        /* If the osym is no more recent than the current
+         * microcode, then we can stop.
+         */
+        if (osym->index <= index) break;
+
+        /* If there is no more symbols in the chain, also stop. */
+        if (!osym->chain_next) break;
+
+        osym = osym->chain_next;
+    }
+    string_buffer_print(output, "%s", osym->n.str.s);
+    if (dec_type == DECODE_CONST)
+        c_arg->const_name = osym->n.str.s;
 }
 
 void objfile_disassemble(const struct objfile *objf,
-                         const struct microcode *mc,
-                         struct string_buffer *output)
+                         struct decoder *dec,
+                         const struct microcode *mc)
 {
-    struct decoder dec;
+    struct disasm_cb_arg new_arg;
+    const struct objsymb *osym;
 
-    dec.arg = (void *) objf;
-    dec.dec_cb = &disasm_decode_cb;
-    dec.output = output;
-    dec.error = FALSE;
+    if (dec->error) return;
 
-    microcode_decode(&dec, mc);
+    new_arg.objf = objf;
+
+    /* Be conservative: when osym is NULL, accept any symbol. */
+    osym = objf->mu_chain[mc->address & (MICROCODE_SIZE - 1)];
+    new_arg.index = (osym) ? osym->index : objf->num_symbs;
+
+    new_arg.const_name = NULL;
+    new_arg.orig_dec_cb = dec->dec_cb;
+    new_arg.orig_arg = dec->arg;
+
+    dec->dec_cb = &disasm_decode_cb;
+    dec->arg = (void *) &new_arg;
+    microcode_decode(dec, mc);
+    dec->dec_cb = new_arg.orig_dec_cb;
+    dec->arg = new_arg.orig_arg;
+
+    if (new_arg.const_name) {
+        /* Print a comment with the constant value. */
+        string_buffer_print(dec->output, "; %s = ", new_arg.const_name);
+        (dec->dec_cb)(dec, DECODE_CONST, mc->const_addr, dec->arg);
+    }
 }

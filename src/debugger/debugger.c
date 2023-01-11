@@ -6,6 +6,7 @@
 #include "debugger/debugger.h"
 #include "simulator/simulator.h"
 #include "gui/gui.h"
+#include "assembler/objfile.h"
 #include "common/string_buffer.h"
 #include "common/utils.h"
 
@@ -20,6 +21,7 @@ void debugger_initvar(struct debugger *dbg)
     dbg->bps = NULL;
     dbg->cmd_buf = NULL;
     string_buffer_initvar(&dbg->output);
+    objfile_initvar(&dbg->rom0f);
 }
 
 void debugger_destroy(struct debugger *dbg)
@@ -30,6 +32,7 @@ void debugger_destroy(struct debugger *dbg)
     if (dbg->cmd_buf) free((void *) dbg->cmd_buf);
     dbg->cmd_buf = NULL;
 
+    objfile_destroy(&dbg->rom0f);
     string_buffer_destroy(&dbg->output);
 }
 
@@ -37,6 +40,8 @@ int debugger_create(struct debugger *dbg, int use_debugger,
                     struct simulator *sim, struct gui *ui)
 {
     debugger_initvar(dbg);
+
+    dbg->use_octal = TRUE;
 
     dbg->max_breakpoints = MAX_BREAKPOINTS;
     dbg->cmd_buf_size = BUFFER_SIZE;
@@ -47,6 +52,13 @@ int debugger_create(struct debugger *dbg, int use_debugger,
 
     if (unlikely(!dbg->bps || !dbg->cmd_buf)) {
         report_error("debugger: create: memory exhausted");
+        debugger_destroy(dbg);
+        return FALSE;
+    }
+
+    if (unlikely(!objfile_create(&dbg->rom0f))) {
+        report_error("debugger: create: could not create "
+                     "ROM0 objfile");
         debugger_destroy(dbg);
         return FALSE;
     }
@@ -64,7 +76,25 @@ int debugger_create(struct debugger *dbg, int use_debugger,
     return TRUE;
 }
 
-/* Auxiliary function used by debugger_disassemble().
+int debugger_load_binary(struct debugger *dbg,
+                         const char *filename, uint8_t bank)
+{
+    if (unlikely(bank >= 1)) {
+        report_error("debugger: load_binary: "
+                     "invalid bank `%u`", bank);
+        return FALSE;
+    }
+
+    if (unlikely(!objfile_load_binary(&dbg->rom0f, filename))) {
+        report_error("debugger: load_binary: "
+                     "could not load binary");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/* Auxiliary function used by debugger_nova_disassemble().
  * Callback to print constants, registers, labels, etc.
  */
 static
@@ -82,35 +112,69 @@ void disasm_decode_cb(struct decoder *dec,
 
     switch (dec_type) {
     case DECODE_CONST:
-        if (val < CONSTANT_SIZE) {
+        if (val >= CONSTANT_SIZE) {
+            dec->error = TRUE;
+            return;
+        }
+        if (dbg->use_octal) {
             string_buffer_print(output, "%o", sim->consts[val]);
         } else {
-            dec->error = TRUE;
+            string_buffer_print(output, "0x%X", sim->consts[val]);
         }
         break;
+
     case DECODE_REG:
+        if (val >= 2 * R_MASK + 2) {
+            dec->error = TRUE;
+            return;
+        }
+
+        /* Always use octal for register numbers. */
         if (val <= R_MASK) {
             string_buffer_print(output, "R%o", val);
-        } else if (val <= 2 * R_MASK + 1) {
-            string_buffer_print(output, "S%o", val & R_MASK);
         } else {
-            dec->error = TRUE;
+            string_buffer_print(output, "S%o", val & R_MASK);
         }
         break;
+
     case DECODE_LABEL:
-        string_buffer_print(output, "%05o", (uint16_t) val);
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%05o", (uint16_t) val);
+        } else {
+            string_buffer_print(output, "0x%04X", (uint16_t) val);
+        }
         break;
+
     case DECODE_MEMORY:
-        string_buffer_print(output, "%07o", (uint16_t) val);
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%07o", (uint16_t) val);
+        } else {
+            string_buffer_print(output, "0x%04X", (uint16_t) val);
+        }
         break;
+
     case DECODE_VALUE:
-        string_buffer_print(output, "%07o", (uint16_t) val);
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%07o", (uint16_t) val);
+        } else {
+            string_buffer_print(output, "0x%04X", (uint16_t) val);
+        }
         break;
+
     case DECODE_VALUE32:
-        string_buffer_print(output, "%012o", val);
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%012o", val);
+        } else {
+            string_buffer_print(output, "0x%08X", val);
+        }
         break;
+
     case DECODE_SVALUE32:
-        string_buffer_print(output, "%012o", (int32_t) val);
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%012o", (int32_t) val);
+         } else {
+            string_buffer_print(output, "0x%08X", (int32_t) val);
+        }
         break;
     }
 }
@@ -122,18 +186,23 @@ void debugger_disassemble(struct debugger *dbg)
     struct microcode mc;
 
     sim = dbg->sim;
+    simulator_predecode(sim, &mc);
+    if (dbg->use_octal) {
+        string_buffer_print(&dbg->output,
+                            "%03o-%07o %012o --- ",
+                            mc.task, mc.address, mc.mcode);
+    } else {
+        string_buffer_print(&dbg->output,
+                            "0x%02X-0x%04X 0x%08X --- ",
+                            mc.task, mc.address, mc.mcode);
+    }
 
     dec.arg = (void *) dbg;
     dec.dec_cb = &disasm_decode_cb;
     dec.output = &dbg->output;
     dec.error = FALSE;
 
-    simulator_predecode(sim, &mc);
-    string_buffer_print(&dbg->output,
-                        "%03o-%07o %012o --- ",
-                        mc.task, mc.address, mc.mcode);
-
-    microcode_decode(&dec, &mc);
+    objfile_disassemble(&dbg->rom0f, &dec, &mc);
 }
 
 void debugger_nova_disassemble(struct debugger *dbg)
@@ -151,9 +220,15 @@ void debugger_nova_disassemble(struct debugger *dbg)
 
     simulator_nova_predecode(sim, &ni);
 
-    string_buffer_print(&dbg->output,
-                        "%07o %07o --- ",
-                        ni.address, ni.insn);
+    if (dbg->use_octal) {
+        string_buffer_print(&dbg->output,
+                            "%07o %07o --- ",
+                            ni.address, ni.insn);
+    } else {
+        string_buffer_print(&dbg->output,
+                            "0x%04X 0x%04X --- ",
+                            ni.address, ni.insn);
+    }
 
     nova_insn_decode(&dec, &ni);
 }

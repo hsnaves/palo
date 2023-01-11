@@ -25,7 +25,9 @@ struct objsymb {
     struct string_node n;         /* To be added to the symbol table. */
     enum objsymb_type type;       /* The type of the symbol. */
     uint16_t value;               /* The value of the symbol. */
+    unsigned int index;           /* The symbol index. */
     struct objsymb *next;         /* The next symbol in the list. */
+    struct objsymb *chain_next;   /* The next object in the same chain. */
 };
 
 /* Structure to represent the object file. */
@@ -35,19 +37,15 @@ struct objfile {
     struct table symbols;         /* Hash table for resolving symbols. */
     uint16_t *consts;             /* The value of the constants. */
     uint32_t *microcode;          /* The microcode. */
-    uint8_t *has_microcode;       /* Boolean mask telling which addresses
-                                   * are used.
-                                   */
 
     unsigned int num_symbs;       /* The number of symbols. */
     struct objsymb *first_symb;   /* The first symbol defined. */
     struct objsymb *last_symb;    /* The last symbol defined. */
 
-    struct objsymb **const_symbs; /* Constant symbols. */
-    struct objsymb **reg_symbs;   /* Register symbols. */
-    struct objsymb **label_symbs; /* Label symbols. */
-    struct objsymb **mu_c_symbs;  /* Microcode constant symbols. */
-    struct objsymb **mu_r_symbs;  /* Microcode register symbols. */
+    struct objsymb **const_chain; /* Constant symbol chain. */
+    struct objsymb **reg_chain;   /* Register symbol chain. */
+    struct objsymb **label_chain; /* Label symbol chain. */
+    struct objsymb **mu_chain;    /* Microcode symbol chain. */
 
     char *tbuf;                   /* Temporary buffer. */
     size_t tbuf_size;             /* Size of the temporary buffer. */
@@ -174,11 +172,11 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
                                const char *filename);
 
 /* Disassembles a microinstruction given by `mc`.
- * The output is written to `output`.
+ * The output is written into the decoder `dec`.
  */
 void objfile_disassemble(const struct objfile *objf,
-                         const struct microcode *mc,
-                         struct string_buffer *output);
+                         struct decoder *dec,
+                         const struct microcode *mc);
 
 
 #endif /* __ASSEMBLER_OBJFILE_H */

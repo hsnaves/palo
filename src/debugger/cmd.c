@@ -1011,6 +1011,8 @@ void cmd_help(struct debugger *dbg)
     UNUSED(dbg);
 
     printf("Commands:\n");
+    printf("  oct              Use octal numbers\n");
+    printf("  hex              Use hexadecimal numbers\n");
     printf("  r                Print the registers\n");
     printf("  nr               Print the NOVA registers\n");
     printf("  e                Print the extra registers\n");
@@ -1112,6 +1114,16 @@ int debugger_debug(struct gui *ui)
         if (!running) break;
 
         cmd = (const char *) dbg->cmd_buf;
+
+        if (strcmp(cmd, "oct") == 0) {
+            dbg->use_octal = TRUE;
+            continue;
+        }
+
+        if (strcmp(cmd, "hex") == 0) {
+            dbg->use_octal = FALSE;
+            continue;
+        }
 
         if (strcmp(cmd, "r") == 0) {
             cmd_registers(dbg, FALSE);

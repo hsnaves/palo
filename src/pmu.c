@@ -15,7 +15,7 @@ void usage(const char *prog_name)
     printf(" %s [options] input\n", prog_name);
     printf("where:\n");
     printf("  -l listing    Specify the output listing file\n");
-    printf("  -o binary     Specify the output file\n");
+    printf("  -o binary     Specify the output binary file\n");
     printf("  -c constant   Specify the constant rom file\n");
     printf("  -m microcode  Specify the microcode rom file\n");
     printf("  --help        Print this help\n");
