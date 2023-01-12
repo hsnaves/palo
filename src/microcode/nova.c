@@ -259,6 +259,9 @@ void decode_sgroup(struct decoder *dec,
         break;
     case 2:
         switch (disp) {
+        case 0: string_buffer_print(output, "DIR"); break;
+        case 1: string_buffer_print(output, "EIR"); break;
+        case 2: string_buffer_print(output, "BRI"); break;
         case 3: string_buffer_print(output, "RCLK"); break;
         case 4: string_buffer_print(output, "SIO"); break;
         case 5: string_buffer_print(output, "BLT"); break;
@@ -267,6 +270,7 @@ void decode_sgroup(struct decoder *dec,
         case 8: string_buffer_print(output, "JMPRAM"); break;
         case 9: string_buffer_print(output, "RDRAM"); break;
         case 10: string_buffer_print(output, "WRTRAM"); break;
+        case 11: string_buffer_print(output, "DIRS"); break;
         case 12: string_buffer_print(output, "VERS"); break;
         case 13: string_buffer_print(output, "DREAD"); break;
         case 14: string_buffer_print(output, "DWRITE"); break;
