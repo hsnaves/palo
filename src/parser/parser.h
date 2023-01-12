@@ -194,6 +194,9 @@ int parser_create(struct parser *p,
                   struct allocator *salloc,
                   struct allocator *oalloc);
 
+/* Clears the state of the parser. */
+void parser_clear(struct parser *p);
+
 /* Parses a given filename.
  * The filename to be parsed is given in `filename`.
  * Returns OK, FAIL or ERROR.

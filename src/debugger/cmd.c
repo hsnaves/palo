@@ -1061,17 +1061,12 @@ void cmd_help(struct debugger *dbg)
 int debugger_debug(struct gui *ui)
 {
     struct debugger *dbg;
-    unsigned int num;
     const char *cmd;
     int running, stop_sim;
     int is_eof, ret;
 
     dbg = (struct debugger *) ui->arg;
     ret = TRUE;
-
-    for (num = 1; num < dbg->max_breakpoints; num++) {
-        dbg->bps[num].available = TRUE;
-    }
 
     if (!dbg->use_debugger) {
         if (unlikely(!simulate(dbg, -1, -1))) {

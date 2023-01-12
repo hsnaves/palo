@@ -12,18 +12,30 @@
 void allocator_initvar(struct allocator *a)
 {
     a->buf = NULL;
+    a->avail = NULL;
+}
+
+/* Deallocates each memory buffer in the linked list of buffers
+ * starting at `mb`.
+ */
+static
+void free_memory_buffers(struct memory_buffer *mb)
+{
+    struct memory_buffer *next;
+    while (mb) {
+        next = mb->next;
+        free((void *) mb);
+        mb = next;
+    }
 }
 
 void allocator_destroy(struct allocator *a)
 {
-    struct memory_buffer *mb;
+    free_memory_buffers(a->buf);
+    a->buf = NULL;
 
-    mb = a->buf;
-    while (mb) {
-        a->buf = mb->next;
-        free((void *) mb);
-        mb = a->buf;
-    }
+    free_memory_buffers(a->avail);
+    a->avail = NULL;
 }
 
 int allocator_create(struct allocator *a, size_t alignment)
@@ -35,44 +47,76 @@ int allocator_create(struct allocator *a, size_t alignment)
     return TRUE;
 }
 
+void allocator_clear(struct allocator *a)
+{
+    struct memory_buffer *mb;
+
+    mb = a->buf;
+    while (mb) {
+        a->buf = mb->next;
+        mb->next = a->avail;
+        a->avail = mb;
+        mb = a->buf;
+    }
+    a->size = 0;
+    a->used = 0;
+}
+
 void *allocator_alloc(struct allocator *a, size_t size, int zero)
 {
     struct memory_buffer *mb;
     size_t alloc_size, rem;
     char *out;
-    int allocate;
 
     mb = a->buf;
-    allocate = (mb) ? (mb->used + size > mb->size) : TRUE;
-
-    if (allocate) {
-        alloc_size = size + a->alignment;
-        alloc_size += sizeof(struct memory_buffer);
-        if (alloc_size < DEFAULT_SIZE)
-            alloc_size = DEFAULT_SIZE;
-
-        mb = (struct memory_buffer *) malloc(alloc_size);
-        if (unlikely(!mb)) {
-            report_error("allocator: alloc: memory exhausted");
-            return NULL;
+    if (mb) {
+        /* Check if there is enough space in the current buffer. */
+        if (mb->used + size > mb->size) {
+            mb = NULL;
         }
+    }
 
-        mb->buf = (char *) &mb[1];
-        if (a->alignment != 0) {
-            rem = ((size_t) mb->buf) % a->alignment;
-            if (rem != 0) {
-                mb->buf = &mb->buf[a->alignment - rem];
+    if (!mb) {
+        /* Check if there are available buffers. */
+        mb = a->avail;
+        if (mb) {
+            /* Check if the size is large enough. */
+            if (mb->size >= size) {
+                a->avail = mb->next;
+            } else {
+                mb = NULL;
             }
         }
 
-        mb->size = alloc_size - (mb->buf - ((char *) mb));
+        if (!mb) {
+            alloc_size = size + a->alignment;
+            alloc_size += sizeof(struct memory_buffer);
+            if (alloc_size < DEFAULT_SIZE)
+                alloc_size = DEFAULT_SIZE;
+
+            mb = (struct memory_buffer *) malloc(alloc_size);
+            if (unlikely(!mb)) {
+                report_error("allocator: alloc: memory exhausted");
+                return NULL;
+            }
+
+            mb->buf = (char *) &mb[1];
+            if (a->alignment != 0) {
+                rem = ((size_t) mb->buf) % a->alignment;
+                if (rem != 0) {
+                    mb->buf = &mb->buf[a->alignment - rem];
+                }
+            }
+
+            mb->size = alloc_size - sizeof(struct memory_buffer);
+        }
+
         mb->used = 0;
         mb->next = a->buf;
         a->buf = mb;
         a->size += mb->size;
     }
 
-    mb = a->buf;
     out = &mb->buf[mb->used];
     if (zero) memset(out, 0, size);
 

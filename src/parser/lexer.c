@@ -48,13 +48,20 @@ int lexer_create(struct lexer *l,
 
     l->salloc = salloc;
     l->oalloc = oalloc;
+
+    lexer_clear(l);
+    return TRUE;
+}
+
+void lexer_clear(struct lexer *l)
+{
+    table_clear(&l->tokens);
+
     l->file = NULL;
     l->free_tokens = NULL;
     l->free_files = NULL;
     l->tbuf_size = TBUF_SIZE;
     l->tbuf_len = 0;
-
-    return TRUE;
 }
 
 int lexer_open(struct lexer *l, const char *filename)

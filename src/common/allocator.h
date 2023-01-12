@@ -9,22 +9,23 @@
 
 /* Data structures and types. */
 
-/* A memory allocator structure. This is used to allocate objects and
- * make copies of strings in the source files processed by the parser.
- */
-struct allocator {
-    struct memory_buffer *buf;    /* Pointer to the first buffer. */
-    size_t alignment;             /* The alignment of the allocator. */
-    size_t size;                  /* Total allocated size. */
-    size_t used;                  /* Number of used bytes. */
-};
-
 /* A memory buffer structure. */
 struct memory_buffer {
     char *buf;                    /* The actual buffer. */
     size_t size;                  /* The size of this buffer. */
     size_t used;                  /* Number of used bytes. */
     struct memory_buffer *next;   /* Pointer to the next buffer. */
+};
+
+/* A memory allocator structure. This is used to allocate objects,
+ * and make copies of strings.
+ */
+struct allocator {
+    struct memory_buffer *buf;    /* Pointer to the most recent buffer. */
+    struct memory_buffer *avail;  /* List of available (unused) buffers. */
+    size_t alignment;             /* The alignment of the allocator. */
+    size_t size;                  /* Total allocated size. */
+    size_t used;                  /* Number of used bytes. */
 };
 
 /* Functions. */
@@ -48,6 +49,9 @@ void allocator_destroy(struct allocator *a);
  * Returns TRUE on success.
  */
 int allocator_create(struct allocator *a, size_t alignment);
+
+/* Clears all the allocated memory buffers. */
+void allocator_clear(struct allocator *a);
 
 /* Allocates memory from an allocator.
  * The `size` specifies the allocation size, and `zero` tells the

@@ -7,6 +7,7 @@
 #include "simulator/simulator.h"
 #include "gui/gui.h"
 #include "assembler/objfile.h"
+#include "common/allocator.h"
 #include "common/string_buffer.h"
 
 /* Data structures and types. */
@@ -32,6 +33,8 @@ struct breakpoint {
 
 /* Internal structure for the palos simulator. */
 struct debugger {
+    struct allocator salloc;      /* Allocator for strings. */
+    struct allocator oalloc;      /* Allocator for objects. */
     struct simulator *sim;        /* The simulator. */
     struct gui *ui;               /* The user interface. */
     struct objfile rom0f;         /* Object file for the ROM0. */
@@ -73,6 +76,9 @@ void debugger_destroy(struct debugger *dbg);
 int debugger_create(struct debugger *ps, int use_debugger,
                     struct simulator *sim, struct gui *ui);
 
+
+/* Clears the state of the debugger. */
+void debugger_clear(struct debugger *dbg);
 
 /* Loads the binary file for rom bank `bank`..
  * The name of the file to load is given by `filename`.

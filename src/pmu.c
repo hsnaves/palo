@@ -91,7 +91,8 @@ int main(int argc, char **argv)
         goto error;
     }
 
-    if (unlikely(!objfile_create(&objf))) {
+    /* Re-use the allocators from the assembler. */
+    if (unlikely(!objfile_create(&objf, &as.salloc, &as.oalloc))) {
         report_error("main: could not create objfile");
         goto error;
     }

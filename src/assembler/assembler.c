@@ -183,7 +183,27 @@ int assembler_create(struct assembler *as)
         return FALSE;
     }
 
+    assembler_clear(as);
     return TRUE;
+}
+
+void assembler_clear(struct assembler *as)
+{
+    uint16_t address;
+    allocator_clear(&as->salloc);
+    allocator_clear(&as->oalloc);
+    parser_clear(&as->p);
+
+    memset(as->consts, -1, CONSTANT_SIZE * sizeof(uint16_t));
+    memset(as->const_sts, 0, CONSTANT_SIZE * sizeof(struct statement *));
+
+    memset(as->micro_sts, 0,
+           MICROCODE_SIZE * sizeof(struct statement *));
+
+    for (address = 0; address < MICROCODE_SIZE; address++) {
+        /* Jump to the last address in rom. */
+        as->microcode[address] = 0xFFF77BFF;
+    }
 }
 
 /* Finds an empty address for the constant.
@@ -231,9 +251,6 @@ int assembler_resolve_constants(struct assembler *as)
     uint16_t address, bs;
     uint16_t val;
     int has_bs_mask;
-
-    memset(as->consts, -1, CONSTANT_SIZE * sizeof(uint16_t));
-    memset(as->const_sts, 0, CONSTANT_SIZE * sizeof(struct statement *));
 
     for (st = as->p.first; st; st = st->next) {
         switch (st->st_type) {
@@ -450,9 +467,6 @@ int assembler_resolve_labels(struct assembler *as)
     struct address_predefinition apdef;
     struct symbol_info *si;
     uint16_t address;
-
-    memset(as->micro_sts, 0,
-           MICROCODE_SIZE * sizeof(struct statement *));
 
     st = as->p.first;
     while (st) {
@@ -1177,13 +1191,7 @@ int assemble_one(struct assembler *as, struct statement *st,
 int assembler_assemble(struct assembler *as)
 {
     struct statement *st, *next_st;
-    uint16_t address;
     int error;
-
-    for (address = 0; address < MICROCODE_SIZE; address++) {
-        /* Jump to the last address in rom. */
-        as->microcode[address] = 0xFFF77BFF;
-    }
 
     error = FALSE;
     next_st = as->p.first;

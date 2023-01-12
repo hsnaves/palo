@@ -81,6 +81,11 @@ int lexer_create(struct lexer *l,
                  struct allocator *salloc,
                  struct allocator *oalloc);
 
+/* Clears the state of the lexer. Among other things, it clears
+ * the table of tokens.
+ */
+void lexer_clear(struct lexer *l);
+
 /* Opens a file for parsing.
  * The name of the file is given by the parameter `filename`.
  * Returns OK, FAIL or ERROR.

@@ -51,11 +51,18 @@ int parser_create(struct parser *p,
     p->salloc = salloc;
     p->oalloc = oalloc;
 
+    parser_clear(p);
+    return TRUE;
+}
+
+void parser_clear(struct parser *p)
+{
+    lexer_clear(&p->l);
+    table_clear(&p->symbols);
+
     p->tk = NULL;
     p->num_errors = 0;
     p->first = p->last = NULL;
-
-    return TRUE;
 }
 
 int parser_parse(struct parser *p, const char *filename)
@@ -63,6 +70,8 @@ int parser_parse(struct parser *p, const char *filename)
     const char *dup_filename;
     size_t len;
     int ret;
+
+    parser_clear(p);
 
     len = strlen(filename);
     dup_filename = allocator_dup(p->salloc, filename, len);
@@ -82,11 +91,6 @@ int parser_parse(struct parser *p, const char *filename)
                      dup_filename);
         return FAIL;
     }
-
-    p->tk = NULL;
-    p->num_errors = 0;
-    p->first = p->last = NULL;
-    table_clear(&p->symbols);
 
     ret = parse_statements(p);
     lexer_close(&p->l);

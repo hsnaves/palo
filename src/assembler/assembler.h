@@ -42,6 +42,9 @@ void assembler_destroy(struct assembler *as);
  */
 int assembler_create(struct assembler *as);
 
+/* Clears the state of the assembler. */
+void assembler_clear(struct assembler *as);
+
 /* Resolves the constant addresses from the source files.
  * Returns TRUE on success.
  */

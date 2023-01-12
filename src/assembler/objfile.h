@@ -32,8 +32,8 @@ struct objsymb {
 
 /* Structure to represent the object file. */
 struct objfile {
-    struct allocator salloc;      /* Allocator for strings. */
-    struct allocator oalloc;      /* Allocator for objects. */
+    struct allocator *salloc;     /* Allocator for strings. */
+    struct allocator *oalloc;     /* Allocator for objects. */
     struct table symbols;         /* Hash table for resolving symbols. */
     uint16_t *consts;             /* The value of the constants. */
     uint32_t *microcode;          /* The microcode. */
@@ -67,9 +67,13 @@ void objfile_destroy(struct objfile *objf);
 
 /* Creates a new objfile object.
  * This obeys the initvar / destroy / create protocol.
+ * The `salloc` and `oalloc` are two allocators needed by
+ * the objfile. One is for strings and the other for objects.
  * Returns TRUE on success.
  */
-int objfile_create(struct objfile *objf);
+int objfile_create(struct objfile *objf,
+                   struct allocator *salloc,
+                   struct allocator *oalloc);
 
 /* Clears the contents of the objfile. */
 void objfile_clear(struct objfile *objf);

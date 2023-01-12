@@ -8,6 +8,7 @@
 #include "simulator/disk.h"
 #include "gui/gui.h"
 #include "debugger/debugger.h"
+#include "common/utils.h"
 
 /* Data structures and types. */
 

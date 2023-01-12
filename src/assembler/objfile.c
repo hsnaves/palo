@@ -28,8 +28,6 @@ struct disasm_cb_arg {
 
 void objfile_initvar(struct objfile *objf)
 {
-    allocator_initvar(&objf->salloc);
-    allocator_initvar(&objf->oalloc);
     table_initvar(&objf->symbols);
 
     objf->consts = NULL;
@@ -67,27 +65,13 @@ void objfile_destroy(struct objfile *objf)
     objf->tbuf = NULL;
 
     table_destroy(&objf->symbols);
-    allocator_destroy(&objf->oalloc);
-    allocator_destroy(&objf->salloc);
 }
 
-int objfile_create(struct objfile *objf)
+int objfile_create(struct objfile *objf,
+                   struct allocator *salloc,
+                   struct allocator *oalloc)
 {
     objfile_initvar(objf);
-
-    if (unlikely(!allocator_create(&objf->salloc, 0))) {
-        report_error("objfile: create: "
-                     "could not create string allocator");
-        objfile_destroy(objf);
-        return FALSE;
-    }
-
-    if (unlikely(!allocator_create(&objf->oalloc, DEFAULT_ALIGNMENT))) {
-        report_error("objfile: create: "
-                     "could not create object allocator");
-        objfile_destroy(objf);
-        return FALSE;
-    }
 
     if (unlikely(!table_create(&objf->symbols))) {
         report_error("objfile: create: "
@@ -122,8 +106,10 @@ int objfile_create(struct objfile *objf)
         return FALSE;
     }
 
-    objfile_clear(objf);
+    objf->salloc = salloc;
+    objf->oalloc = oalloc;
 
+    objfile_clear(objf);
     return TRUE;
 }
 
@@ -188,7 +174,7 @@ struct objsymb *new_objsymb(struct objfile *objf,
     }
 
     osym = (struct objsymb *)
-        allocator_alloc(&objf->oalloc, sizeof(struct objsymb), TRUE);
+        allocator_alloc(objf->oalloc, sizeof(struct objsymb), TRUE);
     if (unlikely(!osym)) {
         report_error("objfile: new_objsymb: "
                      "memory exhausted");
@@ -206,7 +192,7 @@ struct objsymb *new_objsymb(struct objfile *objf,
             osym->n = *n;
         } else {
             /* Make a copy of the name. */
-            osym->n.str.s = allocator_dup(&objf->salloc,
+            osym->n.str.s = allocator_dup(objf->salloc,
                                           name->s, name->len);
             if (unlikely(!osym->n.str.s)) {
                 report_error("objfile: new_objsymb: "
