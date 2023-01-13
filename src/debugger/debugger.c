@@ -137,15 +137,16 @@ int debugger_load_binary(struct debugger *dbg,
  * Callback to print constants, registers, labels, etc.
  */
 static
-void disasm_decode_cb(struct decoder *dec,
-                      enum decode_type dec_type, uint32_t val,
-                      void *arg)
+void disasm_decode_cb(struct value_decoder *vdec,
+                      enum decode_type dec_type, uint32_t val)
 {
+    struct decoder *dec;
     const struct debugger *dbg;
     const struct simulator *sim;
     struct string_buffer *output;
 
-    dbg = (const struct debugger *) arg;
+    dec = vdec->dec;
+    dbg = (const struct debugger *) vdec->arg;
     sim = dbg->sim;
     output = dec->output;
 
@@ -192,6 +193,19 @@ void disasm_decode_cb(struct decoder *dec,
         }
         break;
 
+    case DECODE_TASK:
+        val &= TASK_NUM_TASKS - 1;
+        if (dbg->use_octal) {
+            string_buffer_print(output, "%03o", val);
+        } else {
+            string_buffer_print(output, "0x%02X", val);
+        }
+        break;
+
+    case DECODE_BOOL:
+        string_buffer_print(output, "%d", (val) ? 1 : 0);
+        break;
+
     case DECODE_VALUE:
         if (dbg->use_octal) {
             string_buffer_print(output, "%07o", (uint16_t) val);
@@ -209,65 +223,79 @@ void disasm_decode_cb(struct decoder *dec,
         break;
 
     case DECODE_SVALUE32:
-        if (dbg->use_octal) {
-            string_buffer_print(output, "%012o", (int32_t) val);
-         } else {
-            string_buffer_print(output, "0x%08X", (int32_t) val);
-        }
+        string_buffer_print(output, "%d", (int32_t) val);
         break;
     }
 }
 
-void debugger_disassemble(struct debugger *dbg)
+void debugger_setup_value_decoder(struct debugger *dbg,
+                                  struct value_decoder *vdec)
+{
+    vdec->arg = (void *) dbg;
+    vdec->cb = &disasm_decode_cb;
+}
+
+void debugger_setup_decoder(struct debugger *dbg)
 {
     const struct simulator *sim;
-    struct decoder dec;
-    struct microcode mc;
+    struct decoder *dec;
 
     sim = dbg->sim;
-    simulator_predecode(sim, &mc);
-    if (dbg->use_octal) {
-        string_buffer_print(&dbg->output,
-                            "%03o-%07o %012o --- ",
-                            mc.task, mc.address, mc.mcode);
-    } else {
-        string_buffer_print(&dbg->output,
-                            "0x%02X-0x%04X 0x%08X --- ",
-                            mc.task, mc.address, mc.mcode);
-    }
+    simulator_predecode(sim, &dbg->mc);
 
-    dec.arg = (void *) dbg;
-    dec.dec_cb = &disasm_decode_cb;
-    dec.output = &dbg->output;
-    dec.error = FALSE;
+    dec = &dbg->dec;
+    dec->error = FALSE;
+    dec->output = &dbg->output;
+    dec->mc = &dbg->mc;
+    dec->vdec = &dbg->vdecs[0];
 
-    objfile_disassemble(&dbg->rom0f, &dec, &mc);
+    dbg->vdecs[0].dec = dec;
+    dbg->vdecs[0].next = &dbg->vdecs[1];
+
+    dbg->vdecs[1].dec = dec;
+    dbg->vdecs[1].next = NULL;
+
+    objfile_setup_value_decoder(&dbg->rom0f, &dbg->vdecs[0]);
+    debugger_setup_value_decoder(dbg, &dbg->vdecs[1]);
+}
+
+void debugger_disassemble(struct debugger *dbg)
+{
+    const struct microcode *mc;
+    struct decoder *dec;
+    struct string_buffer *output;
+
+    debugger_setup_decoder(dbg);
+
+    dec = &dbg->dec;
+    output = dec->output;
+    mc = dec->mc;
+
+    decode_value_padded(dec->vdec, DECODE_TASK, mc->task, 3);
+    string_buffer_print(output, "-");
+    decode_value_padded(dec->vdec, DECODE_LABEL, mc->address, 8);
+
+    decode_value(dec->vdec, DECODE_VALUE32, mc->mcode);
+    string_buffer_print(output, "   ");
+    decode_microcode(dec);
 }
 
 void debugger_nova_disassemble(struct debugger *dbg)
 {
     const struct simulator *sim;
-    struct decoder dec;
+    struct decoder *dec;
+    struct string_buffer *output;
     struct nova_insn ni;
 
+    debugger_setup_decoder(dbg);
+
+    dec = &dbg->dec;
+    output = dec->output;
     sim = dbg->sim;
-
-    dec.arg = (void *) dbg;
-    dec.dec_cb = &disasm_decode_cb;
-    dec.output = &dbg->output;
-    dec.error = FALSE;
-
     simulator_nova_predecode(sim, &ni);
 
-    if (dbg->use_octal) {
-        string_buffer_print(&dbg->output,
-                            "%07o %07o --- ",
-                            ni.address, ni.insn);
-    } else {
-        string_buffer_print(&dbg->output,
-                            "0x%04X 0x%04X --- ",
-                            ni.address, ni.insn);
-    }
-
-    nova_insn_decode(&dec, &ni);
+    decode_value_padded(dec->vdec, DECODE_MEMORY, ni.address, 12);
+    decode_value(dec->vdec, DECODE_VALUE, ni.insn);
+    string_buffer_print(output, " --- ");
+    nova_insn_decode(dec, &ni);
 }

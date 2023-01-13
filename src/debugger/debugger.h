@@ -7,6 +7,7 @@
 #include "simulator/simulator.h"
 #include "gui/gui.h"
 #include "assembler/objfile.h"
+#include "microcode/microcode.h"
 #include "common/allocator.h"
 #include "common/string_buffer.h"
 
@@ -49,6 +50,10 @@ struct debugger {
 
     struct string_buffer output;  /* The string buffer for output. */
     int use_debugger;             /* To use the debugger. */
+
+    struct decoder dec;           /* Decoder used. */
+    struct value_decoder vdecs[2]; /* Used by the decoder. */
+    struct microcode mc;          /* The microcode used by the decoder. */
 };
 
 /* Functions. */
@@ -86,6 +91,15 @@ void debugger_clear(struct debugger *dbg);
  */
 int debugger_load_binary(struct debugger *dbg,
                          const char *filename, uint8_t bank);
+
+/* Setups the value decoder to use the debugger information.
+ * The value_decoder is given by the parameter `vdec`.
+ */
+void debugger_setup_value_decoder(struct debugger *dbg,
+                                  struct value_decoder *vdec);
+
+/* Setups the inner decoder to use the debugger information. */
+void debugger_setup_decoder(struct debugger *dbg);
 
 /* Disassembles the current microinstruction into the debugger's
  * output string buffer.

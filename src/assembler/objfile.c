@@ -13,17 +13,6 @@
 /* Constants. */
 #define REG_SIZE  (NUM_R_REGISTERS + NUM_S_REGISTERS)
 
-/* Data structures and types. */
-
-/* Callback argument for the disassembler. */
-struct disasm_cb_arg {
-    const struct objfile *objf;   /* Reference to the objfile. */
-    unsigned int index;           /* Index of the current microcode. */
-    const char *const_name;       /* Name of the decoded constant. */
-    decoder_cb orig_dec_cb;       /* Original callback. */
-    void *orig_arg;               /* Original argument for callback. */
-};
-
 /* Functions. */
 
 void objfile_initvar(struct objfile *objf)
@@ -1017,25 +1006,26 @@ int objfile_dump_microcode_rom(const struct objfile *objf,
  * Callback to print constants, registers, labels, etc.
  */
 static
-void disasm_decode_cb(struct decoder *dec,
-                      enum decode_type dec_type, uint32_t val,
-                      void *arg)
+void disasm_decode_cb(struct value_decoder *vdec,
+                      enum decode_type dec_type, uint32_t val)
 {
+    struct decoder *dec;
     struct string_buffer *output;
+    const struct microcode *mc;
     const struct objsymb *osym;
-    struct disasm_cb_arg *c_arg;
     const struct objfile *objf;
     unsigned int index;
-    decoder_cb orig_dec_cb;
-    void *orig_arg;
 
+    dec = vdec->dec;
     output = dec->output;
+    objf = (const struct objfile *) vdec->arg;
 
-    c_arg = (struct disasm_cb_arg *) arg;
-    objf = c_arg->objf;
-    index = c_arg->index;
-    orig_dec_cb = c_arg->orig_dec_cb;
-    orig_arg = c_arg->orig_arg;
+    mc = dec->mc;
+    osym = NULL;
+    if (mc) {
+        osym = objf->mu_chain[mc->address & (MICROCODE_SIZE - 1)];
+    }
+    index = (osym) ? osym->index : objf->num_symbs;
 
     switch (dec_type) {
     case DECODE_CONST:
@@ -1045,10 +1035,7 @@ void disasm_decode_cb(struct decoder *dec,
         }
 
         osym = objf->const_chain[val];
-        if (!osym) {
-            orig_dec_cb(dec, DECODE_CONST, val, orig_arg);
-            return;
-        }
+        if (!osym) goto delegate;
         break;
 
     case DECODE_REG:
@@ -1058,28 +1045,19 @@ void disasm_decode_cb(struct decoder *dec,
         }
 
         osym = objf->reg_chain[val];
-        if (!osym) {
-            orig_dec_cb(dec, DECODE_REG, val, orig_arg);
-            return;
-        }
+        if (!osym) goto delegate;
         break;
 
     case DECODE_LABEL:
         osym = objf->label_chain[val & (MICROCODE_SIZE - 1)];
-        if (!osym) {
-            /* Do not print any label here. */
-            /* orig_dec_cb(dec, DECODE_LABEL, val, orig_arg); */
-            return;
-        }
+        if (!osym) goto delegate;
 
         /* Safe to print symbol here as it is unique. */
         string_buffer_print(output, "%s", osym->n.str.s);
         return;
 
     default:
-        orig_dec_cb(dec, dec_type, val, orig_arg);
-        return;
-
+        goto delegate;
     }
 
     while (TRUE) {
@@ -1094,38 +1072,16 @@ void disasm_decode_cb(struct decoder *dec,
         osym = osym->chain_next;
     }
     string_buffer_print(output, "%s", osym->n.str.s);
-    if (dec_type == DECODE_CONST)
-        c_arg->const_name = osym->n.str.s;
+    return;
+
+delegate:
+    decode_value(vdec->next, dec_type, val);
+    return;
 }
 
-void objfile_disassemble(const struct objfile *objf,
-                         struct decoder *dec,
-                         const struct microcode *mc)
+void objfile_setup_value_decoder(const struct objfile *objf,
+                                 struct value_decoder *vdec)
 {
-    struct disasm_cb_arg new_arg;
-    const struct objsymb *osym;
-
-    if (dec->error) return;
-
-    new_arg.objf = objf;
-
-    /* Be conservative: when osym is NULL, accept any symbol. */
-    osym = objf->mu_chain[mc->address & (MICROCODE_SIZE - 1)];
-    new_arg.index = (osym) ? osym->index : objf->num_symbs;
-
-    new_arg.const_name = NULL;
-    new_arg.orig_dec_cb = dec->dec_cb;
-    new_arg.orig_arg = dec->arg;
-
-    dec->dec_cb = &disasm_decode_cb;
-    dec->arg = (void *) &new_arg;
-    microcode_decode(dec, mc);
-    dec->dec_cb = new_arg.orig_dec_cb;
-    dec->arg = new_arg.orig_arg;
-
-    if (new_arg.const_name) {
-        /* Print a comment with the constant value. */
-        string_buffer_print(dec->output, "; %s = ", new_arg.const_name);
-        (dec->dec_cb)(dec, DECODE_CONST, mc->const_addr, dec->arg);
-    }
+    vdec->cb = &disasm_decode_cb;
+    vdec->arg = (void *) objf;;
 }

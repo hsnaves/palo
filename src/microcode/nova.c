@@ -53,16 +53,19 @@ void decode_mgroup(struct decoder *dec,
 
     switch (addressing) {
     case 0: /* Page zero. */
-        string_buffer_print(output, "%o", disp & 0xFF);
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
     case 1: /* PC relative. */
-        string_buffer_print(output, ".+%o", disp);
+        string_buffer_print(output, ".+");
+        decode_value(dec->vdec, DECODE_VALUE, disp);
         break;
     case 2: /* AC2 relative. */
-        string_buffer_print(output, "%o,2", disp);
+        decode_value(dec->vdec, DECODE_VALUE, disp);
+        string_buffer_print(output, ",2");
         break;
     case 3: /* AC3 relative. */
-        string_buffer_print(output, "%o,3", disp);
+        decode_value(dec->vdec, DECODE_VALUE, disp);
+        string_buffer_print(output, ",3");
         break;
     }
 }
@@ -110,16 +113,19 @@ void decode_jgroup(struct decoder *dec,
 
     switch (addressing) {
     case 0: /* Page zero. */
-        string_buffer_print(output, "%o", disp & 0xFF);
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
     case 1: /* PC relative. */
-        string_buffer_print(output, ".+%o", disp);
+        string_buffer_print(output, ".+");
+        decode_value(dec->vdec, DECODE_VALUE, disp);
         break;
     case 2: /* AC2 relative. */
-        string_buffer_print(output, "%o,2", disp);
+        decode_value(dec->vdec, DECODE_VALUE, disp);
+        string_buffer_print(output, ",2");
         break;
     case 3: /* AC3 relative. */
-        string_buffer_print(output, "%o,3", disp);
+        decode_value(dec->vdec, DECODE_VALUE, disp);
+        string_buffer_print(output, ",3");
         break;
     }
 }
@@ -255,7 +261,8 @@ void decode_sgroup(struct decoder *dec,
 
     switch (aug_func) {
     case 0:
-        string_buffer_print(output, "CYCLE %o", disp & 0x0F);
+        string_buffer_print(output, "CYCLE ");
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0x0F);
         break;
     case 2:
         switch (disp) {
@@ -288,13 +295,16 @@ void decode_sgroup(struct decoder *dec,
         }
         break;
     case 9:
-        string_buffer_print(output, "JSRII %o", disp & 0xFF);
+        string_buffer_print(output, "JSRII ");
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
     case 10:
-        string_buffer_print(output, "JSRIS %o", disp & 0xFF);
+        string_buffer_print(output, "JSRIS ");
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
     case 14:
-        string_buffer_print(output, "CONVERT %o", disp & 0xFF);
+        string_buffer_print(output, "CONVERT ");
+        decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
     default:
         string_buffer_print(output, "<unknown>");

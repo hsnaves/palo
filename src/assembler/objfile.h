@@ -175,12 +175,11 @@ int objfile_dump_constant_rom(const struct objfile *objf,
 int objfile_dump_microcode_rom(const struct objfile *objf,
                                const char *filename);
 
-/* Disassembles a microinstruction given by `mc`.
- * The output is written into the decoder `dec`.
+/* Setups the value decoder to use the objfile symbols.
+ * The value_decoder is given by the parameter `vdec`.
  */
-void objfile_disassemble(const struct objfile *objf,
-                         struct decoder *dec,
-                         const struct microcode *mc);
+void objfile_setup_value_decoder(const struct objfile *objf,
+                                 struct value_decoder *vdec);
 
 
 #endif /* __ASSEMBLER_OBJFILE_H */

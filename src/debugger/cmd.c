@@ -210,6 +210,7 @@ static
 void cmd_registers(struct debugger *dbg, int extra)
 {
     const struct simulator *sim;
+    struct decoder *dec;
 
     sim = dbg->sim;
     string_buffer_clear(&dbg->output);
@@ -217,10 +218,12 @@ void cmd_registers(struct debugger *dbg, int extra)
     printf("%s\n", string_buffer_string(&dbg->output));
 
     string_buffer_clear(&dbg->output);
+    debugger_setup_decoder(dbg);
+    dec = &dbg->dec;
     if (extra) {
-        simulator_print_extra_registers(sim, &dbg->output);
+        simulator_print_extra_registers(sim, dec);
     } else {
-        simulator_print_registers(sim, &dbg->output);
+        simulator_print_registers(sim, dec);
     }
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -230,13 +233,17 @@ static
 void cmd_nova_registers(struct debugger *dbg)
 {
     struct simulator *sim;
+    struct decoder *dec;
+
     sim = dbg->sim;
     string_buffer_clear(&dbg->output);
     debugger_nova_disassemble(dbg);
     printf("%s\n", string_buffer_string(&dbg->output));
 
     string_buffer_clear(&dbg->output);
-    simulator_print_nova_registers(sim, &dbg->output);
+    debugger_setup_decoder(dbg);
+    dec = &dbg->dec;
+    simulator_print_nova_registers(sim, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 

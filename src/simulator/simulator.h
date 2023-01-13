@@ -163,22 +163,22 @@ void simulator_nova_predecode(const struct simulator *sim,
                               struct nova_insn *ni);
 
 /* Prints the state of the registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
 void simulator_print_registers(const struct simulator *sim,
-                               struct string_buffer *output);
+                               struct decoder *dec);
 
 /* Prints the state of the extra registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
 void simulator_print_extra_registers(const struct simulator *sim,
-                                     struct string_buffer *output);
+                                     struct decoder *dec);
 
 /* Prints the state of the NOVA registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
 void simulator_print_nova_registers(const struct simulator *sim,
-                                    struct string_buffer *output);
+                                    struct decoder *dec);
 
 /* Serializes the simulator object to `sd`. */
 void simulator_serialize(const struct simulator *sim, struct serdes *sd);

@@ -231,6 +231,12 @@ struct microcode {
     int bs_use_crom;              /* If the BS fields uses constants. */
     uint16_t const_addr;          /* The address of the constant. */
     int ram_task;                 /* If this is a RAM task. */
+
+    /* Extra fields only populated by microcode_decode(). */
+    struct {
+        int has_bus_assignment;   /* Decoding detected bus assignment. */
+        int has_alu_assignment;   /* Decoding detected alu assignment. */
+     } extra;
 };
 
 /* The type of decode operation to perform. */
@@ -239,6 +245,8 @@ enum decode_type {
     DECODE_REG,                   /* To decode a register. */
     DECODE_LABEL,                 /* To decode a label. */
     DECODE_MEMORY,                /* To decode a memory location. */
+    DECODE_TASK,                  /* To decode a task. */
+    DECODE_BOOL,                  /* To decode a boolean value. */
     DECODE_VALUE,                 /* A general 16-bit value. */
     DECODE_VALUE32,               /* A general 32-bit value. */
     DECODE_SVALUE32,              /* A signed 32-bit value. */
@@ -246,28 +254,37 @@ enum decode_type {
 
 /* The general decoder callback function type.
  * It is used to decode the constants, the R registers names,
- * and the GOTO destination labels. The value `val` is of type
+ * and the GOTO destination labels, etc. The value `val` is of type
  * uint32_t because it fits all the possible values one would like to
  * decode. The extra argument passed by the callback is in `arg`.
  * It is usually the value in `dec->arg`, but it could be different.
  */
 struct decoder;
-typedef void (*decoder_cb)(struct decoder *dec,
-                           enum decode_type dec_type, uint32_t val,
-                           void *arg);
+struct value_decoder;
+typedef void (*value_decoder_cb)(struct value_decoder *vdec,
+                                 enum decode_type dec_type, uint32_t val);
+
+/* The value decoder. */
+struct value_decoder {
+    struct decoder *dec;          /* The parent decoder. */
+    value_decoder_cb cb;          /* The callback to decode values. */
+    void *arg;                    /* Extra argument for the callback. */
+    struct value_decoder *next;   /* The next value_decoder, for chaining
+                                   * decoders together.
+                                   */
+};
 
 /* The microcode decoder.
  * This structure can also be used to decode other things, like
  * register values (for the debugger), etc.
  */
 struct decoder {
-    struct string_buffer *output; /* The output buffer. */
     int error;                    /* Indicates an error was detected. */
-
-    decoder_cb dec_cb;            /* To decode constants, registers, etc. */
-    void *arg;                    /* Extra parameter used by the
-                                   * callbacks.
+    struct string_buffer *output; /* The output buffer. */
+    struct microcode *mc;         /* Current instruction being decoded,
+                                   * it might be NULL.
                                    */
+    struct value_decoder *vdec;   /* The sub-decoder for decoding values. */
 };
 
 /* Functions. */
@@ -282,8 +299,29 @@ void microcode_predecode(struct microcode *mc,
                          uint16_t address, uint32_t mcode,
                          uint8_t task);
 
-/* Decodes the microinstruction `mc` using the decoder `dec`. */
-void microcode_decode(struct decoder *dec, const struct microcode *mc);
+/* Decodes a value using the decoder callback.
+ * The type of decoding is given by `dec_type`, and the value
+ * is given by `val`.
+ */
+void decode_value(struct value_decoder *vdec,
+                  enum decode_type dec_type, uint32_t val);
+
+/* Decodes a value and pads with the necessary spaces to make
+ * it a minimum length of `len`. All the other parameters are the
+ * same as in decode_value().
+ */
+void decode_value_padded(struct value_decoder *vdec,
+                         enum decode_type dec_type, uint32_t val,
+                         size_t len);
+
+/* Decodes a tagged value. The `tag` parameters specifies the tag name.
+ * All the other parameters are the same as in decode_value().
+ */
+void decode_tagged_value(struct value_decoder *vdec, const char *tag,
+                         enum decode_type dec_type, uint32_t val);
+
+/* Decodes the microinstruction in the decoder `dec`. */
+void decode_microcode(struct decoder *dec);
 
 
 #endif /* __MICROCODE_MICROCODE_H */

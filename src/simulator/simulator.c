@@ -1743,50 +1743,48 @@ void simulator_nova_predecode(const struct simulator *sim,
 }
 
 void simulator_print_registers(const struct simulator *sim,
-                               struct string_buffer *output)
+                               struct decoder *dec)
 {
+    struct string_buffer *output;
     uint16_t pending;
     unsigned int i;
 
-    string_buffer_print(output,
-                        "T    : %07o    L    : %07o    "
-                        "MAR  : %07o    IR   : %07o\n",
-                        sim->t, sim->l, sim->mar, sim->ir);
+    output = dec->output;
+    decode_tagged_value(dec->vdec, "T", DECODE_VALUE, sim->t);
+    decode_tagged_value(dec->vdec, "L", DECODE_VALUE, sim->l);
+    decode_tagged_value(dec->vdec, "MAR", DECODE_MEMORY, sim->mar);
+    decode_tagged_value(dec->vdec, "IR", DECODE_VALUE, sim->ir);
+    string_buffer_print(output, "\n");
 
     for (i = 0; i < NUM_R_REGISTERS; i++) {
-        string_buffer_print(output,
-                            "R%-4o: %07o",
-                            i, sim->r[i]);
+        decode_value_padded(dec->vdec, DECODE_REG, i, 9);
+        string_buffer_print(output, ": ");
+        decode_value_padded(dec->vdec, DECODE_VALUE, sim->r[i], 11);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
-        } else {
-            string_buffer_print(output, "    ");
         }
     }
 
     pending = get_pending(sim);
-    string_buffer_print(output,
-                        "ALUC0: %-7o    CARRY: %-7o    "
-                        "SKIP : %-7o    PEND : %07o\n",
-                        sim->aluC0 ? 1 : 0,
-                        sim->carry ? 1 : 0,
-                        sim->skip ? 1 : 0,
-                        pending);
+    decode_tagged_value(dec->vdec, "ALUC0", DECODE_BOOL, sim->aluC0);
+    decode_tagged_value(dec->vdec, "CARRY", DECODE_BOOL, sim->carry);
+    decode_tagged_value(dec->vdec, "SKIP", DECODE_BOOL, sim->skip);
+    decode_tagged_value(dec->vdec, "PEND", DECODE_VALUE, pending);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "CYC  : %-10d ICYC : %-10d "
-                        "TCYC : %-10d MCYC : %d\n",
-                        sim->cycle, sim->intr_cycle,
-                        sim->task_cycle[sim->ctask],
-                        sim->mem_cycle);
+    decode_tagged_value(dec->vdec, "CYC", DECODE_SVALUE32, sim->cycle);
+    decode_tagged_value(dec->vdec, "ICYC", DECODE_SVALUE32, sim->intr_cycle);
+    decode_tagged_value(dec->vdec, "TCYC", DECODE_SVALUE32,
+                        sim->task_cycle[sim->ctask]);
+    decode_tagged_value(dec->vdec, "MCYC", DECODE_SVALUE32, sim->mem_cycle);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "NTASK: %03o        TS   : %-7d    "
-                        "NMPC : %07o    SYS  : %d\n",
-                        sim->ntask,
-                        sim->task_switch ? 1 : 0,
-                        sim->task_mpc[sim->ctask],
-                        sim->sys_type);
+    decode_tagged_value(dec->vdec, "NTASK", DECODE_TASK, sim->ntask);
+    decode_tagged_value(dec->vdec, "TS", DECODE_BOOL, sim->task_switch);
+    decode_tagged_value(dec->vdec, "NMPC", DECODE_LABEL,
+                        sim->task_mpc[sim->ctask]);
+    decode_tagged_value(dec->vdec, "SYS", DECODE_SVALUE32, sim->sys_type);
+    string_buffer_print(output, "\n");
 
     if (sim->error) {
         string_buffer_print(output, "\nsimulator in error state");
@@ -1794,36 +1792,37 @@ void simulator_print_registers(const struct simulator *sim,
 }
 
 void simulator_print_extra_registers(const struct simulator *sim,
-                                     struct string_buffer *output)
+                                     struct decoder *dec)
 {
+    struct string_buffer *output;
     unsigned int i;
     uint8_t rb;
 
+    output = dec->output;
     rb = sim->sreg_banks[sim->ctask];
-    for (i = 0; i < NUM_R_REGISTERS; i++) {
-        string_buffer_print(output,
-                            "S%-4o: %07o",
-                            i, sim->s[rb * NUM_R_REGISTERS + i]);
+    for (i = 0; i < NUM_S_REGISTERS; i++) {
+        decode_value_padded(dec->vdec, DECODE_REG,
+                            i + NUM_R_REGISTERS, 9);
+        string_buffer_print(output, ": ");
+        decode_value_padded(dec->vdec, DECODE_VALUE,
+                            sim->s[rb * NUM_R_REGISTERS + i], 11);
         if ((i % 4) == 3) {
             string_buffer_print(output, "\n");
-        } else {
-            string_buffer_print(output, "    ");
         }
     }
 
-    string_buffer_print(output,
-                        "M    : %07o    XM_B  : %03o        "
-                        "SR_B : %07o    RMR : %07o\n",
-                        sim->m,  sim->xm_banks[sim->ctask],
-                        rb, sim->rmr);
+    decode_tagged_value(dec->vdec, "M", DECODE_VALUE, sim->m);
+    decode_tagged_value(dec->vdec, "XM_B", DECODE_VALUE,
+                        sim->xm_banks[sim->ctask]);
+    decode_tagged_value(dec->vdec, "SR_B", DECODE_VALUE, rb);
+    decode_tagged_value(dec->vdec, "RMR", DECODE_VALUE, sim->rmr);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "CRAM : %07o    RDR  : %-7d    "
-                        "WRTR : %-7d    SRES : %d\n",
-                        sim->cram_addr,
-                        sim->rdram ? 1 : 0,
-                        sim->wrtram ? 1 : 0,
-                        sim->soft_reset ? 1 : 0);
+    decode_tagged_value(dec->vdec, "CRAM", DECODE_VALUE, sim->cram_addr);
+    decode_tagged_value(dec->vdec, "RDR", DECODE_BOOL, sim->rdram);
+    decode_tagged_value(dec->vdec, "WRTR", DECODE_BOOL, sim->wrtram);
+    decode_tagged_value(dec->vdec, "SRES", DECODE_BOOL, sim->soft_reset);
+    string_buffer_print(output, "\n");
 
     if (sim->error) {
         string_buffer_print(output, "\nsimulator in error state");
@@ -1831,16 +1830,22 @@ void simulator_print_extra_registers(const struct simulator *sim,
 }
 
 void simulator_print_nova_registers(const struct simulator *sim,
-                                    struct string_buffer *output)
+                                    struct decoder *dec)
 {
-    string_buffer_print(output,
-                        "R0   : %06o     R1   : %06o     "
-                        "R2   : %06o     R3   : %06o\n",
-                        sim->r[3], sim->r[2],
-                        sim->r[1], sim->r[0]);
-    string_buffer_print(output,
-                        "IR   : %06o     CARRY: %o\n",
-                        sim->ir, sim-> carry ? 1 : 0);
+    struct string_buffer *output;
+    unsigned int i;
+
+    output = dec->output;
+    for (i = 0; i < 4; i++) {
+        decode_value_padded(dec->vdec, DECODE_REG, i, 9);
+        string_buffer_print(output, ": ");
+        decode_value_padded(dec->vdec, DECODE_VALUE, sim->r[i], 11);
+    }
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "IR", DECODE_VALUE, sim->ir);
+    decode_tagged_value(dec->vdec, "CARRY", DECODE_BOOL, sim->carry);
+    string_buffer_print(output, "\n");
 }
 
 void simulator_serialize(const struct simulator *sim, struct serdes *sd)
