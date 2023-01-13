@@ -13,21 +13,11 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define NUM_R_REGISTERS                   32
-#define NUM_S_REGISTERS             (8 * 32)
-
-/* For the MPC. */
-#define MPC_BANK_SHIFT                    10
-#define MPC_BANK_MASK                  0x003
-#define MPC_ADDR_MASK                  0x3FF
 
 /* For the memory. */
-#define NUM_MICROCODE_BANKS                4
-#define NUM_BANKS                          4
-#define NUM_BANK_SLOTS        TASK_NUM_TASKS
 #define MEMORY_TOP                    0xFE00
 #define XM_BANK_START                 0xFFE0
-#define XM_BANK_END (XM_BANK_START + NUM_BANK_SLOTS)
+#define XM_BANK_END (XM_BANK_START + TASK_NUM_TASKS)
 
 /* For fixing the microcode in RAM. */
 #define MC_INVERT_MASK            0x00088400
@@ -105,7 +95,7 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
     simulator_initvar(sim);
 
     sim->r = malloc(NUM_R_REGISTERS * sizeof(uint16_t));
-    sim->s = malloc(NUM_S_REGISTERS * sizeof(uint16_t));
+    sim->s = malloc(NUM_S_BANKS * NUM_S_REGISTERS * sizeof(uint16_t));
     sim->acs_rom = (uint8_t *)
         malloc(ACSROM_SIZE * sizeof(uint8_t));
     sim->consts = (uint16_t *)
@@ -117,11 +107,11 @@ int simulator_create(struct simulator *sim, enum system_type sys_type)
     sim->task_cycle = (int32_t *)
         malloc(TASK_NUM_TASKS * sizeof(int32_t));
     sim->mem = (uint16_t *)
-        malloc(NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
+        malloc(NUM_MEMORY_BANKS * MEMORY_SIZE * sizeof(uint16_t));
     sim->xm_banks = (uint16_t *)
-        malloc(NUM_BANK_SLOTS * sizeof(uint16_t));
+        malloc(TASK_NUM_TASKS * sizeof(uint16_t));
     sim->sreg_banks = (uint8_t *)
-        malloc(NUM_BANK_SLOTS * sizeof(uint8_t));
+        malloc(TASK_NUM_TASKS * sizeof(uint8_t));
 
     if (unlikely(!sim->r || !sim->s
                  || !sim->acs_rom || !sim->consts || !sim->microcode
@@ -267,10 +257,10 @@ void simulator_reset(struct simulator *sim)
     uint8_t task;
 
     memset(sim->r, 0, NUM_R_REGISTERS * sizeof(uint16_t));
-    memset(sim->s, 0, NUM_S_REGISTERS * sizeof(uint16_t));
-    memset(sim->mem, 0, NUM_BANKS * MEMORY_SIZE * sizeof(uint16_t));
-    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
-    memset(sim->sreg_banks, 0, NUM_BANK_SLOTS * sizeof(uint8_t));
+    memset(sim->s, 0, NUM_S_BANKS * NUM_S_REGISTERS * sizeof(uint16_t));
+    memset(sim->mem, 0, NUM_MEMORY_BANKS * MEMORY_SIZE * sizeof(uint16_t));
+    memset(sim->xm_banks, 0, TASK_NUM_TASKS * sizeof(uint16_t));
+    memset(sim->sreg_banks, 0, TASK_NUM_TASKS * sizeof(uint8_t));
 
     for (task = 0; task < TASK_NUM_TASKS; task++) {
         sim->task_mpc[task] = (uint16_t) task;
@@ -1538,7 +1528,7 @@ void do_soft_reset(struct simulator *sim)
     uint16_t addr, bank;
     uint8_t task;
 
-    memset(sim->xm_banks, 0, NUM_BANK_SLOTS * sizeof(uint16_t));
+    memset(sim->xm_banks, 0, TASK_NUM_TASKS * sizeof(uint16_t));
 
     if (sim->sys_type == ALTO_II_2KROM) {
         bank = 2;
@@ -1858,7 +1848,7 @@ void simulator_serialize(const struct simulator *sim, struct serdes *sd)
     serdes_put32(sd, (uint32_t) sim->sys_type);
     serdes_put_bool(sd, sim->error);
     serdes_put16_array(sd, sim->r, NUM_R_REGISTERS);
-    serdes_put16_array(sd, sim->s, NUM_S_REGISTERS);
+    serdes_put16_array(sd, sim->s, NUM_S_BANKS * NUM_S_REGISTERS);
     serdes_put16(sd, sim->t);
     serdes_put16(sd, sim->l);
     serdes_put16(sd, sim->m);
@@ -1886,9 +1876,9 @@ void simulator_serialize(const struct simulator *sim, struct serdes *sd)
     serdes_put32_array(sd, (const uint32_t *) sim->task_cycle,
                        TASK_NUM_TASKS);
     serdes_put32(sd, sim->intr_cycle);
-    serdes_put16_array(sd, sim->mem, NUM_BANKS * MEMORY_SIZE);
-    serdes_put16_array(sd, sim->xm_banks, NUM_BANK_SLOTS);
-    serdes_put8_array(sd, sim->sreg_banks, NUM_BANK_SLOTS);
+    serdes_put16_array(sd, sim->mem, NUM_MEMORY_BANKS * MEMORY_SIZE);
+    serdes_put16_array(sd, sim->xm_banks, TASK_NUM_TASKS);
+    serdes_put8_array(sd, sim->sreg_banks, TASK_NUM_TASKS);
     serdes_put16(sd, sim->mem_cycle);
     serdes_put8(sd, sim->mem_task);
     serdes_put16(sd, sim->mem_low);
@@ -1906,7 +1896,7 @@ void simulator_deserialize(struct simulator *sim, struct serdes *sd)
     sim->sys_type = (enum system_type) serdes_get32(sd);
     sim->error = serdes_get_bool(sd);
     serdes_get16_array(sd, sim->r, NUM_R_REGISTERS);
-    serdes_get16_array(sd, sim->s, NUM_S_REGISTERS);
+    serdes_get16_array(sd, sim->s, NUM_S_BANKS * NUM_S_REGISTERS);
     sim->t = serdes_get16(sd);
     sim->l = serdes_get16(sd);
     sim->m = serdes_get16(sd);
@@ -1934,9 +1924,9 @@ void simulator_deserialize(struct simulator *sim, struct serdes *sd)
     serdes_get32_array(sd, (uint32_t *) sim->task_cycle,
                        TASK_NUM_TASKS);
     sim->intr_cycle = serdes_get32(sd);
-    serdes_get16_array(sd, sim->mem, NUM_BANKS * MEMORY_SIZE);
-    serdes_get16_array(sd, sim->xm_banks, NUM_BANK_SLOTS);
-    serdes_get8_array(sd, sim->sreg_banks, NUM_BANK_SLOTS);
+    serdes_get16_array(sd, sim->mem, NUM_MEMORY_BANKS * MEMORY_SIZE);
+    serdes_get16_array(sd, sim->xm_banks, TASK_NUM_TASKS);
+    serdes_get8_array(sd, sim->sreg_banks, TASK_NUM_TASKS);
     sim->mem_cycle = serdes_get16(sd);
     sim->mem_task = serdes_get8(sd);
     sim->mem_low = serdes_get16(sd);

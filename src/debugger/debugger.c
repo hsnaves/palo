@@ -163,13 +163,13 @@ void disasm_decode_cb(struct decoder *dec,
         break;
 
     case DECODE_REG:
-        if (val >= 2 * R_MASK + 2) {
+        if (val >= NUM_R_REGISTERS + NUM_S_REGISTERS) {
             dec->error = TRUE;
             return;
         }
 
         /* Always use octal for register numbers. */
-        if (val <= R_MASK) {
+        if (val < NUM_R_REGISTERS) {
             string_buffer_print(output, "R%o", val);
         } else {
             string_buffer_print(output, "S%o", val & R_MASK);

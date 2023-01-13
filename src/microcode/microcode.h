@@ -11,145 +11,157 @@
 #define CONSTANT_SIZE                    256
 #define MICROCODE_SIZE                  1024
 #define MEMORY_SIZE                    65536
+#define ACSROM_SIZE                      256
 
 /* Task types. */
 #define TASK_EMULATOR                      0
-#define TASK_DISK_SECTOR                  04
-#define TASK_ETHERNET                     07
-#define TASK_MEMORY_REFRESH              010
-#define TASK_DISPLAY_WORD                011
-#define TASK_CURSOR                      012
-#define TASK_DISPLAY_HORIZONTAL          013
-#define TASK_DISPLAY_VERTICAL            014
-#define TASK_PARITY                      015
-#define TASK_DISK_WORD                   016
-#define TASK_NUM_TASKS                   020
+#define TASK_DISK_SECTOR                   4
+#define TASK_ETHERNET                      7
+#define TASK_MEMORY_REFRESH                8
+#define TASK_DISPLAY_WORD                  9
+#define TASK_CURSOR                       10
+#define TASK_DISPLAY_HORIZONTAL           11
+#define TASK_DISPLAY_VERTICAL             12
+#define TASK_PARITY                       13
+#define TASK_DISK_WORD                    14
+#define TASK_NUM_TASKS                    16
 #define TASK_VALID_MASK               0x7F91
 #define TASK_RAM_MASK                 0x0001
 
 /* ALU functions (values of ALUF field in microinstruction). */
 #define ALU_BUS                            0
-#define ALU_T                             01
-#define ALU_BUS_OR_T                      02
-#define ALU_BUS_AND_T                     03
-#define ALU_BUS_XOR_T                     04
-#define ALU_BUS_PLUS_1                    05
-#define ALU_BUS_MINUS_1                   06
-#define ALU_BUS_PLUS_T                    07
-#define ALU_BUS_MINUS_T                  010
-#define ALU_BUS_MINUS_T_MINUS_1          011
-#define ALU_BUS_PLUS_T_PLUS_1            012
-#define ALU_BUS_PLUS_SKIP                013
-#define ALU_BUS_AND_T_WB                 014
-#define ALU_BUS_AND_NOT_T                015
-#define ALU_UNDEFINED1                   016
-#define ALU_UNDEFINED2                   017
+#define ALU_T                              1
+#define ALU_BUS_OR_T                       2
+#define ALU_BUS_AND_T                      3
+#define ALU_BUS_XOR_T                      4
+#define ALU_BUS_PLUS_1                     5
+#define ALU_BUS_MINUS_1                    6
+#define ALU_BUS_PLUS_T                     7
+#define ALU_BUS_MINUS_T                    8
+#define ALU_BUS_MINUS_T_MINUS_1            9
+#define ALU_BUS_PLUS_T_PLUS_1             10
+#define ALU_BUS_PLUS_SKIP                 11
+#define ALU_BUS_AND_T_WB                  12
+#define ALU_BUS_AND_NOT_T                 13
+#define ALU_UNDEFINED1                    14
+#define ALU_UNDEFINED2                    15
 /* Test if loads T directly from the ALU result. */
 #define LOAD_T_FROM_ALU_MASK          0x1C65
 #define LOAD_T_FROM_ALU(aluf) (((1 << (aluf)) & LOAD_T_FROM_ALU_MASK) != 0)
 
 /* Possible values of the BS (bus select) field in the microinstruction. */
 #define BS_READ_R                          0
-#define BS_LOAD_R                         01
-#define BS_NONE                           02
-#define BS_TASK_SPECIFIC1                 03
-#define BS_TASK_SPECIFIC2                 04
-#define BS_READ_MD                        05
-#define BS_READ_MOUSE                     06
-#define BS_READ_DISP                      07
+#define BS_LOAD_R                          1
+#define BS_NONE                            2
+#define BS_TASK_SPECIFIC1                  3
+#define BS_TASK_SPECIFIC2                  4
+#define BS_READ_MD                         5
+#define BS_READ_MOUSE                      6
+#define BS_READ_DISP                       7
 /* Ram task bus sources. */
-#define BS_RAM_READ_S_LOCATION            03
-#define BS_RAM_LOAD_S_LOCATION            04
+#define BS_RAM_READ_S_LOCATION             3
+#define BS_RAM_LOAD_S_LOCATION             4
 /* KSEC (disk sector), KWD (disk word) bus sources. */
-#define BS_DSK_READ_KSTAT                 03
-#define BS_DSK_READ_KDATA                 04
+#define BS_DSK_READ_KSTAT                  3
+#define BS_DSK_READ_KDATA                  4
 /* ETHERNET bus sources. */
-#define BS_ETH_EIDFCT                     04
+#define BS_ETH_EIDFCT                      4
 /* Test if use the constant ROM. */
 #define BS_USE_CROM(bs)          ((bs) >= 4)
 
 /* Possible values of the F1 field in the microinstruction. */
 #define F1_NONE                            0
-#define F1_LOAD_MAR                       01
-#define F1_TASK                           02
-#define F1_BLOCK                          03
-#define F1_LLSH1                          04
-#define F1_LRSH1                          05
-#define F1_LLCY8                          06
-#define F1_CONSTANT                       07
+#define F1_LOAD_MAR                        1
+#define F1_TASK                            2
+#define F1_BLOCK                           3
+#define F1_LLSH1                           4
+#define F1_LRSH1                           5
+#define F1_LLCY8                           6
+#define F1_CONSTANT                        7
 /* F1 functions of ram tasks. */
-#define F1_RAM_SWMODE                    010
-#define F1_RAM_WRTRAM                    011
-#define F1_RAM_RDRAM                     012
-#define F1_RAM_LOAD_SRB                  013
+#define F1_RAM_SWMODE                      8
+#define F1_RAM_WRTRAM                      9
+#define F1_RAM_RDRAM                      10
+#define F1_RAM_LOAD_SRB                   11
 /* F1 functions specific to the emulator task. */
-#define F1_EMU_LOAD_RMR                  013
-#define F1_EMU_LOAD_ESRB                 015
-#define F1_EMU_RSNF                      016
-#define F1_EMU_STARTF                    017
+#define F1_EMU_LOAD_RMR                   11
+#define F1_EMU_LOAD_ESRB                  13
+#define F1_EMU_RSNF                       14
+#define F1_EMU_STARTF                     15
 /* KSEC (disk sector), KWD (disk word) F1 functions. */
-#define F1_DSK_STROBE                    011
-#define F1_DSK_LOAD_KSTAT                012
-#define F1_DSK_INCRECNO                  013
-#define F1_DSK_CLRSTAT                   014
-#define F1_DSK_LOAD_KCOMM                015
-#define F1_DSK_LOAD_KADR                 016
-#define F1_DSK_LOAD_KDATA                017
+#define F1_DSK_STROBE                      9
+#define F1_DSK_LOAD_KSTAT                 10
+#define F1_DSK_INCRECNO                   11
+#define F1_DSK_CLRSTAT                    12
+#define F1_DSK_LOAD_KCOMM                 13
+#define F1_DSK_LOAD_KADR                  14
+#define F1_DSK_LOAD_KDATA                 15
 /* ETHERNET F1 functions. */
-#define F1_ETH_EILFCT                    013
-#define F1_ETH_EPFCT                     014
-#define F1_ETH_EWFCT                     015
+#define F1_ETH_EILFCT                     11
+#define F1_ETH_EPFCT                      12
+#define F1_ETH_EWFCT                      13
 
 /* Possible values of the F2 field in the microinstruction. */
 #define F2_NONE                            0
-#define F2_BUSEQ0                         01
-#define F2_SHLT0                          02
-#define F2_SHEQ0                          03
-#define F2_BUS                            04
-#define F2_ALUCY                          05
-#define F2_STORE_MD                       06
-#define F2_CONSTANT                       07
+#define F2_BUSEQ0                          1
+#define F2_SHLT0                           2
+#define F2_SHEQ0                           3
+#define F2_BUS                             4
+#define F2_ALUCY                           5
+#define F2_STORE_MD                        6
+#define F2_CONSTANT                        7
 /* F2 functions specific to the emulator task. */
-#define F2_EMU_BUSODD                    010
-#define F2_EMU_MAGIC                     011
-#define F2_EMU_LOAD_DNS                  012
-#define F2_EMU_ACDEST                    013
-#define F2_EMU_LOAD_IR                   014
-#define F2_EMU_IDISP                     015
-#define F2_EMU_ACSOURCE                  016
+#define F2_EMU_BUSODD                      8
+#define F2_EMU_MAGIC                       9
+#define F2_EMU_LOAD_DNS                   10
+#define F2_EMU_ACDEST                     11
+#define F2_EMU_LOAD_IR                    12
+#define F2_EMU_IDISP                      13
+#define F2_EMU_ACSOURCE                   14
 /* KSEC (disk sector), KWD (disk word) F2 functions. */
-#define F2_DSK_INIT                      010
-#define F2_DSK_RWC                       011
-#define F2_DSK_RECNO                     012
-#define F2_DSK_XFRDAT                    013
-#define F2_DSK_SWRNRDY                   014
-#define F2_DSK_NFER                      015
-#define F2_DSK_STROBON                   016
+#define F2_DSK_INIT                        8
+#define F2_DSK_RWC                         9
+#define F2_DSK_RECNO                      10
+#define F2_DSK_XFRDAT                     11
+#define F2_DSK_SWRNRDY                    12
+#define F2_DSK_NFER                       13
+#define F2_DSK_STROBON                    14
 /* ETHERNET F2 functions. */
-#define F2_ETH_EODFCT                    010
-#define F2_ETH_EOSFCT                    011
-#define F2_ETH_ERBFCT                    012
-#define F2_ETH_EEFCT                     013
-#define F2_ETH_EBFCT                     014
-#define F2_ETH_ECBFCT                    015
-#define F2_ETH_EISFCT                    016
+#define F2_ETH_EODFCT                      8
+#define F2_ETH_EOSFCT                      9
+#define F2_ETH_ERBFCT                     10
+#define F2_ETH_EEFCT                      11
+#define F2_ETH_EBFCT                      12
+#define F2_ETH_ECBFCT                     13
+#define F2_ETH_EISFCT                     14
 /* DWT (display word task) F2 functions. */
-#define F2_DW_LOAD_DDR                   010
+#define F2_DW_LOAD_DDR                     8
 /* CURT (cursor task) F2 functions. */
-#define F2_CUR_LOAD_XPREG                010
-#define F2_CUR_LOAD_CSR                  011
+#define F2_CUR_LOAD_XPREG                  8
+#define F2_CUR_LOAD_CSR                    9
 /* DHT (display horizontal task) F2 functions. */
-#define F2_DH_EVENFIELD                  010
-#define F2_DH_SETMODE                    011
+#define F2_DH_EVENFIELD                    8
+#define F2_DH_SETMODE                      9
 /* DVT (display vertial task) F2 functions. */
-#define F2_DV_EVENFIELD                  010
+#define F2_DV_EVENFIELD                    8
 
 /* Extra constants. */
 #define R_ZERO                             0
-#define R_MASK                           037
+#define R_MASK                            31
 #define NEXT_MASK_DSK_INIT           0x10000
 #define NEXT_MASK_BUS                0x20000
 #define NEXT_MASK_CONSTANT           0x40000
+
+#define NUM_R_REGISTERS                   32
+#define NUM_S_REGISTERS                   32
+#define NUM_S_BANKS                        8
+#define NUM_MICROCODE_BANKS                4
+#define NUM_MEMORY_BANKS                   4
+
+/* For the MPC. */
+#define MPC_BANK_SHIFT                    10
+#define MPC_BANK_MASK                  0x003
+#define MPC_ADDR_MASK                  0x3FF
 
 /* Decoding the microcode. */
 #define MC_NEXT_S                          0

@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-An in-progress microcode assembler and disassembler for the Xerox Alto workstation. It was reconstructed from this [memo](http://www.bitsavers.org/pdf/xerox/alto/memos_1974/Alto_Microassembler_Aug74.pdf).
+An in-progress microcode assembler together with a simulator for the Xerox Alto workstation. The assembler was reconstructed from this [memo](http://www.bitsavers.org/pdf/xerox/alto/memos_1974/Alto_Microassembler_Aug74.pdf).
 
 ## Getting started
 

@@ -5,9 +5,6 @@
 #include <stdint.h>
 #include "microcode/microcode.h"
 
-/* Constants. */
-#define ACSROM_SIZE                      256
-
 /* Declaration of the global variables. */
 
 /* Table used to implement F2_EMU_ACSOURCE and F2_EMU_IDISP. */

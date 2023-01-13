@@ -11,7 +11,7 @@
 #include "common/utils.h"
 
 /* Constants. */
-#define REG_SIZE          (2 * (R_MASK + 1))
+#define REG_SIZE  (NUM_R_REGISTERS + NUM_S_REGISTERS)
 
 /* Data structures and types. */
 
