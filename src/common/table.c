@@ -74,7 +74,7 @@ struct string_node *table_find(const struct table *t,
     struct string_node *n;
     unsigned int slot;
 
-    slot =str->hash % t->num_slots;
+    slot = str->hash % t->num_slots;
     n = t->table[slot];
     while (n) {
         if (string_equal(&n->str, str))

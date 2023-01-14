@@ -431,12 +431,8 @@ void decode_bus_rhs(struct decoder *dec)
     default:
         if (mc->ram_task) {
             if (mc->bs == BS_RAM_READ_S_LOCATION) {
-                if (mc->rsel == 0) {
-                    string_buffer_print(output, "M");
-                } else {
-                    decode_value(dec->vdec, DECODE_REG,
-                                 mc->rsel | (R_MASK + 1));
-                }
+                decode_value(dec->vdec, DECODE_REG,
+                             mc->rsel + NUM_R_REGISTERS);
                 break;
             } else if (mc->bs == BS_RAM_LOAD_S_LOCATION) {
                 string_buffer_print(output, "0");
@@ -666,7 +662,8 @@ void decode_alu_lhs(struct decoder *dec)
 
     if (mc->load_l) {
         if (mc->task == TASK_EMULATOR) {
-            string_buffer_print(output, "M<- ");
+            decode_value(dec->vdec, DECODE_REG, NUM_R_REGISTERS);
+            string_buffer_print(output, "<- ");
         }
         string_buffer_print(output, "L<- ");
     }
@@ -770,7 +767,7 @@ void decode_lreg_assign(struct decoder *dec)
 static
 void decode_mreg_rhs(struct decoder *dec)
 {
-    string_buffer_print(dec->output, "M");
+    decode_value(dec->vdec, DECODE_REG, NUM_R_REGISTERS);
 }
 
 /* Decodes the M register LHS (destinations). */
@@ -786,7 +783,7 @@ void decode_mreg_lhs(struct decoder *dec)
         && mc->bs == BS_RAM_LOAD_S_LOCATION) {
 
         decode_value(dec->vdec, DECODE_REG,
-                     mc->rsel | (R_MASK + 1));
+                     mc->rsel + NUM_R_REGISTERS);
         string_buffer_print(output, "<- ");
     }
 }

@@ -130,7 +130,7 @@ static
 int is_punctuation(char c)
 {
    return (c == '_' || c == '$' || c == ':' || c == ';'
-           || c == '#' || c == '!' || c == '%' || c ==',');
+           || c == '#' || c == '!' || c == '%' || c == ',');
 }
 
 /* Adds a new token based on the contents of the temporary buffer.

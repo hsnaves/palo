@@ -1818,10 +1818,10 @@ void simulator_print_extra_registers(const struct simulator *sim,
     decode_tagged_value(dec->vdec, "RMR", DECODE_VALUE, sim->rmr);
     string_buffer_print(output, "\n");
 
-    decode_tagged_value(dec->vdec, "CRAM", DECODE_VALUE, sim->cram_addr);
-    decode_tagged_value(dec->vdec, "RDR", DECODE_BOOL, sim->rdram);
-    decode_tagged_value(dec->vdec, "WRTR", DECODE_BOOL, sim->wrtram);
-    decode_tagged_value(dec->vdec, "SRES", DECODE_BOOL, sim->soft_reset);
+    decode_tagged_value(dec->vdec, "CRAM_ADDR", DECODE_VALUE, sim->cram_addr);
+    decode_tagged_value(dec->vdec, "RDRAM", DECODE_BOOL, sim->rdram);
+    decode_tagged_value(dec->vdec, "WRTRAM", DECODE_BOOL, sim->wrtram);
+    decode_tagged_value(dec->vdec, "SRESET", DECODE_BOOL, sim->soft_reset);
     string_buffer_print(output, "\n");
 
     if (sim->error) {

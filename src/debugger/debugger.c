@@ -172,6 +172,8 @@ void disasm_decode_cb(struct value_decoder *vdec,
         /* Always use octal for register numbers. */
         if (val < NUM_R_REGISTERS) {
             string_buffer_print(output, "R%o", val);
+        } else if (val == NUM_R_REGISTERS) {
+            string_buffer_print(output, "M");
         } else {
             string_buffer_print(output, "S%o", val & R_MASK);
         }
@@ -269,7 +271,7 @@ void debugger_disassemble(struct debugger *dbg)
     struct string_buffer *output;
     size_t len;
 
-    dec =debugger_setup_decoder(dbg);
+    dec = debugger_setup_decoder(dbg);
     output = dec->output;
     mc = dec->mc;
 

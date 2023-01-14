@@ -111,7 +111,7 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     while (TRUE) {
         if (max_steps >= 0 && step == max_steps)
             break;
-        if (max_cycles >=0 && cycle >= max_cycles)
+        if (max_cycles >= 0 && cycle >= max_cycles)
             break;
 
         if (sim->error) break;
