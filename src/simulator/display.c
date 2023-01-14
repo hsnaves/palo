@@ -332,9 +332,11 @@ void dw_interrupt(struct display *displ)
         INTR_CYCLE(displ->intr_cycle + HBLANK_DURATION);
 }
 
-/* Updates the intr_cycle. */
+/* Updates the intr_cycle.
+ * Returns TRUE on success.
+ */
 static
-void update_intr_cycle(struct display *displ)
+int update_intr_cycle(struct display *displ)
 {
     int32_t intr_cycles[3];
 
@@ -342,11 +344,17 @@ void update_intr_cycle(struct display *displ)
     intr_cycles[1] = displ->dh_intr_cycle;
     intr_cycles[2] = displ->dw_intr_cycle;
 
-    displ->intr_cycle = compute_intr_cycle(displ->intr_cycle,
-                                           3, intr_cycles);
+    if (unlikely(!compute_intr_cycle(displ->intr_cycle, TRUE,
+                                     3, intr_cycles,
+                                     &displ->intr_cycle))) {
+        report_error("display: update_intr_cycle: "
+                     "error in computing interrupt cycle");
+        return FALSE;
+    }
+    return TRUE;
 }
 
-void display_interrupt(struct display *displ)
+int display_interrupt(struct display *displ)
 {
     int has_dv, has_dh, has_dw;
 
@@ -358,7 +366,7 @@ void display_interrupt(struct display *displ)
     if (has_dh) dh_interrupt(displ);
     if (has_dw) dw_interrupt(displ);
 
-    update_intr_cycle(displ);
+    return update_intr_cycle(displ);
 }
 
 void display_on_switch_task(struct display *displ, uint8_t task)

@@ -263,8 +263,10 @@ uint16_t disk_func_strobon(const struct disk *dsk, uint8_t task);
  */
 void disk_block_task(struct disk *dsk, uint8_t task);
 
-/* Processes the disk interrupts. */
-void disk_interrupt(struct disk *dsk);
+/* Processes the disk interrupts.
+ * Returns TRUE on success.
+ */
+int disk_interrupt(struct disk *dsk);
 
 /* Callback for when the simulation switches to a disk task.
  * The new task is given by `task`.

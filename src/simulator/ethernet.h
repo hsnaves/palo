@@ -108,8 +108,9 @@ uint16_t ethernet_erbfct(struct ethernet *ether);
 
 /* Performs the F2_ETH_EEFCT (Ethernet End of transmission Function).
  * The current simulation cycle is given by the parameter `cycle`.
+ * Returns TRUE on success.
  */
-void ethernet_eefct(struct ethernet *ether, int32_t cycle);
+int ethernet_eefct(struct ethernet *ether, int32_t cycle);
 
 /* Performs the F2_ETH_EBFCT (Ethernet Branch Function).
  * Returns the bits to be modified in the NEXT part of the following
@@ -125,16 +126,19 @@ uint16_t ethernet_ecbfct(struct ethernet *ether);
 
 /* Performs the F2_ETH_EISFCT (Ethernet Input Start Function).
  * The current cycle number is given by the parameter `cycle`.
+ * Returns TRUE on success.
  */
-void ethernet_eisfct(struct ethernet *ether, int32_t cycle);
+int ethernet_eisfct(struct ethernet *ether, int32_t cycle);
 
 /* Processes a BLOCK instruction.
  * The task to be blocked is in the parameter `task`.
  */
 void ethernet_block_task(struct ethernet *ether, uint8_t task);
 
-/* Processes the ethernet interrupts. */
-void ethernet_interrupt(struct ethernet *ether);
+/* Processes the ethernet interrupts.
+ * Returns TRUE on success.
+ */
+int ethernet_interrupt(struct ethernet *ether);
 
 /* Runs this before every microinstruction. */
 void ethernet_before_step(struct ethernet *ether);

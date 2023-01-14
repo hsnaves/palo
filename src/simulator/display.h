@@ -114,8 +114,10 @@ uint16_t display_set_mode(struct display *displ, uint16_t bus);
  */
 void display_block_task(struct display *displ, uint8_t task);
 
-/* Processes the display interrupts. */
-void display_interrupt(struct display *displ);
+/* Processes the display interrupts.
+ * Returns TRUE on success.
+ */
+int display_interrupt(struct display *displ);
 
 /* Callback for when the simulation switches to a display task.
  * The new task is given by `task`.

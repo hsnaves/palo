@@ -74,11 +74,57 @@ void reset_interface(struct ethernet *ether)
     ether->pending &= ~(1 << TASK_ETHERNET);
 }
 
+/* Updates the intr_cycle. The parameter `cycle` specifies the current
+ * cycle. The parameter `must_advance` is passed to the compute_intr_cycle()
+ * function.
+ * Returns TRUE on success.
+ */
 static
-void transmit_fifo(struct ethernet *ether, int32_t cycle, int end_tx)
+int update_intr_cycle(struct ethernet *ether,
+                      int32_t cycle, int must_advance)
+{
+    int32_t intr_cycles[2];
+    int32_t diff;
+
+    intr_cycles[0] = ether->tx_intr_cycle;
+    intr_cycles[1] = ether->rx_intr_cycle;
+
+    /* If the current interrupt cycle is set, use the minimum
+     * between intr_cycle and cycle.
+     */
+    if (ether->intr_cycle >= 0) {
+        diff = INTR_CYCLE(cycle - ether->intr_cycle);
+        if (!INTR_DIFF_NEG(diff)) {
+            cycle = ether->intr_cycle;
+        }
+    }
+
+    if (unlikely(!compute_intr_cycle(cycle, must_advance,
+                                     2, intr_cycles,
+                                     &ether->intr_cycle))) {
+        report_error("ethernet: update_intr_cycle: "
+                     "error in computing interrupt cycle");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* Starts the transmission of the FIFO data by starting the TX interrupt.
+ * The `cycle` parameter indicates the current cycle, and `end_tx` indicates
+ * to end the current transmission.
+ * Returns TRUE on success.
+ */
+static
+int transmit_fifo(struct ethernet *ether, int32_t cycle, int end_tx)
 {
     ether->tx_intr_cycle = INTR_CYCLE(cycle + TX_DURATION);
     ether->end_tx = end_tx;
+    if (unlikely(!update_intr_cycle(ether, cycle, FALSE))) {
+        report_error("ether: transmit_fifo: "
+                     "could not update the interrupt cycle");
+        return FALSE;
+    }
+    return TRUE;
 }
 
 /* Obtains a word from the input fifo.
@@ -128,42 +174,25 @@ int write_output_fifo(struct ethernet *ether, uint16_t bus,
         pos = ether->fifo_end++;
         if (pos >= FIFO_SIZE) pos -= FIFO_SIZE;
         ether->fifo[pos] = bus;
+    } else {
+        /* FIFO is full. */
+        report_error("ether: write_output_fifo: "
+                     "FIFO is full");
+        return FALSE;
     }
 
     if (ether->fifo_end >= ether->fifo_start + FIFO_SIZE - 1) {
         if (ether->out_busy) {
-            transmit_fifo(ether, cycle, FALSE);
+            if (unlikely(!transmit_fifo(ether, cycle, FALSE))) {
+                report_error("ether: write_output_fifo: "
+                             "could not update the interrupt cycle");
+                return FALSE;
+            }
         }
         ether->pending &= ~(1 << TASK_ETHERNET);
     }
 
     return TRUE;
-}
-
-static
-void start_output(struct ethernet *ether)
-{
-    ether->out_busy = TRUE;
-    ether->pending |= (1 << TASK_ETHERNET);
-}
-
-static
-void start_input(struct ethernet *ether, int32_t cycle)
-{
-    ether->input_state = IST_WAITING;
-    ether->in_busy = TRUE;
-
-    ether->pending &= ~(1 << TASK_ETHERNET);
-    if (ether->rx_intr_cycle < 0) {
-        ether->rx_intr_cycle = INTR_CYCLE(cycle + RX_DURATION);
-    }
-}
-
-static
-void end_transmission(struct ethernet *ether, int32_t cycle)
-{
-    transmit_fifo(ether, cycle, TRUE);
-    ether->pending &= ~(1 << TASK_ETHERNET);
 }
 
 void ethernet_reset(struct ethernet *ether)
@@ -218,12 +247,18 @@ void ethernet_ewfct(struct ethernet *ether)
 
 int ethernet_eodfct(struct ethernet *ether, uint16_t bus, int32_t cycle)
 {
-    return write_output_fifo(ether, bus, cycle);
+    if (unlikely(!write_output_fifo(ether, bus, cycle))) {
+        report_error("ethernet: eodfct: "
+                     "could not write to output FIFO");
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void ethernet_eosfct(struct ethernet *ether)
 {
-    start_output(ether);
+    ether->out_busy = TRUE;
+    ether->pending |= (1 << TASK_ETHERNET);
 }
 
 uint16_t ethernet_erbfct(struct ethernet *ether)
@@ -231,9 +266,15 @@ uint16_t ethernet_erbfct(struct ethernet *ether)
     return ((ether->iocmd & 3) << 2);
 }
 
-void ethernet_eefct(struct ethernet *ether, int32_t cycle)
+int ethernet_eefct(struct ethernet *ether, int32_t cycle)
 {
-    end_transmission(ether, cycle);
+    if (unlikely(!transmit_fifo(ether, cycle, TRUE))) {
+        report_error("ethernet: eefct: "
+                     "could not transmit FIFO");
+        return FALSE;
+    }
+    ether->pending &= ~(1 << TASK_ETHERNET);
+    return TRUE;
 }
 
 uint16_t ethernet_ebfct(struct ethernet *ether)
@@ -260,9 +301,21 @@ uint16_t ethernet_ecbfct(struct ethernet *ether)
     return 0x0;
 }
 
-void ethernet_eisfct(struct ethernet *ether, int32_t cycle)
+int ethernet_eisfct(struct ethernet *ether, int32_t cycle)
 {
-    start_input(ether, cycle);
+    ether->input_state = IST_WAITING;
+    ether->in_busy = TRUE;
+
+    ether->pending &= ~(1 << TASK_ETHERNET);
+    if (ether->rx_intr_cycle < 0) {
+        ether->rx_intr_cycle = INTR_CYCLE(cycle + RX_DURATION);
+        if (unlikely(!update_intr_cycle(ether, cycle, FALSE))) {
+            report_error("ether: eisfct: "
+                         "could not update the interrupt cycle");
+            return FALSE;
+        }
+    }
+    return TRUE;
 }
 
 void ethernet_block_task(struct ethernet *ether, uint8_t task)
@@ -274,6 +327,7 @@ void ethernet_block_task(struct ethernet *ether, uint8_t task)
 static
 void tx_interrupt(struct ethernet *ether)
 {
+    ether->tx_intr_cycle = -1;
     if (!ether->out_busy) return;
 
     /* TODO: the data is going to limbo, use it for something? */
@@ -316,23 +370,12 @@ void rx_interrupt(struct ethernet *ether)
     if (is_active) {
         ether->rx_intr_cycle =
             INTR_CYCLE(ether->intr_cycle + RX_DURATION);
+    } else {
+        ether->rx_intr_cycle = -1;
     }
 }
 
-/* Updates the intr_cycle. */
-static
-void update_intr_cycle(struct ethernet *ether)
-{
-    int32_t intr_cycles[2];
-
-    intr_cycles[0] = ether->tx_intr_cycle;
-    intr_cycles[1] = ether->rx_intr_cycle;
-
-    ether->intr_cycle = compute_intr_cycle(ether->intr_cycle,
-                                           2, intr_cycles);
-}
-
-void ethernet_interrupt(struct ethernet *ether)
+int ethernet_interrupt(struct ethernet *ether)
 {
     int has_tx, has_rx;
 
@@ -342,7 +385,12 @@ void ethernet_interrupt(struct ethernet *ether)
     if (has_tx) tx_interrupt(ether);
     if (has_rx) rx_interrupt(ether);
 
-    update_intr_cycle(ether);
+    if (unlikely(!update_intr_cycle(ether, ether->intr_cycle, TRUE))) {
+        report_error("ether: interrupt: "
+                     "could not update the interrupt cycle");
+        return FALSE;
+    }
+    return TRUE;
 }
 
 void ethernet_before_step(struct ethernet *ether)

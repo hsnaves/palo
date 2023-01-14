@@ -953,9 +953,11 @@ void seclate_interrupt(struct disk *dsk)
     dsk->seclate_intr_cycle = -1;
 }
 
-/* Updates the intr_cycle. */
+/* Updates the intr_cycle.
+ * Returns TRUE on success.
+ */
 static
-void update_intr_cycle(struct disk *dsk)
+int update_intr_cycle(struct disk *dsk)
 {
     int32_t intr_cycles[4];
 
@@ -964,11 +966,18 @@ void update_intr_cycle(struct disk *dsk)
     intr_cycles[2] = dsk->seek_intr_cycle;
     intr_cycles[3] = dsk->seclate_intr_cycle;
 
-    dsk->intr_cycle = compute_intr_cycle(dsk->intr_cycle,
-                                         4, intr_cycles);
+    if (unlikely(!compute_intr_cycle(dsk->intr_cycle, TRUE,
+                                     4, intr_cycles,
+                                     &dsk->intr_cycle))) {
+        report_error("disk: update_intr_cycle: "
+                     "error in computing interrupt cycle");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
-void disk_interrupt(struct disk *dsk)
+int disk_interrupt(struct disk *dsk)
 {
     int has_ds, has_dw, has_seek, has_seclate;
 
@@ -982,7 +991,7 @@ void disk_interrupt(struct disk *dsk)
     if (has_seek) seek_interrupt(dsk);
     if (has_seclate) seclate_interrupt(dsk);
 
-    update_intr_cycle(dsk);
+    return update_intr_cycle(dsk);
 }
 
 void disk_on_switch_task(struct disk *dsk, uint8_t task)

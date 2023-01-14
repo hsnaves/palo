@@ -251,9 +251,45 @@ int simulator_load_microcode_rom(struct simulator *sim,
     return TRUE;
 }
 
-void simulator_reset(struct simulator *sim)
+/* Updates the intr_cycle.
+ * The parameter `must_advance` is passed to compute_intr_cycle().
+ * Returns TRUE on success.
+ */
+static
+int update_intr_cycle(struct simulator *sim, int must_advance)
 {
     int32_t intr_cycles[3];
+    int32_t cycle, diff;
+
+    intr_cycles[0] = sim->dsk.intr_cycle;
+    intr_cycles[1] = sim->displ.intr_cycle;
+    intr_cycles[2] = sim->ether.intr_cycle;
+
+    /* If the current interrupt cycle is set, use the minimum
+     * between intr_cycle and cycle.
+     */
+    if (sim->intr_cycle >= 0) {
+        cycle = sim->intr_cycle;
+        diff = INTR_CYCLE(cycle - sim->cycle);
+        if (!INTR_DIFF_NEG(diff))
+            cycle = sim->cycle;
+    } else {
+        cycle = sim->cycle;
+    }
+
+    if (unlikely(!compute_intr_cycle(cycle, must_advance,
+                                     3, intr_cycles,
+                                     &sim->intr_cycle))) {
+        report_error("simulator: update_intr_cycle: "
+                     "error in computing interrupt cycle");
+        sim->error = TRUE;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+void simulator_reset(struct simulator *sim)
+{
     uint8_t task;
 
     memset(sim->r, 0, NUM_R_REGISTERS * sizeof(uint16_t));
@@ -305,11 +341,8 @@ void simulator_reset(struct simulator *sim)
     sim->mem_status = 0;
 
     /* Sets the next interrupt cycle. */
-    intr_cycles[0] = sim->dsk.intr_cycle;
-    intr_cycles[1] = sim->displ.intr_cycle;
-    intr_cycles[2] = sim->ether.intr_cycle;
-
-    sim->intr_cycle = compute_intr_cycle(0, 3, intr_cycles);
+    sim->intr_cycle = 0;
+    update_intr_cycle(sim, TRUE);
 }
 
 uint16_t simulator_read(const struct simulator *sim, uint16_t address,
@@ -386,11 +419,11 @@ void update_cycles(struct simulator *sim)
     uint8_t task;
 
     sim->cycle++;
-    sim->cycle &= 0x7FFFFFFF;
+    sim->cycle = INTR_CYCLE(sim->cycle);
 
     task = sim->ctask;
     sim->task_cycle[task]++;
-    sim->task_cycle[task] &= 0x7FFFFFFF;
+    sim->task_cycle[task] = INTR_CYCLE(sim->task_cycle[task]);
 
     /* Updates the memory cycle. */
     if (sim->mem_cycle != 0xFFFF) {
@@ -1252,22 +1285,32 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
                 sim->error = TRUE;
                 return 0;
             }
-            return 0;
+            break;
         case F2_ETH_EOSFCT:
             ethernet_eosfct(&sim->ether);
             return 0;
         case F2_ETH_ERBFCT:
             return ethernet_erbfct(&sim->ether);
         case F2_ETH_EEFCT:
-            ethernet_eefct(&sim->ether, sim->cycle);
-            return 0;
+            if (unlikely(!ethernet_eefct(&sim->ether, sim->cycle))) {
+                report_error("simulator: step: "
+                             "could not perform EEFCT");
+                sim->error = TRUE;
+                return 0;
+            }
+            break;
         case F2_ETH_EBFCT:
             return ethernet_ebfct(&sim->ether);
         case F2_ETH_ECBFCT:
             return ethernet_ecbfct(&sim->ether);
         case F2_ETH_EISFCT:
-            ethernet_eisfct(&sim->ether, sim->cycle);
-            return 0;
+            if (unlikely(!ethernet_eisfct(&sim->ether, sim->cycle))) {
+                report_error("simulator: step: "
+                             "could not perform EISFCT");
+                sim->error = TRUE;
+                return 0;
+            }
+            break;
         default:
             report_error("simulator: step: "
                          "invalid F2 function %03o for ethernet",
@@ -1275,6 +1318,13 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
             sim->error = TRUE;
             return 0;
         }
+        if (unlikely(!update_intr_cycle(sim, FALSE))) {
+            report_error("simulator: step: "
+                         "error in computing interrupt cycle "
+                         "after ethernet function");
+            return 0;
+        }
+
         break;
 
     case TASK_DISPLAY_WORD:
@@ -1567,25 +1617,35 @@ void do_soft_reset(struct simulator *sim)
 static
 void check_for_interrupts(struct simulator *sim, int32_t prev_cycle)
 {
-    int32_t intr_cycles[3];
     int32_t diff, intr_diff;
 
     while (TRUE) {
         if (sim->intr_cycle < 0) return;
 
-        diff = sim->cycle - prev_cycle;
-        intr_diff = sim->intr_cycle - prev_cycle;
+        diff = INTR_CYCLE(sim->cycle - prev_cycle);
+        intr_diff = INTR_CYCLE(sim->intr_cycle - prev_cycle);
         if (diff <= intr_diff) break;
 
         /* Updates prev_cycle to match the current interrupt time. */
-        prev_cycle += intr_diff;
+        prev_cycle = INTR_CYCLE(prev_cycle + intr_diff);
 
         /* Dispatch the interrupts. */
         if (sim->intr_cycle == sim->dsk.intr_cycle) {
-            disk_interrupt(&sim->dsk);
+            if (unlikely(!disk_interrupt(&sim->dsk))) {
+                report_error("simulator: step: "
+                             "could not process disk interrupt");
+                sim->error = TRUE;
+                return;
+            }
         }
         if (sim->intr_cycle == sim->displ.intr_cycle) {
-            display_interrupt(&sim->displ);
+            if (unlikely(!display_interrupt(&sim->displ))) {
+                report_error("simulator: step: "
+                             "could not process display interrupt");
+                sim->error = TRUE;
+                return;
+            }
+
             /* Transfer the TASK_ETHERNET pending bit
              * to the ethernet object.
              */
@@ -1597,18 +1657,17 @@ void check_for_interrupts(struct simulator *sim, int32_t prev_cycle)
             }
         }
         if (sim->intr_cycle == sim->ether.intr_cycle) {
-            ethernet_interrupt(&sim->ether);
+            if (unlikely(!ethernet_interrupt(&sim->ether))) {
+                report_error("simulator: step: "
+                             "could not process ethernet interrupt");
+                sim->error = TRUE;
+                return;
+            }
         }
 
-        /* Computes the next interrupt cycle. */
-        intr_cycles[0] = sim->dsk.intr_cycle;
-        intr_cycles[1] = sim->displ.intr_cycle;
-        intr_cycles[2] = sim->ether.intr_cycle;
-
-        sim->intr_cycle = compute_intr_cycle(prev_cycle, 3, intr_cycles);
-        if (sim->intr_cycle == prev_cycle) {
-            report_error("simulator: step: intr_cycle did not advance");
-            sim->error = TRUE;
+        if (unlikely(!update_intr_cycle(sim, TRUE))) {
+            report_error("simulator: step: "
+                         "error in computing interrupt cycle");
             return;
         }
     }
@@ -1773,10 +1832,12 @@ void simulator_print_registers(const struct simulator *sim,
     string_buffer_print(output, "\n");
 
     decode_tagged_value(dec->vdec, "CYC", DECODE_SVALUE32, sim->cycle);
-    decode_tagged_value(dec->vdec, "ICYC", DECODE_SVALUE32, sim->intr_cycle);
-    decode_tagged_value(dec->vdec, "TCYC", DECODE_SVALUE32,
+    decode_tagged_value(dec->vdec, "ICYC",
+                        DECODE_SVALUE32, sim->intr_cycle);
+    decode_tagged_value(dec->vdec, "TASKCYC", DECODE_SVALUE32,
                         sim->task_cycle[sim->ctask]);
-    decode_tagged_value(dec->vdec, "MCYC", DECODE_SVALUE32, sim->mem_cycle);
+    decode_tagged_value(dec->vdec, "MEMCYC",
+                        DECODE_SVALUE32, sim->mem_cycle);
     string_buffer_print(output, "\n");
 
     decode_tagged_value(dec->vdec, "NTASK", DECODE_TASK, sim->ntask);
