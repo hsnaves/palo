@@ -334,7 +334,7 @@ uint16_t simulator_read(const struct simulator *sim, uint16_t address,
         }
 
         /* Returns some garbage. */
-        return 0xBEEF;
+        return 0x0000;
     } else {
         const uint16_t *base_mem;
         int bank_number;

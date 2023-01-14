@@ -66,7 +66,7 @@ void mouse_reset(struct mouse *mous)
 uint16_t mouse_read(const struct mouse *mous, uint16_t address)
 {
     UNUSED(address);
-    return mous->buttons;
+    return ~(mous->buttons);
 }
 
 uint16_t mouse_poll_bits(struct mouse *mous)
