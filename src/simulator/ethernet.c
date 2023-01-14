@@ -353,12 +353,53 @@ void ethernet_before_step(struct ethernet *ether)
     }
 }
 
-void ethernet_print_registers(struct ethernet *ether,
-                              struct string_buffer *output)
+void ethernet_print_registers(const struct ethernet *ether,
+                              struct decoder *dec)
 {
-    /* TODO: Implement this. */
-    UNUSED(ether);
-    string_buffer_print(output, "<empty>");
+    struct string_buffer *output;
+
+    output = dec->output;
+    decode_tagged_value(dec->vdec, "IOCMD", DECODE_VALUE, ether->iocmd);
+    decode_tagged_value(dec->vdec, "FIFOLEN", DECODE_VALUE,
+                        ether->fifo_end - ether->fifo_start);
+    decode_tagged_value(dec->vdec, "IN_STATE",
+                        DECODE_VALUE, ether->input_state);
+    decode_tagged_value(dec->vdec, "STATUS",
+                        DECODE_VALUE, ether->status);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "OUT_BUSY",
+                        DECODE_BOOL, ether->out_busy);
+    decode_tagged_value(dec->vdec, "IN_BUSY", DECODE_VALUE, ether->in_busy);
+    decode_tagged_value(dec->vdec, "IN_GONE", DECODE_BOOL, ether->in_gone);
+    decode_tagged_value(dec->vdec, "END_TX", DECODE_BOOL, ether->end_tx);
+    string_buffer_print(output, "\n");
+
+    /* Not simulated. */
+    decode_tagged_value(dec->vdec, "DATALATE",
+                        DECODE_BOOL, ether->data_late);
+    decode_tagged_value(dec->vdec, "COLL",
+                        DECODE_BOOL, ether->collision);
+    decode_tagged_value(dec->vdec, "CRC_BAD",
+                        DECODE_BOOL, ether->crc_bad);
+    decode_tagged_value(dec->vdec, "INCOMPL",
+                        DECODE_BOOL, ether->incomplete);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "ADDRESS",
+                        DECODE_VALUE, ether->address);
+    decode_tagged_value(dec->vdec, "CT_WAKEUP",
+                        DECODE_BOOL, ether->countdown_wakeup);
+    decode_tagged_value(dec->vdec, "PEND", DECODE_VALUE, ether->pending);
+    decode_tagged_value(dec->vdec, "ICYC",
+                        DECODE_SVALUE32, ether->intr_cycle);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "TX_ICYC",
+                        DECODE_SVALUE32, ether->tx_intr_cycle);
+    decode_tagged_value(dec->vdec, "RX_ICYC",
+                        DECODE_SVALUE32, ether->rx_intr_cycle);
+    string_buffer_print(output, "\n");
 }
 
 void ethernet_serialize(const struct ethernet *ether, struct serdes *sd)

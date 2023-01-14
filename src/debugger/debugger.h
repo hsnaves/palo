@@ -98,8 +98,10 @@ int debugger_load_binary(struct debugger *dbg,
 void debugger_setup_value_decoder(struct debugger *dbg,
                                   struct value_decoder *vdec);
 
-/* Setups the inner decoder to use the debugger information. */
-void debugger_setup_decoder(struct debugger *dbg);
+/* Setups the inner decoder to use the debugger information.
+ * Returns a pointer to the decoder.
+ */
+struct decoder *debugger_setup_decoder(struct debugger *dbg);
 
 /* Disassembles the current microinstruction into the debugger's
  * output string buffer.

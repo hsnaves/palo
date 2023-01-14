@@ -1,5 +1,6 @@
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "simulator/display.h"
@@ -371,44 +372,61 @@ void display_on_switch_task(struct display *displ, uint8_t task)
     displ->pending &= ~(1 << task);
 }
 
-void display_print_registers(struct display *displ,
-                             struct string_buffer *output)
+void display_print_registers(const struct display *displ,
+                             struct decoder *dec)
 {
-    string_buffer_print(output,
-                        "SCLIN: %07o    VBLIN: %07o    "
-                        "WORD : %07o    EFILD: %o\n",
-                        displ->scanline, displ->vblank_scanline,
-                        displ->word, displ->even_field ? 1 : 0);
+    struct string_buffer *output;
+    char buffer[16];
 
-    string_buffer_print(output,
-                        "CX%s  : %07o    CX_L : %07o    "
-                        "CD%s  : %07o    CD_L : %07o\n",
-                        displ->has_cursor_x ? "*" : " ",
-                        displ->cursor_x, displ->cursor_x_latched,
-                        displ->has_cursor_data ? "*" : " ",
-                        displ->cursor_data, displ->cursor_data_latched);
+    output = dec->output;
+    decode_tagged_value(dec->vdec, "SCANLINE",
+                        DECODE_VALUE, displ->scanline);
+    decode_tagged_value(dec->vdec, "VSCANLINE",
+                        DECODE_VALUE, displ->vblank_scanline);
+    decode_tagged_value(dec->vdec, "WORD", DECODE_MEMORY, displ->word);
+    decode_tagged_value(dec->vdec, "EVENFIELD",
+                        DECODE_BOOL, displ->even_field);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "SWT  : %-7o    LRES : %o/%-5o    "
-                        "WOB  : %o/%o\n",
-                        displ->switch_mode ? 1 : 0,
-                        displ->low_res ? 1 : 0, displ->low_res_latched ? 1 : 0,
-                        displ->wob ? 1 : 0, displ->wob_latched ? 1 : 0);
+    sprintf(buffer, "CUR_X%s", displ->has_cursor_x ? "*" : "");
+    decode_tagged_value(dec->vdec, buffer, DECODE_VALUE, displ->cursor_x);
+    decode_tagged_value(dec->vdec, "CUR_X_L",
+                        DECODE_VALUE, displ->cursor_x_latched);
+    sprintf(buffer, "CUR_DAT%s", displ->has_cursor_data ? "*" : "");
+    decode_tagged_value(dec->vdec, buffer,
+                        DECODE_VALUE, displ->cursor_data);
+    decode_tagged_value(dec->vdec, "CUR_DAT_L",
+                        DECODE_VALUE, displ->cursor_data_latched);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "DWBL : %-7o    DHBL : %-7o    "
-                        "PEND : %07o    ICYC : %-10d\n",
-                        displ->dw_blocked ? 1 : 0,
-                        displ->dh_blocked ? 1 : 0,
-                        displ->pending,
-                        displ->intr_cycle);
 
-    string_buffer_print(output,
-                        "DVIC : %-10d DHIC : %-10d "
-                        "DWIC : %-10d\n",
-                        displ->dv_intr_cycle,
-                        displ->dh_intr_cycle,
-                        displ->dw_intr_cycle);
+    decode_tagged_value(dec->vdec, "SW_MODE",
+                        DECODE_BOOL, displ->switch_mode);
+    decode_tagged_value(dec->vdec, "LOWRES", DECODE_BOOL, displ->low_res);
+    decode_tagged_value(dec->vdec, "LOWRES_L",
+                        DECODE_BOOL, displ->low_res_latched);
+    decode_tagged_value(dec->vdec, "WOB", DECODE_BOOL, displ->wob);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "WOB_L",
+                        DECODE_BOOL, displ->wob_latched);
+    decode_tagged_value(dec->vdec, "DW_BLOCK",
+                        DECODE_BOOL, displ->dw_blocked);
+    decode_tagged_value(dec->vdec, "DH_BLOCK",
+                        DECODE_BOOL, displ->dh_blocked);
+    decode_tagged_value(dec->vdec, "PEND",
+                        DECODE_VALUE, displ->pending);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "ICYC",
+                        DECODE_SVALUE32, displ->intr_cycle);
+    decode_tagged_value(dec->vdec, "DV_ICYC",
+                        DECODE_SVALUE32, displ->dv_intr_cycle);
+    decode_tagged_value(dec->vdec, "DH_ICYC",
+                        DECODE_SVALUE32, displ->dh_intr_cycle);
+    decode_tagged_value(dec->vdec, "DW_ICYC",
+                        DECODE_SVALUE32, displ->dw_intr_cycle);
+    string_buffer_print(output, "\n");
 }
 
 void display_serialize(const struct display *displ, struct serdes *sd)

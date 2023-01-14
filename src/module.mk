@@ -59,41 +59,42 @@ par.o: par.c fs/fs.h common/utils.h
 simulator/simulator.o: simulator/simulator.c simulator/simulator.h \
  microcode/microcode.h common/string_buffer.h microcode/nova.h \
  simulator/disk.h common/serdes.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h common/utils.h simulator/intr.h \
- simulator/rom.h
-simulator/disk.o: simulator/disk.c simulator/disk.h common/serdes.h \
- common/string_buffer.h simulator/intr.h microcode/microcode.h \
+ simulator/keyboard.h simulator/mouse.h simulator/intr.h simulator/rom.h \
  common/utils.h
+simulator/disk.o: simulator/disk.c simulator/disk.h microcode/microcode.h \
+ common/string_buffer.h common/serdes.h simulator/intr.h common/utils.h
 simulator/display.o: simulator/display.c simulator/display.h \
- common/serdes.h common/string_buffer.h simulator/intr.h \
- microcode/microcode.h common/utils.h
+ microcode/microcode.h common/string_buffer.h common/serdes.h \
+ simulator/intr.h common/utils.h
 simulator/ethernet.o: simulator/ethernet.c simulator/ethernet.h \
- common/serdes.h common/string_buffer.h simulator/intr.h \
- microcode/microcode.h common/utils.h
+ microcode/microcode.h common/string_buffer.h common/serdes.h \
+ simulator/intr.h common/utils.h
 simulator/keyboard.o: simulator/keyboard.c simulator/keyboard.h \
- common/serdes.h common/string_buffer.h common/utils.h
-simulator/mouse.o: simulator/mouse.c simulator/mouse.h common/serdes.h \
- common/string_buffer.h common/utils.h
+ microcode/microcode.h common/string_buffer.h common/serdes.h \
+ common/utils.h
+simulator/mouse.o: simulator/mouse.c simulator/mouse.h \
+ microcode/microcode.h common/string_buffer.h common/serdes.h \
+ common/utils.h
 simulator/intr.o: simulator/intr.c simulator/intr.h common/utils.h
 simulator/rom.o: simulator/rom.c simulator/rom.h microcode/microcode.h \
  common/string_buffer.h
 gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
  common/string_buffer.h microcode/nova.h simulator/disk.h common/serdes.h \
- simulator/display.h simulator/ethernet.h  simulator/keyboard.h \
+ simulator/display.h simulator/ethernet.h simulator/keyboard.h \
  simulator/mouse.h common/utils.h
 debugger/debugger.o: debugger/debugger.c debugger/debugger.h \
  simulator/simulator.h microcode/microcode.h common/string_buffer.h \
  microcode/nova.h simulator/disk.h common/serdes.h simulator/display.h \
  simulator/ethernet.h simulator/keyboard.h simulator/mouse.h \
- common/utils.h gui/gui.h assembler/objfile.h common/allocator.h \
- common/table.h
+ gui/gui.h assembler/objfile.h common/allocator.h common/table.h \
+ common/utils.h
 debugger/cmd.o: debugger/cmd.c debugger/debugger.h simulator/simulator.h \
  microcode/microcode.h common/string_buffer.h microcode/nova.h \
  simulator/disk.h common/serdes.h simulator/display.h simulator/ethernet.h \
- simulator/keyboard.h simulator/mouse.h common/utils.h gui/gui.h \
- assembler/objfile.h common/allocator.h common/table.h simulator/intr.h
+ simulator/keyboard.h simulator/mouse.h gui/gui.h assembler/objfile.h \
+ common/allocator.h common/table.h simulator/intr.h common/utils.h
 palos.o: palos.c simulator/simulator.h microcode/microcode.h \
  common/string_buffer.h microcode/nova.h simulator/disk.h common/serdes.h \
  simulator/display.h simulator/ethernet.h simulator/keyboard.h \
- simulator/mouse.h common/utils.h gui/gui.h debugger/debugger.h \
- assembler/objfile.h common/allocator.h common/table.h
+ simulator/mouse.h gui/gui.h debugger/debugger.h assembler/objfile.h \
+ common/allocator.h common/table.h common/utils.h

@@ -194,12 +194,12 @@ void disasm_decode_cb(struct value_decoder *vdec,
         break;
 
     case DECODE_TASK:
-        val &= TASK_NUM_TASKS - 1;
-        if (dbg->use_octal) {
-            string_buffer_print(output, "%03o", val);
-        } else {
-            string_buffer_print(output, "0x%02X", val);
+        if (val >= TASK_NUM_TASKS) {
+            dec->error = TRUE;
+            return;
         }
+
+        string_buffer_print(output, "%s", TASK_NAMES[val]);
         break;
 
     case DECODE_BOOL:
@@ -235,7 +235,7 @@ void debugger_setup_value_decoder(struct debugger *dbg,
     vdec->cb = &disasm_decode_cb;
 }
 
-void debugger_setup_decoder(struct debugger *dbg)
+struct decoder *debugger_setup_decoder(struct debugger *dbg)
 {
     const struct simulator *sim;
     struct decoder *dec;
@@ -257,6 +257,9 @@ void debugger_setup_decoder(struct debugger *dbg)
 
     objfile_setup_value_decoder(&dbg->rom0f, &dbg->vdecs[0]);
     debugger_setup_value_decoder(dbg, &dbg->vdecs[1]);
+
+    string_buffer_clear(dec->output);
+    return dec;
 }
 
 void debugger_disassemble(struct debugger *dbg)
@@ -264,16 +267,18 @@ void debugger_disassemble(struct debugger *dbg)
     const struct microcode *mc;
     struct decoder *dec;
     struct string_buffer *output;
+    size_t len;
 
-    debugger_setup_decoder(dbg);
-
-    dec = &dbg->dec;
+    dec =debugger_setup_decoder(dbg);
     output = dec->output;
     mc = dec->mc;
 
-    decode_value_padded(dec->vdec, DECODE_TASK, mc->task, 3);
+    len = string_buffer_length(output);
+    decode_value(dec->vdec, DECODE_TASK, mc->task);
     string_buffer_print(output, "-");
-    decode_value_padded(dec->vdec, DECODE_LABEL, mc->address, 8);
+    decode_value(dec->vdec, DECODE_LABEL, mc->address);
+    while (string_buffer_length(output) < len + 14)
+        string_buffer_print(output, " ");
 
     decode_value(dec->vdec, DECODE_VALUE32, mc->mcode);
     string_buffer_print(output, "   ");
@@ -287,10 +292,9 @@ void debugger_nova_disassemble(struct debugger *dbg)
     struct string_buffer *output;
     struct nova_insn ni;
 
-    debugger_setup_decoder(dbg);
-
-    dec = &dbg->dec;
+    dec = debugger_setup_decoder(dbg);
     output = dec->output;
+
     sim = dbg->sim;
     simulator_nova_predecode(sim, &ni);
 

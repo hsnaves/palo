@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/string_buffer.h"
 
@@ -132,7 +133,7 @@ void disk_reset(struct disk *dsk);
 /* Reads the KSTAT register.
  * Returns the contents of the KSTAT register.
  */
-uint16_t disk_read_kstat(struct disk *dsk);
+uint16_t disk_read_kstat(const struct disk *dsk);
 
 /* Writes to the KSTAT register.
  * The value on the bus is given by `bus`.
@@ -142,7 +143,7 @@ void disk_load_kstat(struct disk *dsk, uint16_t bus);
 /* Reads the KDATA register.
  * Returns the contents of the KDATA register.
  */
-uint16_t disk_read_kdata(struct disk *dsk);
+uint16_t disk_read_kdata(const struct disk *dsk);
 
 /* Writes to the KDATA register.
  * The value on the bus is given by `bus`.
@@ -187,7 +188,7 @@ void disk_func_clrstat(struct disk *dsk);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_init(struct disk *dsk, uint8_t task);
+uint16_t disk_func_init(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RWC.
  * Checks type type of the current record operation:
@@ -196,7 +197,7 @@ uint16_t disk_func_init(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_rwc(struct disk *dsk, uint8_t task);
+uint16_t disk_func_rwc(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_RECNO.
  * This will return the record number, but in a strange encoding, due
@@ -209,7 +210,7 @@ uint16_t disk_func_rwc(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_recno(struct disk *dsk, uint8_t task);
+uint16_t disk_func_recno(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_XFRDAT.
  * Checks if it is transferring data.
@@ -217,7 +218,7 @@ uint16_t disk_func_recno(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task);
+uint16_t disk_func_xfrdat(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_SWRNRDY.
  * SWRNRDY = Seek / Write / Read not ready.
@@ -239,7 +240,7 @@ uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task);
+uint16_t disk_func_swrnrdy(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_NFER.
  * Checks if a fatal error did NOT happen.
@@ -247,7 +248,7 @@ uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_nfer(struct disk *dsk, uint8_t task);
+uint16_t disk_func_nfer(const struct disk *dsk, uint8_t task);
 
 /* Executes a F2_DSK_STROBON.
  * Checks if the disk is seeking.
@@ -255,7 +256,7 @@ uint16_t disk_func_nfer(struct disk *dsk, uint8_t task);
  * Returns the bits to be modified in the NEXT part of the following
  * microinstruction.
  */
-uint16_t disk_func_strobon(struct disk *dsk, uint8_t task);
+uint16_t disk_func_strobon(const struct disk *dsk, uint8_t task);
 
 /* Processes a BLOCK instruction.
  * The task to be blocked is in the parameter `task`.
@@ -271,10 +272,10 @@ void disk_interrupt(struct disk *dsk);
 void disk_on_switch_task(struct disk *dsk, uint8_t task);
 
 /* Prints the state of the registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
-void disk_print_registers(struct disk *dsk,
-                          struct string_buffer *output);
+void disk_print_registers(const struct disk *dsk,
+                          struct decoder *dec);
 
 /* Serializes the disk object to `sd`. */
 void disk_serialize(const struct disk *dsk, struct serdes *sd);

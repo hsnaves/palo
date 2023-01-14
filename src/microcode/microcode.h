@@ -287,6 +287,11 @@ struct decoder {
     struct value_decoder *vdec;   /* The sub-decoder for decoding values. */
 };
 
+/* Tables. */
+
+/* Names of microcode tasks. */
+extern const char *TASK_NAMES[TASK_NUM_TASKS];
+
 /* Functions. */
 
 /* Predecodes the microcode.

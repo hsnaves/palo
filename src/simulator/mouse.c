@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "simulator/mouse.h"
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/utils.h"
 
@@ -135,13 +136,17 @@ void mouse_clear_movement(struct mouse *mous)
     mous->dy = 0;
 }
 
-void mouse_print_registers(struct mouse *mous,
-                           struct string_buffer *output)
+void mouse_print_registers(const struct mouse *mous,
+                           struct decoder *dec)
 {
-    string_buffer_print(output, "BUTTONS: %07o\n", mous->buttons);
-    string_buffer_print(output, "DX: %d\n", mous->dx);
-    string_buffer_print(output, "DY: %d\n", mous->dy);
-    string_buffer_print(output, "DIR_X: %d\n", mous->dir_x);
+    struct string_buffer *output;
+
+    output = dec->output;
+    decode_tagged_value(dec->vdec, "BUTTONS", DECODE_VALUE, mous->buttons);
+    decode_tagged_value(dec->vdec, "DX", DECODE_VALUE, mous->dx);
+    decode_tagged_value(dec->vdec, "DY", DECODE_VALUE, mous->dy);
+    decode_tagged_value(dec->vdec, "DIR_X", DECODE_BOOL, mous->dir_x);
+    string_buffer_print(output, "\n");
 }
 
 void mouse_serialize(const struct mouse *mous, struct serdes *sd)

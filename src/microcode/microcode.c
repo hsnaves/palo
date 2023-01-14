@@ -5,6 +5,27 @@
 #include "common/string_buffer.h"
 #include "common/utils.h"
 
+/* Tables. */
+
+const char *TASK_NAMES[TASK_NUM_TASKS] = {
+    "EMU",
+    "T01",
+    "T02",
+    "T03",
+    "KSEC",
+    "T05",
+    "T06",
+    "ETH",
+    "MRT",
+    "DWT",
+    "CURT",
+    "DHT",
+    "DVT",
+    "PART",
+    "KWD"
+    "T15",
+};
+
 /* Functions. */
 
 void microcode_predecode(struct microcode *mc,

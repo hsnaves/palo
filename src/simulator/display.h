@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/string_buffer.h"
 
@@ -122,10 +123,10 @@ void display_interrupt(struct display *displ);
 void display_on_switch_task(struct display *displ, uint8_t task);
 
 /* Prints the state of the registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
-void display_print_registers(struct display *displ,
-                             struct string_buffer *output);
+void display_print_registers(const struct display *displ,
+                             struct decoder *dec);
 
 /* Serializes the display object to `sd`. */
 void display_serialize(const struct display *displ, struct serdes *sd);

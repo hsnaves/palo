@@ -1,8 +1,10 @@
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "simulator/keyboard.h"
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/utils.h"
 
@@ -149,14 +151,17 @@ void keyboard_release_key(struct keyboard *keyb, enum alto_key key)
     keyb->keys[word_index] &= (~mask);
 }
 
-void keyboard_print_registers(struct keyboard *keyb,
-                              struct string_buffer *output)
+void keyboard_print_registers(const struct keyboard *keyb,
+                              struct decoder *dec)
 {
-    unsigned int i;
-    for (i = 0; i < 4; i++) {
-        string_buffer_print(output, "KEYS[%d]: %07o\n",
-                            i, keyb->keys[i]);
-    }
+    struct string_buffer *output;
+
+    output = dec->output;
+    decode_tagged_value(dec->vdec, "KEYS[0]", DECODE_VALUE, keyb->keys[0]);
+    decode_tagged_value(dec->vdec, "KEYS[1]", DECODE_VALUE, keyb->keys[1]);
+    decode_tagged_value(dec->vdec, "KEYS[2]", DECODE_VALUE, keyb->keys[2]);
+    decode_tagged_value(dec->vdec, "KEYS[3]", DECODE_VALUE, keyb->keys[3]);
+    string_buffer_print(output, "\n");
 }
 
 void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd)

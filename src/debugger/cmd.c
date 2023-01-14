@@ -209,21 +209,16 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
 static
 void cmd_registers(struct debugger *dbg, int extra)
 {
-    const struct simulator *sim;
     struct decoder *dec;
 
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
     debugger_disassemble(dbg);
     printf("%s\n", string_buffer_string(&dbg->output));
 
-    string_buffer_clear(&dbg->output);
-    debugger_setup_decoder(dbg);
-    dec = &dbg->dec;
+    dec = debugger_setup_decoder(dbg);
     if (extra) {
-        simulator_print_extra_registers(sim, dec);
+        simulator_print_extra_registers(dbg->sim, dec);
     } else {
-        simulator_print_registers(sim, dec);
+        simulator_print_registers(dbg->sim, dec);
     }
     printf("%s\n", string_buffer_string(&dbg->output));
 }
@@ -232,18 +227,13 @@ void cmd_registers(struct debugger *dbg, int extra)
 static
 void cmd_nova_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
     struct decoder *dec;
 
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
     debugger_nova_disassemble(dbg);
     printf("%s\n", string_buffer_string(&dbg->output));
 
-    string_buffer_clear(&dbg->output);
-    debugger_setup_decoder(dbg);
-    dec = &dbg->dec;
-    simulator_print_nova_registers(sim, dec);
+    dec = debugger_setup_decoder(dbg);
+    simulator_print_nova_registers(dbg->sim, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 
@@ -251,10 +241,9 @@ void cmd_nova_registers(struct debugger *dbg)
 static
 void cmd_disk_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
-    disk_print_registers(&sim->dsk, &dbg->output);
+    struct decoder *dec;
+    dec = debugger_setup_decoder(dbg);
+    disk_print_registers(&dbg->sim->dsk, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 
@@ -262,10 +251,9 @@ void cmd_disk_registers(struct debugger *dbg)
 static
 void cmd_display_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
-    display_print_registers(&sim->displ, &dbg->output);
+    struct decoder *dec;
+    dec = debugger_setup_decoder(dbg);
+    display_print_registers(&dbg->sim->displ, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 
@@ -273,10 +261,9 @@ void cmd_display_registers(struct debugger *dbg)
 static
 void cmd_ethernet_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
-    ethernet_print_registers(&sim->ether, &dbg->output);
+    struct decoder *dec;
+    dec = debugger_setup_decoder(dbg);
+    ethernet_print_registers(&dbg->sim->ether, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 
@@ -284,10 +271,9 @@ void cmd_ethernet_registers(struct debugger *dbg)
 static
 void cmd_keyboard_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
-    keyboard_print_registers(&sim->keyb, &dbg->output);
+    struct decoder *dec;
+    dec = debugger_setup_decoder(dbg);
+    keyboard_print_registers(&dbg->sim->keyb, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 
@@ -295,10 +281,9 @@ void cmd_keyboard_registers(struct debugger *dbg)
 static
 void cmd_mouse_registers(struct debugger *dbg)
 {
-    struct simulator *sim;
-    sim = dbg->sim;
-    string_buffer_clear(&dbg->output);
-    mouse_print_registers(&sim->mous, &dbg->output);
+    struct decoder *dec;
+    dec = debugger_setup_decoder(dbg);
+    mouse_print_registers(&dbg->sim->mous, dec);
     printf("%s\n", string_buffer_string(&dbg->output));
 }
 

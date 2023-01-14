@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/string_buffer.h"
 
@@ -129,10 +130,10 @@ void keyboard_press_key(struct keyboard *keyb, enum alto_key key);
 void keyboard_release_key(struct keyboard *keyb, enum alto_key key);
 
 /* Prints the state of the registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
-void keyboard_print_registers(struct keyboard *keyb,
-                              struct string_buffer *output);
+void keyboard_print_registers(const struct keyboard *keyb,
+                              struct decoder *dec);
 
 /* Serializes the keyboard object to `sd`. */
 void keyboard_serialize(const struct keyboard *keyb, struct serdes *sd);

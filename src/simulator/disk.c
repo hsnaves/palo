@@ -364,7 +364,7 @@ void disk_reset(struct disk *dsk)
     dsk->pending = 0;
 }
 
-uint16_t disk_read_kstat(struct disk *dsk)
+uint16_t disk_read_kstat(const struct disk *dsk)
 {
     /* Format of KSTAT from the Alto HW reference manual.
      * KSTAT has the format of a disk status word S.
@@ -415,7 +415,7 @@ void disk_load_kstat(struct disk *dsk, uint16_t bus)
     dsk->kstat |= ((~bus) & KSTAT_CHECKSUM_ERROR); /* invert BUS[13]. */
 }
 
-uint16_t disk_read_kdata(struct disk *dsk)
+uint16_t disk_read_kdata(const struct disk *dsk)
 {
     /* Reads the value of kdata_read (not kdata). */
     return dsk->kdata_read;
@@ -613,13 +613,13 @@ void disk_func_clrstat(struct disk *dsk)
                     | KSTAT_NOT_READY | KSTAT_SEEK_FAIL);
 }
 
-uint16_t disk_func_init(struct disk *dsk, uint8_t task)
+uint16_t disk_func_init(const struct disk *dsk, uint8_t task)
 {
     if (task != TASK_DISK_WORD) return 0;
     return (dsk->wdinit) ? 0x1F : 0;
 }
 
-uint16_t disk_func_rwc(struct disk *dsk, uint8_t task)
+uint16_t disk_func_rwc(const struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     uint16_t oper;
@@ -644,7 +644,7 @@ uint16_t disk_func_rwc(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_func_recno(struct disk *dsk, uint8_t task)
+uint16_t disk_func_recno(const struct disk *dsk, uint8_t task)
 {
     static const uint16_t RECNO_MAP[] = { 0, 2, 3, 1 };
     uint16_t next_extra;
@@ -654,7 +654,7 @@ uint16_t disk_func_recno(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task)
+uint16_t disk_func_xfrdat(const struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     next_extra = disk_func_init(dsk, task);
@@ -663,10 +663,10 @@ uint16_t disk_func_xfrdat(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task)
+uint16_t disk_func_swrnrdy(const struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
-    struct disk_drive *dd;
+    const struct disk_drive *dd;
 
     next_extra = disk_func_init(dsk, task);
 
@@ -677,10 +677,10 @@ uint16_t disk_func_swrnrdy(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_func_nfer(struct disk *dsk, uint8_t task)
+uint16_t disk_func_nfer(const struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
-    struct disk_drive *dd;
+    const struct disk_drive *dd;
 
     next_extra = disk_func_init(dsk, task);
 
@@ -695,7 +695,7 @@ uint16_t disk_func_nfer(struct disk *dsk, uint8_t task)
     return next_extra;
 }
 
-uint16_t disk_func_strobon(struct disk *dsk, uint8_t task)
+uint16_t disk_func_strobon(const struct disk *dsk, uint8_t task)
 {
     uint16_t next_extra;
     next_extra = disk_func_init(dsk, task);
@@ -999,112 +999,126 @@ void disk_on_switch_task(struct disk *dsk, uint8_t task)
     }
 }
 
-void disk_print_registers(struct disk *dsk,
-                          struct string_buffer *output)
+void disk_print_registers(const struct disk *dsk,
+                          struct decoder *dec)
 {
+    struct string_buffer *output;
     const struct disk_drive *dd;
+    char buffer[16];
     uint16_t valid, sector;
 
-    string_buffer_print(output,
-                        "DATA : %07o[%s]\n",
-                        dsk->kdata_read,
-                        dsk->has_kdata ? "*" : " ");
-
+    output = dec->output;
+    sprintf(buffer, "DATAREAD%s", dsk->has_kdata ? "*" : "");
+    decode_tagged_value(dec->vdec, buffer, DECODE_VALUE, dsk->kdata_read);
+    decode_tagged_value(dec->vdec, "KSTAT",
+                        DECODE_VALUE, disk_read_kstat(dsk));
+    decode_tagged_value(dec->vdec, "KDATA", DECODE_VALUE, dsk->kdata);
     valid = (KADR_VALID_VALUE << KADR_VALID_SHIFT);
-    string_buffer_print(output,
-                        "KSTAT: %07o    KDATA: %07o    "
-                        "KADR : %07o    KCOMM: %07o\n",
-                        disk_read_kstat(dsk),
-                        dsk->kdata,
-                        (dsk->kadr | valid),
-                        (dsk->kcomm << KCOMM_SHIFT));
+    decode_tagged_value(dec->vdec, "KADR",
+                        DECODE_VALUE, (dsk->kadr | valid));
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "SYNC : %-7o    BTCLK: %-7o    "
-                        "WDINT: %-7o    LT_EN: %o\n",
-                        dsk->sync_word_written ? 1 : 0,
-                        dsk->bitclk_enable ? 1 : 0,
-                        dsk->wdinit ? 1 : 0,
-                        dsk->seclate_enable ? 1 : 0);
+    decode_tagged_value(dec->vdec, "KCOMM",
+                        DECODE_VALUE, (dsk->kcomm << KCOMM_SHIFT));
+    decode_tagged_value(dec->vdec, "DISK", DECODE_VALUE, dsk->disk);
+    decode_tagged_value(dec->vdec, "RECNO", DECODE_VALUE, dsk->rec_no);
+    decode_tagged_value(dec->vdec, "RESTORE", DECODE_BOOL, dsk->restore);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "RESTR: %-7o    DISK : %-7o    "
-                        "RECNO: %o\n",
-                        dsk->restore ? 1 : 0,
-                        dsk->disk, dsk->rec_no);
+    decode_tagged_value(dec->vdec, "SYNC",
+                        DECODE_BOOL, dsk->sync_word_written);
+    decode_tagged_value(dec->vdec, "BITCLK",
+                        DECODE_BOOL, dsk->bitclk_enable);
+    decode_tagged_value(dec->vdec, "WDINIT",
+                        DECODE_BOOL, dsk->wdinit);
+    decode_tagged_value(dec->vdec, "SECL_EN",
+                        DECODE_BOOL, dsk->seclate_enable);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "PEND : %07o    ICYC : %-10d "
-                        "DSIC : %-10d DWIC : %-10d\n",
-                        dsk->pending, dsk->intr_cycle,
-                        dsk->ds_intr_cycle, dsk->dw_intr_cycle);
+    decode_tagged_value(dec->vdec, "XFEROFF",
+                        DECODE_BOOL, (dsk->kcomm & KCOMM_XFEROFF));
+    decode_tagged_value(dec->vdec, "WDINHIB",
+                        DECODE_BOOL, (dsk->kcomm & KCOMM_WDINHB));
+    decode_tagged_value(dec->vdec, "BCLKSRC",
+                        DECODE_BOOL, (dsk->kcomm & KCOMM_BCLKSRC));
+    decode_tagged_value(dec->vdec, "WFFO",
+                        DECODE_BOOL, (dsk->kcomm & KCOMM_WFFO));
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "SKIC : %-10d SLIC : %-10d\n",
-                        dsk->seek_intr_cycle, dsk->seclate_intr_cycle);
-
-    dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
-    string_buffer_print(output, "\n=======   Disk %u    =======\n", dsk->disk);
-
-    string_buffer_print(output,
-                        "CYL  : %07o    TCYL : %07o\n",
-                        dd->cylinder, dd->target_cylinder);
-
-    string_buffer_print(output,
-                        "HEAD : %-7o    SECT : %07o    "
-                        "WORD : %07o\n",
-                        dd->head, dd->sector,
-                        dd->sector_word);
-
-    string_buffer_print(output,
-                        "NHEAD: %07o    NSEC : %07o    "
-                        "NCYL : %07o    LOAD : %o\n",
-                        dd->dg.num_heads, dd->dg.num_sectors,
-                        dd->dg.num_cylinders, dd->loaded ? 1 : 0);
-
+    decode_tagged_value(dec->vdec, "SENDADR",
+                        DECODE_BOOL, (dsk->kcomm & KCOMM_SENDADR));
     sector = (dsk->kstat >> KSTAT_SECTOR_SHIFT) & KSTAT_SECTOR_MASK;
-    string_buffer_print(output, "\n======= KSTAT parts =======\n");
-    string_buffer_print(output,
-                        "  SECTOR: %03o   CHKSERR: %o  "
-                        "COMPLETION: %03o  SEEK_FAIL: %o\n",
-                        sector,
-                        (dsk->kstat & KSTAT_CHECKSUM_ERROR) ? 1 : 0,
-                        (dsk->kstat & KSTAT_COMPLETION_MASK),
-                        (dsk->kstat & KSTAT_SEEK_FAIL) ? 1 : 0);
+    decode_tagged_value(dec->vdec, "ST_SECTOR",
+                        DECODE_VALUE, sector);
+    decode_tagged_value(dec->vdec, "CHKSERR",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_CHECKSUM_ERROR));
+    decode_tagged_value(dec->vdec, "SEEK_FAIL",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_SEEK_FAIL));
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "  SEEK  : %o     NOTRDY : %o  "
-                        "DATALATE  : %o    IDLE     : %o\n",
-                        (dsk->kstat & KSTAT_SEEKING) ? 1 : 0,
-                        (dsk->kstat & KSTAT_NOT_READY) ? 1 : 0,
-                        (dsk->kstat & KSTAT_LATE) ? 1 : 0,
-                        (dsk->kstat & KSTAT_IDLE) ? 1 : 0);
+    decode_tagged_value(dec->vdec, "SEEKING",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_SEEKING));
+    decode_tagged_value(dec->vdec, "NOT_READY",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_NOT_READY));
+    decode_tagged_value(dec->vdec, "DATALATE",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_LATE));
+    decode_tagged_value(dec->vdec, "IDLE",
+                        DECODE_BOOL, (dsk->kstat & KSTAT_IDLE));
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output, "======= KADR parts  =======\n");
-    string_buffer_print(output,
-                        "  NXFER : %o     DISKMOD: %o  "
-                        "HEADER_CMD: %o    LABEL_CMD: %o\n",
-                        (dsk->kadr & KADR_NO_XFER) ? 1 : 0,
-                        (dsk->kadr & KADR_DISK_MOD) ? 1 : 0,
-                        (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK,
+    decode_tagged_value(dec->vdec,  "COMPLTION",
+                        DECODE_VALUE, (dsk->kstat & KSTAT_COMPLETION_MASK));
+    decode_tagged_value(dec->vdec,  "NO_XFER",
+                        DECODE_BOOL, (dsk->kadr & KADR_NO_XFER));
+    decode_tagged_value(dec->vdec,  "DISK_MOD",
+                        DECODE_BOOL, (dsk->kadr & KADR_DISK_MOD));
+    decode_tagged_value(dec->vdec,  "HEADERCMD", DECODE_VALUE,
+                        (dsk->kadr >> KADR_HEADER_SHIFT) & KADR_BLOCK_MASK);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec,  "LABELCMD", DECODE_VALUE,
                         (dsk->kadr >> KADR_LABEL_SHIFT) & KADR_BLOCK_MASK);
-
-    string_buffer_print(output,
-                        "                            DATA_CMD  : %o\n",
+    decode_tagged_value(dec->vdec,  "DATACMD", DECODE_VALUE,
                         (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK);
+    dd = (const struct disk_drive *) &dsk->drives[dsk->disk];
+    decode_tagged_value(dec->vdec,  "CYLIN",
+                        DECODE_VALUE, dd->cylinder);
+    decode_tagged_value(dec->vdec,  "T_CYLIN",
+                        DECODE_VALUE, dd->target_cylinder);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output, "======= KCOMM parts =======\n");
-    string_buffer_print(output,
-                        "  XROFF : %o     WDINHIB: %o  "
-                        "BCLKSRC   : %o     SENDADR  : %o\n",
-                        (dsk->kcomm & KCOMM_XFEROFF) ? 1 : 0,
-                        (dsk->kcomm & KCOMM_WDINHB) ? 1 : 0,
-                        (dsk->kcomm & KCOMM_BCLKSRC) ? 1 : 0,
-                        (dsk->kadr >> KADR_DATA_SHIFT) & KADR_BLOCK_MASK);
+    decode_tagged_value(dec->vdec,  "LOADED",
+                        DECODE_BOOL, dd->loaded);
+    decode_tagged_value(dec->vdec,  "HEAD",
+                        DECODE_VALUE, dd->head);
+    decode_tagged_value(dec->vdec,  "SECTOR",
+                        DECODE_VALUE, dd->sector);
+    decode_tagged_value(dec->vdec,  "SEC_WORD",
+                        DECODE_VALUE, dd->sector);
+    string_buffer_print(output, "\n");
 
-    string_buffer_print(output,
-                        "  WFFO  : %o",
-                        (dsk->kcomm & KCOMM_WFFO) ? 1 : 0);
+    decode_tagged_value(dec->vdec,  "N_HEAD",
+                        DECODE_VALUE, dd->dg.num_heads);
+    decode_tagged_value(dec->vdec,  "N_SECTOR",
+                        DECODE_VALUE, dd->dg.num_sectors);
+    decode_tagged_value(dec->vdec,  "N_CYLIN",
+                        DECODE_VALUE, dd->dg.num_cylinders);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "PEND", DECODE_VALUE, dsk->pending);
+    decode_tagged_value(dec->vdec, "ICYC",
+                        DECODE_SVALUE32, dsk->intr_cycle);
+    decode_tagged_value(dec->vdec, "DS_ICYC",
+                        DECODE_SVALUE32, dsk->ds_intr_cycle);
+    decode_tagged_value(dec->vdec, "DW_ICYC",
+                        DECODE_SVALUE32, dsk->dw_intr_cycle);
+    string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "SK_ICYC",
+                        DECODE_SVALUE32, dsk->seek_intr_cycle);
+    decode_tagged_value(dec->vdec, "SL_ICYC",
+                        DECODE_SVALUE32, dsk->seclate_intr_cycle);
+    string_buffer_print(output, "\n");
 }
 
 void disk_serialize(const struct disk *dsk, struct serdes *sd)

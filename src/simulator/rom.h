@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "microcode/microcode.h"
 
-/* Declaration of the global variables. */
+/* Tables. */
 
 /* Table used to implement F2_EMU_ACSOURCE and F2_EMU_IDISP. */
 extern const uint8_t ACSROM[ACSROM_SIZE];

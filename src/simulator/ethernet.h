@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 
+#include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/string_buffer.h"
 
@@ -139,10 +140,10 @@ void ethernet_interrupt(struct ethernet *ether);
 void ethernet_before_step(struct ethernet *ether);
 
 /* Prints the state of the registers.
- * The output is written to `output`.
+ * The output is written to decoder `dec` string buffer.
  */
-void ethernet_print_registers(struct ethernet *ether,
-                              struct string_buffer *output);
+void ethernet_print_registers(const struct ethernet *ether,
+                              struct decoder *dec);
 
 /* Serializes the ethernet object to `sd`. */
 void ethernet_serialize(const struct ethernet *ether, struct serdes *sd);
