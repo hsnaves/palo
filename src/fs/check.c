@@ -327,15 +327,15 @@ int check_basic_filesystem_data(const struct fs *fs)
             continue;
         }
 
-        if (pg->label.version == VERSION_FREE) continue;
-        if (pg->label.version == VERSION_BAD) {
-            if (pg->label.sn.word1 != VERSION_BAD
-                || pg->label.sn.word2 != VERSION_BAD) {
+        if (pg->label.version == VERSION_BAD) continue;
+        if (pg->label.version == VERSION_FREE) {
+            if (pg->label.sn.word1 != VERSION_FREE
+                || pg->label.sn.word2 != VERSION_FREE) {
 
                 report_error("fs: check_basic_filesystem_data: "
-                             "invalid bad page at VDA = %u: "
+                             "invalid free page at VDA = %u: "
                              "expecting SN %u, %u, but got %u, %u",
-                             vda, VERSION_BAD, VERSION_BAD,
+                             vda, VERSION_FREE, VERSION_FREE,
                              pg->label.sn.word1, pg->label.sn.word2);
                 success = FALSE;
             }

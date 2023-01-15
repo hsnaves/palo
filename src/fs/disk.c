@@ -205,6 +205,8 @@ void free_pages(struct fs *fs, uint16_t vda, int follow)
        pg = &fs->pages[vda];
 
        pg->label.version = VERSION_FREE;
+       pg->label.sn.word1 = VERSION_FREE;
+       pg->label.sn.word2 = VERSION_FREE;
        fs->bitmap[idx] &= ~(1 << bit);
        fs->free_pages++;
 
