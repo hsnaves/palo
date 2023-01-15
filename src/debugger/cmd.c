@@ -88,8 +88,9 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     struct gui *ui;
     struct simulator *sim;
     unsigned int num, max_breakpoints;
-    uint32_t prev_cycle;
-    int step, cycle, hit, hit1;
+    int32_t prev_cycle;
+    int32_t step, cycle, cycle_mod;
+    int hit, hit1;
     int running, stop_sim;
 
     /* Get the effective number of breakpoints. */
@@ -106,6 +107,7 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
 
     step = 0;
     cycle = 0;
+    cycle_mod = (int32_t) (dbg->frequency / 60);
     running = TRUE;
     stop_sim = FALSE;
     while (TRUE) {
@@ -118,10 +120,11 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
 
         prev_cycle = sim->cycle;
         simulator_step(sim);
-        cycle += (int) (INTR_CYCLE(sim->cycle - prev_cycle));
+        cycle += INTR_CYCLE(sim->cycle - prev_cycle);
         step++;
 
-        if ((step % 100000) == 0) {
+        /* Detect when a wraparound happened. */
+        if ((prev_cycle % cycle_mod) > (sim->cycle % cycle_mod)) {
             if (unlikely(!gui_running(ui, &running, &stop_sim))) {
                 report_error("debugger: simulate: "
                              "could not determine if GUI is running");
@@ -214,6 +217,30 @@ void cmd_change_basis(struct debugger *dbg, int use_octal)
     } else {
         printf("changed to hexidecimal basis.\n");
     }
+}
+
+/* Change the cpu frequency. */
+static
+void cmd_change_frequency(struct debugger *dbg)
+{
+    const char *arg, *end;
+    int freq;
+
+    arg = (const char *) dbg->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("please specify the frequency\n");
+        return;
+    }
+
+    freq = (int) strtoul(arg, (char **) &end, 10);
+    if (end[0] != '\0' || freq < 0) {
+        printf("invalid decimal number `%s`\n", arg);
+    }
+
+    dbg->frequency = freq;
+    printf("frequency changed to %d.\n", freq);
 }
 
 /* Processes the registers command.
@@ -1042,6 +1069,7 @@ void cmd_help(struct debugger *dbg)
         printf("Commands:\n");
         printf("  oct              Use octal numbers\n");
         printf("  hex              Use hexadecimal numbers\n");
+        printf("  freq num         Change the cpu frequency\n");
         printf("  r                Print the registers\n");
         printf("  nr               Print the NOVA registers\n");
         printf("  e                Print the extra registers\n");
@@ -1079,6 +1107,14 @@ void cmd_help(struct debugger *dbg)
 
     if (strcmp(arg, "hex") == 0) {
         printf("Change the basis of the debugger to hexidecimal.\n");
+        return;
+    }
+
+    if (strcmp(arg, "freq") == 0) {
+        printf("Changes the frequency:\n");
+        printf("  freq [num]\n");
+        printf("The frequency (in hertz) is given by `num`. "
+               "In this case `num` is a decimal number.");
         return;
     }
 
@@ -1359,6 +1395,11 @@ int debugger_debug(struct gui *ui)
 
         if (strcmp(cmd, "hex") == 0) {
             cmd_change_basis(dbg, FALSE);
+            continue;
+        }
+
+        if (strcmp(cmd, "freq") == 0) {
+            cmd_change_frequency(dbg);
             continue;
         }
 

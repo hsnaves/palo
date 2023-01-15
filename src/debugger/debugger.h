@@ -40,6 +40,7 @@ struct debugger {
     struct gui *ui;               /* The user interface. */
     struct objfile rom0f;         /* Object file for the ROM0. */
 
+    int frequency;                /* The Alto cpu frequency. */
     int use_octal;                /* To print numbers in octal. */
 
     size_t max_breakpoints;       /* The maximum number of breakpoints. */

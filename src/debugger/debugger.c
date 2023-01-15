@@ -90,6 +90,7 @@ int debugger_create(struct debugger *dbg, int use_debugger,
         return FALSE;
     }
 
+    dbg->frequency = 6000000; /* 6 MHz */
     dbg->use_octal = TRUE;
     dbg->use_debugger = use_debugger;
     dbg->sim = sim;

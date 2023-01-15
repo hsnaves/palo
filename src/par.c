@@ -201,7 +201,7 @@ int main(int argc, char **argv)
 
     if (should_wipe) {
         modified = TRUE;
-        printf("wiping free pages the disk ...\n");
+        printf("erasing free pages the disk ...\n");
         fs_wipe_free_pages(&fs);
         printf("done erasing\n");
     }
