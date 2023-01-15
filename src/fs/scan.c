@@ -127,19 +127,27 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
     return TRUE;
 }
 
-int directory_entry_match(const struct directory_entry *de,
-                          const char *name, size_t len)
+int directory_entry_compare(const struct directory_entry *de,
+                            const char *name, size_t len)
 {
-    size_t i;
+    size_t i, l;
+    int c1, c2;
 
-    if (de->name_length != len)
-        return FALSE;
+    l = (size_t) de->name_length;
+    l = MIN(len, l);
 
-    for (i = 0; i < len; i++) {
-        if (tolower(name[i]) != tolower(de->name[i]))
-            return FALSE;
+    for (i = 0; i < l; i++) {
+        /* Case insensitive comparison. */
+        c1 = tolower(de->name[i]);
+        c2 = tolower(name[i]);
+        if (c1 < c2) return -1;
+        if (c1 > c2) return +1;
     }
-    return TRUE;
+
+    /* Compare the sizes to decide the string comparison. */
+    if (de->name_length < len) return -1;
+    if (de->name_length > len) return +1;
+    return 0   ;
 }
 
 /* Auxiliary callback used by resolve_name().
@@ -159,7 +167,7 @@ int resolve_name_cb(const struct fs *fs,
     }
 
     res = (struct resolve_result *) arg;
-    if (directory_entry_match(de, res->name, res->name_length)) {
+    if (directory_entry_compare(de, res->name, res->name_length) == 0) {
         res->fe = de->fe;
         res->found = TRUE;
         /* Stop the search in this directory. */

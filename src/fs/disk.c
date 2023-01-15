@@ -268,6 +268,24 @@ update_error:
     return FALSE;
 }
 
+void fs_wipe_free_pages(struct fs *fs)
+{
+    struct page *pg;
+    uint16_t vda;
+
+    for (vda = 0; vda < fs->length; vda++) {
+        pg = &fs->pages[vda];
+        if (pg->label.version != VERSION_FREE)
+            continue;
+
+        memset(&pg->label, 0, sizeof(pg->label));
+        memset(pg->data, 0, sizeof(pg->data));
+        pg->label.version = VERSION_FREE;
+        pg->label.sn.word1 = VERSION_FREE;
+        pg->label.sn.word2 = VERSION_FREE;
+    }
+}
+
 int fs_format(struct fs *fs, int *error)
 {
     struct page *pg;
@@ -283,10 +301,10 @@ int fs_format(struct fs *fs, int *error)
         pg->header[1] = rda;
         pg->header[0] = 0;
 
-        memset(&pg->label, 0, sizeof(pg->label));
-        memset(pg->data, 0, sizeof(pg->data));
         pg->label.version = VERSION_FREE;
     }
+
+    fs_wipe_free_pages(fs);
 
     if (fs->length > 0) {
         pg = &fs->pages[0];

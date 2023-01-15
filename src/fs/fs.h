@@ -122,7 +122,7 @@ struct page {
         uint16_t file_pgnum;      /* Page number of a file. */
         uint16_t version;         /* Notable values:
                                    * 0xFFFF for free pages.
-                                   * 0xFFF2 for bad pages.
+                                   * 0xFFFE for bad pages.
                                    */
         struct serial_number sn;  /* The file serial number. */
     } label;
@@ -237,6 +237,9 @@ int fs_load_image(struct fs *fs, const char *filename);
  * Returns TRUE on success.
  */
 int fs_save_image(const struct fs *fs, const char *filename);
+
+/* Wipes the contents of the free pages in the disk. */
+void fs_wipe_free_pages(struct fs *fs);
 
 /* Formats the filesystem.
  * The `error` parameter, if provided, returns the details about the

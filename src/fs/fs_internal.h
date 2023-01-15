@@ -383,11 +383,13 @@ void scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
 void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
                     scan_directory_cb cb, void *arg);
 
-/* Checks if the name of the directory entry `de` matches `name`, which
- * is a string of length `len`.
- * Returns TRUE if it matches.
+/* Compares the name of the directory entry `de` with the other `name`,
+ * which is a string of length `len`. The comparison is not case sensitive.
+ * Returns an integer less than, equal to, or greater than zero if `de` is
+ * found, respectively, to be less than, to match, or be greater than
+ * `name`.
  */
-int directory_entry_match(const struct directory_entry *de,
-                          const char *name, size_t len);
+int directory_entry_compare(const struct directory_entry *de,
+                            const char *name, size_t len);
 
 #endif /* __FS_FS_INTERNAL_H */

@@ -19,6 +19,7 @@ void usage(const char *prog_name)
     printf("  -f                To format the disk\n");
     printf("  -b name           To install the boot file\n");
     printf("  -s                Scavenges the filesystem\n");
+    printf("  -wfp              To wipe free pages\n");
     printf("  -d dir_name       Lists the contents of a directory\n");
     printf("  -e name filename  Extracts a given file\n");
     printf("  -i filename name  Inserts a given file\n");
@@ -49,6 +50,7 @@ int main(int argc, char **argv)
     int i, is_last, is_second_last;
     int should_format;
     int should_scavenge;
+    int should_wipe;
     int modified, not_read_only;
     int not_remove_underlying;
     int not_update_descriptor;
@@ -67,6 +69,7 @@ int main(int argc, char **argv)
     dir_name = NULL;
     should_format = FALSE;
     should_scavenge = FALSE;
+    should_wipe = FALSE;
     modified = FALSE;
     not_read_only = FALSE;
     not_remove_underlying = FALSE;
@@ -93,6 +96,8 @@ int main(int argc, char **argv)
             b_name = argv[++i];
         } else if (strcmp("-s", argv[i]) == 0) {
             should_scavenge = TRUE;
+        } else if (strcmp("-wfp", argv[i]) == 0) {
+            should_wipe = TRUE;
         } else if (strcmp("-d", argv[i]) == 0) {
             if (is_last) {
                 report_error("main: please specify the directory to list");
@@ -193,6 +198,13 @@ int main(int argc, char **argv)
         goto error;
     }
     printf("filesystem checked: %u free pages\n", fs.free_pages);
+
+    if (should_wipe) {
+        modified = TRUE;
+        printf("wiping free pages the disk ...\n");
+        fs_wipe_free_pages(&fs);
+        printf("done erasing\n");
+    }
 
     if (e_name != NULL) {
         if (!fs_extract_file(&fs, e_name, e_filename)) {

@@ -583,7 +583,7 @@ int cmp_directory_entry(const void *p1, const void *p2)
     if (de1->type != DIR_ENTRY_VALID) return -1;
     if (de2->type != DIR_ENTRY_VALID) return 1;
 
-    return strcmp(de1->name, de2->name);
+    return directory_entry_compare(de1, de2->name, de2->name_length);
 }
 
 /* Auxiliary callback used by check_unique().
