@@ -1,6 +1,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "fs/fs.h"
 #include "fs/fs_internal.h"
@@ -126,6 +127,21 @@ int fs_scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
     return TRUE;
 }
 
+int directory_entry_match(const struct directory_entry *de,
+                          const char *name, size_t len)
+{
+    size_t i;
+
+    if (de->name_length != len)
+        return FALSE;
+
+    for (i = 0; i < len; i++) {
+        if (tolower(name[i]) != tolower(de->name[i]))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 /* Auxiliary callback used by resolve_name().
  * The `arg` parameter is a pointer to resolve_result structure.
  */
@@ -143,8 +159,7 @@ int resolve_name_cb(const struct fs *fs,
     }
 
     res = (struct resolve_result *) arg;
-    if ((strncmp(de->name, res->name, res->name_length) == 0)
-        && (res->name_length == de->name_length)) {
+    if (directory_entry_match(de, res->name, res->name_length)) {
         res->fe = de->fe;
         res->found = TRUE;
         /* Stop the search in this directory. */

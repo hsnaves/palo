@@ -229,8 +229,7 @@ int walk_dir_cb(const struct fs *fs,
 
     if (c_arg->remove_name) {
         slen = strlen(c_arg->remove_name);
-        if ((strncmp(c_arg->remove_name, de->name, slen) == 0)
-            && (slen == de->name_length)) {
+        if (directory_entry_match(de, c_arg->remove_name, slen)) {
             c_arg->removed = TRUE;
             c_arg->rm_de = *de;
             c_arg->empty_length += (size_t) de->length;

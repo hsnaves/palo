@@ -383,5 +383,11 @@ void scan_files(const struct fs *fs, scan_files_cb cb, void *arg);
 void scan_directory(const struct fs *fs, const struct file_entry *dir_fe,
                     scan_directory_cb cb, void *arg);
 
+/* Checks if the name of the directory entry `de` matches `name`, which
+ * is a string of length `len`.
+ * Returns TRUE if it matches.
+ */
+int directory_entry_match(const struct directory_entry *de,
+                          const char *name, size_t len);
 
 #endif /* __FS_FS_INTERNAL_H */
