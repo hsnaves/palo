@@ -282,9 +282,18 @@ void debugger_disassemble(struct debugger *dbg)
     while (string_buffer_length(output) < len + 14)
         string_buffer_print(output, " ");
 
+    string_buffer_print(output, " ");
     decode_value(dec->vdec, DECODE_VALUE32, mc->mcode);
     string_buffer_print(output, "   ");
     decode_microcode(dec);
+
+    if (mc->use_constant || mc->bs_use_crom) {
+        string_buffer_print(output, "; ");
+        decode_value(dec->vdec, DECODE_CONST,mc->const_addr);
+        string_buffer_print(output, " = ");
+        decode_value(dec->vdec, DECODE_VALUE,
+                     dbg->sim->consts[mc->const_addr]);
+    }
 }
 
 void debugger_nova_disassemble(struct debugger *dbg)

@@ -202,6 +202,20 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     return TRUE;
 }
 
+/* Change the basis of the numbers printed by the debugger.
+ * The `use_octal` specifies that the debugger should use basis 8.
+ */
+static
+void cmd_change_basis(struct debugger *dbg, int use_octal)
+{
+    dbg->use_octal = use_octal;
+    if (use_octal) {
+        printf("changed to octal basis.\n");
+    } else {
+        printf("changed to hexidecimal basis.\n");
+    }
+}
+
 /* Processes the registers command.
  * If the `extra` parameter is set to TRUE, it prints the extra
  * registers instead.
@@ -298,6 +312,7 @@ int cmd_dump_memory(struct debugger *dbg)
     const char *arg, *end;
     uint16_t addr, num, val;
     int running, stop_sim;
+    int base;
 
     sim = dbg->sim;
     ui = dbg->ui;
@@ -306,18 +321,19 @@ int cmd_dump_memory(struct debugger *dbg)
     arg = &arg[strlen(arg) + 1];
 
     num = 8;
+    base = (dbg->use_octal) ? 8 : 16;
     if (arg[0] != '\0') {
-        addr = (uint16_t) strtoul(arg, (char **) &end, 8);
+        addr = (uint16_t) strtoul(arg, (char **) &end, base);
         if (end[0] != '\0') {
-            printf("invalid address (octal number) %s\n", arg);
+            printf("invalid address `%s`\n", arg);
             return TRUE;
         }
         arg = &arg[strlen(arg) + 1];
 
         if (arg[0] != '\0') {
-            num = (uint16_t) strtoul(arg, (char **) &end, 8);
+            num = (uint16_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid octal number %s\n", arg);
+                printf("invalid number `%s`\n", arg);
                 return TRUE;
             }
         }
@@ -348,6 +364,7 @@ void cmd_write_memory(struct debugger *dbg)
     struct simulator *sim;
     const char *arg, *end;
     uint16_t addr, val;
+    int base;
 
     sim = dbg->sim;
 
@@ -359,9 +376,10 @@ void cmd_write_memory(struct debugger *dbg)
         return;
     }
 
-    addr = (uint16_t) strtoul(arg, (char **) &end, 8);
+    base = (dbg->use_octal) ? 8 : 16;
+    addr = (uint16_t) strtoul(arg, (char **) &end, base);
     if (end[0] != '\0') {
-        printf("invalid address (octal number) %s\n", arg);
+        printf("invalid address `%s`\n", arg);
         return;
     }
 
@@ -371,9 +389,9 @@ void cmd_write_memory(struct debugger *dbg)
         return;
     }
 
-    val = (uint16_t) strtoul(arg, (char **) &end, 8);
+    val = (uint16_t) strtoul(arg, (char **) &end, base);
     if (end[0] != '\0') {
-        printf("invalid value (octal number) %s\n", arg);
+        printf("invalid value `%s`\n", arg);
     }
 
     simulator_write(sim, addr, val, sim->ctask, FALSE);
@@ -410,7 +428,7 @@ int cmd_next(struct debugger *dbg)
     if (arg[0] != '\0') {
         num = (int) strtoul(arg, (char **) &end, 10);
         if (end[0] != '\0' || num < 0) {
-            printf("invalid number %s\n", arg);
+            printf("invalid decimal number `%s`\n", arg);
             return TRUE;
         }
     } else {
@@ -442,7 +460,7 @@ int cmd_step(struct debugger *dbg)
     if (arg[0] != '\0') {
         num = (int) strtoul(arg, (char **) &end, 10);
         if (end[0] != '\0' || num < 0) {
-            printf("invalid number %s\n", arg);
+            printf("invalid decimal number `%s`\n", arg);
             return TRUE;
         }
     } else {
@@ -467,14 +485,16 @@ int cmd_next_task(struct debugger *dbg)
     struct breakpoint *bp;
     const char *arg, *end;
     uint8_t task;
+    int base;
 
     arg = (const char *) dbg->cmd_buf;
     arg = &arg[strlen(arg) + 1];
 
+    base = (dbg->use_octal) ? 8 : 16;
     if (arg[0] != '\0') {
-        task = (uint8_t) strtoul(arg, (char **) &end, 8);
+        task = (uint8_t) strtoul(arg, (char **) &end, base);
         if (end[0] != '\0') {
-            printf("invalid task (octal number) %s\n", arg);
+            printf("invalid task `%s`\n", arg);
             return TRUE;
         }
     } else {
@@ -523,7 +543,7 @@ int cmd_next_nova(struct debugger *dbg)
     if (arg[0] != '\0') {
         num = (int) strtoul(arg, (char **) &end, 10);
         if (end[0] != '\0' || num < 0) {
-            printf("invalid number %s\n", arg);
+            printf("invalid decimal number `%s`\n", arg);
             return TRUE;
         }
     } else {
@@ -570,6 +590,7 @@ void cmd_add_breakpoint(struct debugger *dbg)
     struct breakpoint *bp;
     uint32_t mask, val;
     unsigned int num;
+    int base;
 
     for (num = 1; num < dbg->max_breakpoints; num++) {
         if (dbg->bps[num].available) break;
@@ -594,6 +615,7 @@ void cmd_add_breakpoint(struct debugger *dbg)
     arg = (const char *) dbg->cmd_buf;
     arg = &arg[strlen(arg) + 1];
 
+    base = (dbg->use_octal) ? 8 : 16;
     while (arg[0] != '\0') {
         if (strcmp(arg, "-task") == 0) {
             arg = &arg[strlen(arg) + 1];
@@ -601,9 +623,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the task\n");
                 return;
             }
-            bp->task = (uint8_t) strtoul(arg, (char **) &end, 8);
+            bp->task = (uint8_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid task (octal number) %s\n", arg);
+                printf("invalid task `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -617,9 +639,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the ntask\n");
                 return;
             }
-            bp->ntask = (uint8_t) strtoul(arg, (char **) &end, 8);
+            bp->ntask = (uint8_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid ntask (octal number) %s\n", arg);
+                printf("invalid ntask %s\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -640,9 +662,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the MIR format\n");
                 return;
             }
-            bp->mir_fmt = (uint32_t) strtoul(arg, (char **) &end, 8);
+            bp->mir_fmt = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid MIR format (octal number) %s\n", arg);
+                printf("invalid MIR format %s\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -650,9 +672,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the MIR mask\n");
                 return;
             }
-            bp->mir_mask = (uint32_t) strtoul(arg, (char **) &end, 8);
+            bp->mir_mask = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid MIR mask (octal number) %s\n", arg);
+                printf("invalid MIR mask `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -666,9 +688,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the RSEL value\n");
                 return;
             }
-            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            val = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid RSEL (octal number) %s\n", arg);
+                printf("invalid RSEL `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -687,9 +709,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the ALUF value\n");
                 return;
             }
-            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            val = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid ALUF (octal number) %s\n", arg);
+                printf("invalid ALUF `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -708,9 +730,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the BS value\n");
                 return;
             }
-            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            val = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid BS (octal number) %s\n", arg);
+                printf("invalid BS `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -729,9 +751,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the F1 value\n");
                 return;
             }
-            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            val = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid F1 (octal number) %s\n", arg);
+                printf("invalid F1 `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -750,9 +772,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the F2 value\n");
                 return;
             }
-            val = (uint32_t) strtoul(arg, (char **) &end, 8);
+            val = (uint32_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid F2 (octal number) %s\n", arg);
+                printf("invalid F2 `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -790,9 +812,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
                 printf("please specify the watch address\n");
                 return;
             }
-            bp->addr = (uint16_t) strtoul(arg, (char **) &end, 8);
+            bp->addr = (uint16_t) strtoul(arg, (char **) &end, base);
             if (end[0] != '\0') {
-                printf("invalid address (octal number) %s\n", arg);
+                printf("invalid address `%s`\n", arg);
                 return;
             }
             arg = &arg[strlen(arg) + 1];
@@ -801,9 +823,9 @@ void cmd_add_breakpoint(struct debugger *dbg)
             continue;
         }
 
-        bp->mpc = (uint16_t) strtoul(arg, (char **) &end, 8);
+        bp->mpc = (uint16_t) strtoul(arg, (char **) &end, base);
         if (end[0] != '\0') {
-            printf("invalid MPC (octal number) %s\n", arg);
+            printf("invalid MPC `%s`\n", arg);
             return;
         }
         arg = &arg[strlen(arg) + 1];
@@ -826,20 +848,31 @@ void cmd_breakpoint_list(struct debugger *dbg)
     unsigned int num;
     struct breakpoint *bp;
 
-    printf("NUM  EN  TASK  NTASK MPC     SW  MIR_FMT     "
-           "MIR_MASK    CT  ADDR\n");
+    printf("NUM  EN  TASK   NTASK  MPC      SW  MIR_FMT      "
+           "MIR_MASK     CT  ADDR\n");
     for (num = 1; num < dbg->max_breakpoints; num++) {
         bp = &dbg->bps[num];
         if (bp->available) continue;
 
-        printf("%-4d %o   %03o   %03o   %06o  %o   "
-               "%011o %011o %o   %06o%s\n",
-               num, bp->enable ? 1 : 0,
-               bp->task, bp->ntask, bp->mpc,
-               bp->on_task_switch ? 1 : 0,
-               bp->mir_fmt, bp->mir_mask,
-               bp->allow_constants ? 1 : 0,
-               bp->addr, bp->watch ? "*" : " ");
+        if (dbg->use_octal) {
+            printf("%-4d %d   %04o   %04o   %07o  %d   "
+                   "%012o %012o %d   %07o%s\n",
+                   num, bp->enable ? 1 : 0,
+                   bp->task, bp->ntask, bp->mpc,
+                   bp->on_task_switch ? 1 : 0,
+                   bp->mir_fmt, bp->mir_mask,
+                   bp->allow_constants ? 1 : 0,
+                   bp->addr, bp->watch ? "*" : " ");
+        } else {
+            printf("%-4d %d   0x%02X   0x%02X   0x%04X   %d   "
+                   "0x%08X   0x%08X   %d   0x%04X%s\n",
+                   num, bp->enable ? 1 : 0,
+                   bp->task, bp->ntask, bp->mpc,
+                   bp->on_task_switch ? 1 : 0,
+                   bp->mir_fmt, bp->mir_mask,
+                   bp->allow_constants ? 1 : 0,
+                   bp->addr, bp->watch ? "*" : " ");
+        }
     }
 }
 
@@ -861,7 +894,7 @@ void cmd_breakpoint_enable(struct debugger *dbg, int enable)
 
     num = strtoul(arg, (char **) &end, 10);
     if (end[0] != '\0' || num == 0) {
-        printf("invalid breakpoint number %s\n", arg);
+        printf("invalid breakpoint decimal number `%s`\n", arg);
         return;
     }
 
@@ -894,7 +927,7 @@ void cmd_breakpoint_remove(struct debugger *dbg)
 
     num = strtoul(arg, (char **) &end, 10);
     if (end[0] != '\0' || num == 0) {
-        printf("invalid breakpoint number %s\n", arg);
+        printf("invalid breakpoint decimal number `%s`\n", arg);
         return;
     }
 
@@ -935,7 +968,7 @@ void cmd_load_or_save_image(struct debugger *dbg, int save)
 
     drive_num = strtoul(arg, (char **) &end, 10);
     if (end[0] != '\0') {
-        printf("invalid drive number %s\n", arg);
+        printf("invalid drive decimal number `%s`\n", arg);
         return;
     }
 
@@ -1000,54 +1033,271 @@ void cmd_restart(struct debugger *dbg)
 static
 void cmd_help(struct debugger *dbg)
 {
-    UNUSED(dbg);
+    const char *arg;
 
-    printf("Commands:\n");
-    printf("  oct              Use octal numbers\n");
-    printf("  hex              Use hexadecimal numbers\n");
-    printf("  r                Print the registers\n");
-    printf("  nr               Print the NOVA registers\n");
-    printf("  e                Print the extra registers\n");
-    printf("  dsk              Print the disk registers\n");
-    printf("  displ            Print the display registers\n");
-    printf("  ether            Print the ethernet registers\n");
-    printf("  keyb             Print the keyboard registers\n");
-    printf("  mous             Print the mouse registers\n");
-    printf("  d [addr] [num]   Dump the memory contents\n");
-    printf("  w addr val       Writes a word to memory\n");
-    printf("  c                Continue execution\n");
-    printf("  n [num]          Step through the microcode\n");
-    printf("  s [cycles]       Step through the microcode\n");
-    printf("  nt [task]        Step until switch task\n");
-    printf("  nn [num]         Execute nova instructions\n");
-    printf("  bp specs         Add a breakpoint\n");
-    printf("  bl               List breakpoints\n");
-    printf("  be num           Enable a breakpoint\n");
-    printf("  bd num           Disable a breakpoint\n");
-    printf("  br num           Remove a breakpoint\n");
-    printf("  li num file      Load a disk drive image\n");
-    printf("  si num file      Save a disk drive image\n");
-    printf("  ls file          Load the simulator state\n");
-    printf("  ss file          Save the simulator state\n");
-    printf("  zs               Restart the simulation\n");
-    printf("  h                Print this help\n");
-    printf("  q                Quit the debugger\n");
-    printf("\n");
-    printf("The specifications of the breakpoints are:\n");
-    printf("  bp [options] mpc\n\n");
-    printf("where the options are:\n");
-    printf("  -task <task>     To specify the current task\n");
-    printf("  -ntask <ntask>   To specify the next task\n");
-    printf("  -on_task_switch  When a task switch occurs\n");
-    printf("  -mir fmt mask    To filter based on the MIR\n");
-    printf("  -rsel rsel       To select the RSEL of the MIR\n");
-    printf("  -aluf aluf       To select the ALUF of the MIR\n");
-    printf("  -bs bs           To select the BS of the MIR\n");
-    printf("  -f1 f1           To select the F1 of the MIR\n");
-    printf("  -f2 f2           To select the F2 of the MIR\n");
-    printf("  -store           When F2=F2_STORE_MD\n");
-    printf("  -no_constants    To disable F1 or F2 constants\n");
-    printf("  -watch address   To watch for memory activity\n");
+    arg = (const char *) dbg->cmd_buf;
+    arg = &arg[strlen(arg) + 1];
+
+    if (arg[0] == '\0') {
+        printf("Commands:\n");
+        printf("  oct              Use octal numbers\n");
+        printf("  hex              Use hexadecimal numbers\n");
+        printf("  r                Print the registers\n");
+        printf("  nr               Print the NOVA registers\n");
+        printf("  e                Print the extra registers\n");
+        printf("  dsk              Print the disk registers\n");
+        printf("  displ            Print the display registers\n");
+        printf("  ether            Print the ethernet registers\n");
+        printf("  keyb             Print the keyboard registers\n");
+        printf("  mous             Print the mouse registers\n");
+        printf("  d [addr] [num]   Dump the memory contents\n");
+        printf("  w addr val       Writes a word to memory\n");
+        printf("  c                Continue execution\n");
+        printf("  n [num]          Step through the microcode\n");
+        printf("  s [cycles]       Step through the microcode\n");
+        printf("  nt [task]        Step until switch task\n");
+        printf("  nn [num]         Execute nova instructions\n");
+        printf("  bp specs         Add a breakpoint\n");
+        printf("  bl               List breakpoints\n");
+        printf("  be num           Enable a breakpoint\n");
+        printf("  bd num           Disable a breakpoint\n");
+        printf("  br num           Remove a breakpoint\n");
+        printf("  li num file      Load a disk drive image\n");
+        printf("  si num file      Save a disk drive image\n");
+        printf("  ls file          Load the simulator state\n");
+        printf("  ss file          Save the simulator state\n");
+        printf("  zs               Restart the simulation\n");
+        printf("  h                Print this help\n");
+        printf("  q                Quit the debugger\n");
+        return;
+    }
+
+    if (strcmp(arg, "oct") == 0) {
+        printf("Change the basis of the debugger to octal.\n");
+        return;
+    }
+
+    if (strcmp(arg, "hex") == 0) {
+        printf("Change the basis of the debugger to hexidecimal.\n");
+        return;
+    }
+
+    if (strcmp(arg, "r") == 0) {
+        printf("Print the alto registers (for more registers type "
+               "\"e\").\n");
+        return;
+    }
+
+    if (strcmp(arg, "nr") == 0) {
+        printf("Print the NOVA registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "e") == 0) {
+        printf("Print the extra registers (S registers).\n");
+        return;
+    }
+
+    if (strcmp(arg, "dsk") == 0) {
+        printf("Print the disk registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "dsk") == 0) {
+        printf("Print the disk registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "displ") == 0) {
+        printf("Print the display registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "ether") == 0) {
+        printf("Print the ethernet registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "keyb") == 0) {
+        printf("Print the keyboard registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "mous") == 0) {
+        printf("Print the mouse registers.\n");
+        return;
+    }
+
+    if (strcmp(arg, "d") == 0) {
+        printf("Dumps the memory contents using:\n");
+        printf("  d [addr] [num]\n");
+        printf("This will print the memory contents of addresses starting "
+               "at `addr`, including up to `addr+num-1`.\n");
+        printf("Numbers are parsed according to the current basis of the "
+               "debugger.\n");
+        return;
+    }
+
+    if (strcmp(arg, "w") == 0) {
+        printf("Writes to memory using:\n");
+        printf("  w addr val\n");
+        printf("This will write value `val` to memory address `addr`.\n");
+        printf("Numbers are parsed according to the current basis of the "
+               "debugger.\n");
+        return;
+    }
+
+    if (strcmp(arg, "c") == 0) {
+        printf("Continues the execution of the program until the next "
+               "breakpoint.\n");
+        return;
+    }
+
+    if (strcmp(arg, "n") == 0) {
+        printf("Executes some microinstructions using:\n");
+        printf("  n [num]\n");
+        printf("The number of microinstruction to execute is given by "
+               "`num`. In this case `num` is a decimal number. If it is "
+               "not specified, 1 is assumed.\n");
+        return;
+    }
+
+    if (strcmp(arg, "s") == 0) {
+        printf("Executes microinstructions based on number of cycles:\n");
+        printf("  s [num]\n");
+        printf("The number of cycles to execute is given by "
+               "`num`. The parameter `num` is a decimal number. If it is "
+               "not specified, 1 is assumed.\n");
+        printf("Note that some microinstructions might take more than one "
+               "cycle to execute, because they might have to wait for "
+               "memory.\n");
+        printf("Task numbers are parsed according to the current basis of "
+               "the debugger.\n");
+        return;
+    }
+
+    if (strcmp(arg, "nt") == 0) {
+        printf("Executes until the current task changes:\n");
+        printf("  nt [task]\n");
+        printf("In addition, if the user wants to specify a particular "
+               "task for the debugger to stop, the user should provide "
+               "the `task` argument.\n");
+        return;
+    }
+
+    if (strcmp(arg, "nn") == 0) {
+        printf("Executes some number of NOVA instructions:\n");
+        printf("  nn [num]\n");
+        printf("The number of nova instruction to execute is given by "
+               "`num`.\n");
+        printf("The parameter `num` is a decimal number. If it is "
+               "not specified, 1 is assumed.\n");
+        return;
+    }
+
+    if (strcmp(arg, "bp") == 0) {
+        printf("The specifications of the breakpoints are:\n");
+        printf("  bp [options] mpc\n\n");
+        printf("where the options are:\n");
+        printf("  -task <task>     To specify the current task\n");
+        printf("  -ntask <ntask>   To specify the next task\n");
+        printf("  -on_task_switch  When a task switch occurs\n");
+        printf("  -mir fmt mask    To filter based on the MIR\n");
+        printf("  -rsel rsel       To select the RSEL of the MIR\n");
+        printf("  -aluf aluf       To select the ALUF of the MIR\n");
+        printf("  -bs bs           To select the BS of the MIR\n");
+        printf("  -f1 f1           To select the F1 of the MIR\n");
+        printf("  -f2 f2           To select the F2 of the MIR\n");
+        printf("  -store           When F2=F2_STORE_MD\n");
+        printf("  -no_constants    To disable F1 or F2 constants\n");
+        printf("  -watch address   To watch for memory activity\n");
+        printf("\n");
+        printf("Note: numbers are parsed according to the current "
+               "debugger basis.\n");
+        return;
+    }
+
+
+    if (strcmp(arg, "bl") == 0) {
+        printf("List the current breakpoints.\n");
+        return;
+    }
+
+    if (strcmp(arg, "be") == 0) {
+        printf("Enable a specific breakpoint using:\n");
+        printf("  be num\n");
+        printf("The breakpoint number is specified by `num`.\n");
+        printf("The `num` parameter is a decimal number.\n");
+        return;
+    }
+
+    if (strcmp(arg, "bd") == 0) {
+        printf("Disable a specific breakpoint using:\n");
+        printf("  bd num\n");
+        printf("The breakpoint number is specified by `num`.\n");
+        printf("The `num` parameter is a decimal number.\n");
+        return;
+    }
+
+    if (strcmp(arg, "br") == 0) {
+        printf("Remove a specific breakpoint using:\n");
+        printf("  br num\n");
+        printf("The breakpoint number is specified by `num`.\n");
+        printf("The `num` parameter is a decimal number.\n");
+        return;
+    }
+
+    if (strcmp(arg, "li") == 0) {
+        printf("Load the disk image from a file using:\n");
+        printf("  li num file\n");
+        printf("The drive number is specified by `num` argument.\n");
+        printf("The filename is specified in the parameter `file`.\n");
+        return;
+    }
+
+    if (strcmp(arg, "si") == 0) {
+        printf("Save the disk image to a file using:\n");
+        printf("  si num file\n");
+        printf("The drive number is specified by `num` argument.\n");
+        printf("The filename is specified in the parameter `file`.\n");
+        return;
+    }
+
+    if (strcmp(arg, "ls") == 0) {
+        printf("Load the simulator state from a file using:\n");
+        printf("  ls file\n");
+        printf("The filename is specified in the parameter `file`.\n");
+        printf("Note that the save state file does not include the "
+               "contents of the disk images.\n");
+        return;
+    }
+
+    if (strcmp(arg, "ss") == 0) {
+        printf("Save the simulator state to a file using:\n");
+        printf("  ss file\n");
+        printf("The filename is specified in the parameter `file`.\n");
+        printf("Note that the save state file does not include the "
+               "contents of the disk images.\n");
+        return;
+    }
+
+    if (strcmp(arg, "zs") == 0) {
+        printf("Reset the state of the simulator (but not of the "
+               "disk drives).\n");
+        return;
+    }
+
+    if (strcmp(arg, "h") == 0) {
+        printf("Print the help information.\n");
+        return;
+    }
+
+    if (strcmp(arg, "q") == 0) {
+        printf("Quit the simulation.\n");
+        return;
+    }
+
+    printf("unrecognized command `%s`.\n", arg);
 }
 
 int debugger_debug(struct gui *ui)
@@ -1103,12 +1353,12 @@ int debugger_debug(struct gui *ui)
         cmd = (const char *) dbg->cmd_buf;
 
         if (strcmp(cmd, "oct") == 0) {
-            dbg->use_octal = TRUE;
+            cmd_change_basis(dbg, TRUE);
             continue;
         }
 
         if (strcmp(cmd, "hex") == 0) {
-            dbg->use_octal = FALSE;
+            cmd_change_basis(dbg, FALSE);
             continue;
         }
 

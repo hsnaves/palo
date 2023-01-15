@@ -916,7 +916,7 @@ void do_f1(struct simulator *sim, const struct microcode *mc,
         sim->mem_high = simulator_read(sim, addr, sim->mem_task,
                                        sim->mem_status & MA_EXTENDED);
 
-        /* Forr TASK_MEMORY_REFRESH, loading MAR with RSEL = 037 performs
+        /* For TASK_MEMORY_REFRESH, loading MAR with RSEL = 037 performs
          * a BLOCK.
          */
         if (mc->task == TASK_MEMORY_REFRESH) {
