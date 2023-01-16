@@ -111,9 +111,9 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
     running = TRUE;
     stop_sim = FALSE;
     while (TRUE) {
-        if (max_steps >= 0 && step == max_steps)
+        if ((max_steps >= 0) && (step == max_steps))
             break;
-        if (max_cycles >= 0 && cycle >= max_cycles)
+        if ((max_cycles >= 0) && (cycle >= max_cycles))
             break;
 
         if (sim->error) break;
@@ -122,6 +122,8 @@ int simulate(struct debugger *dbg, int max_steps, int max_cycles)
         simulator_step(sim);
         cycle += INTR_CYCLE(sim->cycle - prev_cycle);
         step++;
+
+        cycle = INTR_CYCLE(cycle);
 
         /* Detect when a wraparound happened. */
         if ((prev_cycle % cycle_mod) > (sim->cycle % cycle_mod)) {

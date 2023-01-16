@@ -44,8 +44,8 @@ int fs_create(struct fs *fs, struct geometry dg)
 
     fs->dg = dg;
 
-    fs->length = dg.num_disks * dg.num_cylinders
-        * dg.num_heads * dg.num_sectors;
+    fs->disk_length = dg.num_cylinders * dg.num_heads * dg.num_sectors;
+    fs->length = dg.num_disks * fs->disk_length;
     fs->bitmap_size = (fs->length >> 4);
     if (fs->length & 0xF) fs->bitmap_size++;
 
@@ -97,11 +97,12 @@ const char *fs_error(int error)
     return errors[-error];
 }
 
-int fs_load_image(struct fs *fs, const char *filename)
+int fs_load_image(struct fs *fs,
+                  const char *filename, uint16_t disk_num)
 {
     FILE *fp;
     struct page *pg;
-    uint16_t vda, j, meta_len;
+    uint16_t i, j, vda, base_vda, meta_len;
     uint16_t w, *meta_ptr;
     int c;
 
@@ -114,7 +115,9 @@ int fs_load_image(struct fs *fs, const char *filename)
 
     fs->checked = FALSE;
     meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
-    for (vda = 0; vda < fs->length; vda++) {
+    base_vda = disk_num * fs->disk_length;
+    for (i = 0; i < fs->disk_length; i++) {
+        vda = base_vda + i;
         pg = &fs->pages[vda];
 
         c = fgetc(fp);
@@ -167,11 +170,12 @@ error_eof:
     return FALSE;
 }
 
-int fs_save_image(const struct fs *fs, const char *filename)
+int fs_save_image(const struct fs *fs,
+                  const char *filename, uint16_t disk_num)
 {
     FILE *fp;
     const struct page *pg;
-    uint16_t vda, j, meta_len, w;
+    uint16_t i, j, vda, base_vda, meta_len, w;
     const uint16_t *meta_ptr;
     int c;
 
@@ -183,7 +187,9 @@ int fs_save_image(const struct fs *fs, const char *filename)
     }
 
     meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
-    for (vda = 0; vda < fs->length; vda++) {
+    base_vda = disk_num * fs->disk_length;
+    for (i = 0; i < fs->disk_length; i++) {
+        vda = base_vda + i;
         pg = &fs->pages[vda];
 
         /* Discard the first word. */

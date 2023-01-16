@@ -167,6 +167,11 @@ int allocate_page(struct fs *fs, uint16_t *free_vda,
             }
         }
     }
+    /* In case the disk is completely empty. */
+    if (count > best) {
+        best = count;
+        best_vda = vda;
+    }
 
     if (best == 0) {
         report_error("fs: allocate_page: inconsistent metadata");

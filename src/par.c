@@ -13,9 +13,10 @@ static
 void usage(const char *prog_name)
 {
     printf("Usage:\n");
-    printf(" %s [options] disk\n", prog_name);
+    printf(" %s [options] disk1\n", prog_name);
     printf("where:\n");
-    printf("  -2                Use double disk\n");
+    printf("  -1 disk1          The first disk file\n");
+    printf("  -2 disk2          The second disk file\n");
     printf("  -f                To format the disk\n");
     printf("  -b name           To install the boot file\n");
     printf("  -s                Scavenges the filesystem\n");
@@ -37,7 +38,8 @@ void usage(const char *prog_name)
 int main(int argc, char **argv)
 {
 
-    const char *disk_filename;
+    const char *disk1_filename;
+    const char *disk2_filename;
     const char *b_name;
     const char *e_filename, *e_name;
     const char *i_filename, *i_name;
@@ -56,7 +58,8 @@ int main(int argc, char **argv)
     int not_update_descriptor;
     int verbose, error;
 
-    disk_filename = NULL;
+    disk1_filename = NULL;
+    disk2_filename = NULL;
     b_name = NULL;
     e_filename = NULL;
     i_filename = NULL;
@@ -84,8 +87,19 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);
         is_second_last = (i + 2 >= argc);
-        if (strcmp("-2", argv[i]) == 0) {
+        if (strcmp("-1", argv[i]) == 0) {
+            if (is_last) {
+                report_error("main: please specify the name of disk file");
+                return 1;
+            }
+            disk1_filename = argv[++i];
+        } else if (strcmp("-2", argv[i]) == 0) {
             dg.num_disks = 2;
+            if (is_last) {
+                report_error("main: please specify the name of disk file");
+                return 1;
+            }
+            disk2_filename = argv[++i];
         } else if (strcmp("-f", argv[i]) == 0) {
             should_format = TRUE;
         } else if (strcmp("-b", argv[i]) == 0) {
@@ -156,12 +170,12 @@ int main(int argc, char **argv)
                 report_error("main: invalid disk filename `%s`", argv[i]);
                 return 1;
             }
-            disk_filename = argv[i];
+            disk1_filename = argv[i];
         }
     }
 
-    if (!disk_filename) {
-        report_error("main: must specify the disk file name");
+    if (!disk1_filename) {
+        report_error("main: must specify the disk1 file name");
         return 1;
     }
 
@@ -180,10 +194,17 @@ int main(int argc, char **argv)
             goto error;
         }
     } else {
-        printf("loading disk image `%s`\n", disk_filename);
-        if (!fs_load_image(&fs, disk_filename)) {
+        printf("loading disk image `%s`\n", disk1_filename);
+        if (!fs_load_image(&fs, disk1_filename, 0)) {
             report_error("main: could not load disk image");
             goto error;
+        }
+        if (disk2_filename) {
+            printf("loading disk image `%s`\n", disk2_filename);
+            if (!fs_load_image(&fs, disk2_filename, 1)) {
+                report_error("main: could not load disk image");
+                goto error;
+            }
         }
     }
 
@@ -283,7 +304,6 @@ int main(int argc, char **argv)
     }
 
     if (modified && not_read_only) {
-        printf("saving disk image `%s`\n", disk_filename);
         if (!not_update_descriptor) {
             if (!fs_update_disk_descriptor(&fs, &error)) {
                 report_error("main: could not update disk descriptor: %s",
@@ -291,9 +311,17 @@ int main(int argc, char **argv)
                 goto error;
             }
         }
-        if (!fs_save_image(&fs, disk_filename)) {
+        printf("saving disk image `%s`\n", disk1_filename);
+        if (!fs_save_image(&fs, disk1_filename, 0)) {
             report_error("main: could not save disk image");
             goto error;
+        }
+        if (disk2_filename) {
+            printf("saving disk image `%s`\n", disk2_filename);
+            if (!fs_save_image(&fs, disk2_filename, 1)) {
+                report_error("main: could not save disk image");
+                goto error;
+            }
         }
     }
 

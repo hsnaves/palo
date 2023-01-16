@@ -177,11 +177,11 @@ struct file_info {
 /* Structure representing the filesystem. */
 struct fs {
     struct geometry dg;           /* The disk geometry. */
-    uint16_t disk_num;            /* The disk number. */
     struct page *pages;           /* Filesystem pages (sectors). */
     uint16_t length;              /* Total length of the filesystem
                                    * in pages.
                                    */
+    uint16_t disk_length;         /* The length of a single disk. */
 
     uint16_t *ref_count;          /* A reference count on how
                                    * many directories point to the
@@ -229,14 +229,18 @@ int fs_create(struct fs *fs, struct geometry dg);
 const char *fs_error(int error);
 
 /* Reads the contents of the disk from a file named `filename`.
+ * This will populate the disk number `disk_num`.
  * Returns TRUE on success.
  */
-int fs_load_image(struct fs *fs, const char *filename);
+int fs_load_image(struct fs *fs,
+                  const char *filename, uint16_t disk_num);
 
 /* Writes the contents of the disk to a file named `filename`.
+ * This will dump the disk number `disk_num`.
  * Returns TRUE on success.
  */
-int fs_save_image(const struct fs *fs, const char *filename);
+int fs_save_image(const struct fs *fs,
+                  const char *filename, uint16_t disk_num);
 
 /* Wipes the contents of the free pages in the disk. */
 void fs_wipe_free_pages(struct fs *fs);
