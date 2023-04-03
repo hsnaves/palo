@@ -628,7 +628,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
                 } else {
                     output &= sim->mem_low;
                 }
-            } if (sim->mem_cycle == 6) {
+            } else if (sim->mem_cycle == 6) {
                 output &= sim->mem_high;
             } else {
                 output &= sim->mem_low;
