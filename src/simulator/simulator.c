@@ -24,7 +24,7 @@
 
 /* For memory access. */
 #define MA_EXTENDED                        1
-#define MA_HAS_STORE                       2
+#define MA_WORD_BIT                        2
 
 /* The state size when serializing. */
 #define STATE_SIZE                    542426
@@ -622,16 +622,13 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
             }
         } else {
             /* Alto II. */
-            if (sim->mem_cycle == 5) {
-                if (sim->mem_status & MA_HAS_STORE) {
+            if (sim->mem_cycle >= 5) {
+                if (sim->mem_status & MA_WORD_BIT) {
                     output &= sim->mem_high;
                 } else {
                     output &= sim->mem_low;
                 }
-            } else if (sim->mem_cycle == 6) {
-                output &= sim->mem_high;
-            } else {
-                output &= sim->mem_low;
+                sim->mem_status ^= MA_WORD_BIT;
             }
         }
         break;
@@ -1144,15 +1141,16 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
                 update_cycles(sim);
             }
             if (sim->mem_cycle == 5) {
-                sim->mem_status |= MA_HAS_STORE;
+                sim->mem_status ^= MA_WORD_BIT;
             } else if (sim->mem_cycle == 6) {
-                if (!(sim->mem_status & MA_HAS_STORE)) {
+                if (!(sim->mem_status & MA_WORD_BIT)) {
                     report_error("simulator: step: "
                                  "first write on cycle 6");
                     sim->error = TRUE;
                     return 0;
                 }
                 addr |= 1;
+                sim->mem_status ^= MA_WORD_BIT;
             } else {
                 report_error("simulator: step: "
                              "unexpected write memory cycle");
@@ -1164,11 +1162,12 @@ uint16_t do_f2(struct simulator *sim, const struct microcode *mc,
                 update_cycles(sim);
             }
             if (sim->mem_cycle == 3) {
-                sim->mem_status |= MA_HAS_STORE;
+                sim->mem_status ^= MA_WORD_BIT;
             } else if (sim->mem_cycle == 4) {
-                if (sim->mem_status & MA_HAS_STORE) {
+                if (sim->mem_status & MA_WORD_BIT) {
                     addr ^= 1;
                 }
+                sim->mem_status ^= MA_WORD_BIT;
             } else {
                 report_error("simulator: step: "
                              "unexpected write memory cycle");
