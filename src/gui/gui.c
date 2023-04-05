@@ -69,7 +69,7 @@ void handle_signal(int sig)
     for (iui = suil; iui; iui = iui->next) {
         ret = SDL_LockMutex(iui->mutex);
         if (unlikely(ret != 0)) {
-            report_error("gui: handle_signal: could no acquire lock"
+            report_error("gui: handle_signal: could no acquire lock "
                          "(SDLError(%d): %s)", ret, SDL_GetError());
             continue;
         }
@@ -622,6 +622,7 @@ int gui_create(struct gui *ui, struct simulator *sim,
     iui->next = NULL;
     iui->prev = NULL;
 
+    ui->internal = iui;
     iui->display_data = (uint8_t *)
         malloc(DISPLAY_DATA_SIZE * sizeof(uint8_t));
 
@@ -648,7 +649,6 @@ int gui_create(struct gui *ui, struct simulator *sim,
 
     ui->sim = sim;
     ui->thread_cb = thread_cb;
-    ui->internal = iui;
     ui->arg = arg;
 
     if (gui_ref_count == 0) {
@@ -734,7 +734,7 @@ int gui_stop(struct gui *ui)
     iui = (struct gui_internal *) ui->internal;
     ret = SDL_LockMutex(iui->mutex);
     if (unlikely(ret != 0)) {
-        report_error("gui: stop: could no acquire lock"
+        report_error("gui: stop: could no acquire lock "
                      "(SDLError(%d): %s)", ret, SDL_GetError());
         return FALSE;
     }
@@ -752,7 +752,7 @@ int gui_running(struct gui *ui, int *running, int *stop_sim)
     iui = (struct gui_internal *) ui->internal;
     ret = SDL_LockMutex(iui->mutex);
     if (unlikely(ret != 0)) {
-        report_error("gui: running: could no acquire lock"
+        report_error("gui: running: could no acquire lock "
                      "(SDLError(%d): %s)", ret, SDL_GetError());
         return FALSE;
     }
@@ -778,7 +778,7 @@ int gui_update(struct gui *ui)
     iui = (struct gui_internal *) ui->internal;
     ret = SDL_LockMutex(iui->mutex);
     if (unlikely(ret != 0)) {
-        report_error("gui: update: could no acquire lock"
+        report_error("gui: update: could no acquire lock "
                      "(SDLError(%d): %s)", ret, SDL_GetError());
         return FALSE;
     }
@@ -803,14 +803,14 @@ int gui_wait_frame(struct gui *ui)
     iui = (struct gui_internal *) ui->internal;
     ret = SDL_LockMutex(iui->mutex);
     if (unlikely(ret != 0)) {
-        report_error("gui: wait_next_frame: could no acquire lock"
+        report_error("gui: wait_next_frame: could no acquire lock "
                      "(SDLError(%d): %s)", ret, SDL_GetError());
         return FALSE;
     }
 
     ret = SDL_CondWait(iui->frame_cond, iui->mutex);
     if (unlikely(ret != 0)) {
-        report_error("gui: wait_next_frame: could wait condition"
+        report_error("gui: wait_next_frame: could wait condition "
                      "(SDLError(%d): %s)", ret, SDL_GetError());
         SDL_UnlockMutex(iui->mutex);
         return FALSE;

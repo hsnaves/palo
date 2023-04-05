@@ -10,9 +10,49 @@
 
 /* Data structures and types. */
 
+/* Transport object used by the ethernet device. */
+struct transport {
+    /* To reset the tranport. */
+    void (*reset)(void *arg);
+
+    /* To append a word to the current packet to be sent.
+     * The parameter `data` contains the word to be appended.
+     * Returns TRUE on success.
+     */
+    int (*append)(void *arg, uint16_t data);
+
+    /* To send the current packet.
+     * Returns TRUE on success.
+     */
+    int (*send)(void *arg);
+
+    /* Receives a packet.
+     * The `len` parameter receives the length of the message.
+     * Returns TRUE on success.
+     */
+    int (*receive)(void *arg, size_t *len);
+
+    /* When it is done receiving a packet. */
+    void (*drop)(void *arg);
+
+    /* Gets the data of the current packet.
+     * Returns the current data (or zero if no data).
+     */
+    uint16_t (*get_data)(void *arg);
+
+    /* Checks if there is still remaining data on the current received
+     * packet. Returns the number of remaining bytes.
+     */
+    size_t (*has_data)(void *arg);
+
+    void *arg;                    /* The argument to the callbacks */
+};
+
 /* The ethernet controller for the simulator. */
 struct ethernet {
-    uint16_t address;             /* The ethernet address. */
+    struct transport *trp;        /* The transport object. */
+
+    uint16_t address;             /* The (PUP) ethernet address. */
     uint16_t *fifo;               /* For sending / receiving data. */
     uint8_t fifo_start, fifo_end; /* To control the FIFO. */
 
@@ -60,6 +100,17 @@ void ethernet_destroy(struct ethernet *ether);
  * Returns TRUE on success.
  */
 int ethernet_create(struct ethernet *ether);
+
+/* Sets the transport object.
+ * The transport object is given by `trp`.
+ */
+void ethernet_set_transport(struct ethernet *ether,
+                            struct transport *trp);
+
+/* Sets the ethernet address.
+ * The address is given in the parameter `address`.
+ */
+void ethernet_set_address(struct ethernet *ether, uint16_t address);
 
 /* Resets the ethernet controller. */
 void ethernet_reset(struct ethernet *ether);

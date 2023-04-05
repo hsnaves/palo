@@ -4,7 +4,7 @@ COMMON_OBJS := common/allocator.o common/table.o common/serdes.o \
 DEBUGGER_OBJS := debugger/debugger.o debugger/cmd.o
 FS_OBJS := fs/basic.o fs/check.o fs/dir.o fs/disk.o fs/file.o fs/fs.o \
  fs/meta.o fs/scan.o fs/print.o
-GUI_OBJS := gui/gui.o
+GUI_OBJS := gui/gui.o gui/udp_transport.o
 MICROCODE_OBJS := microcode/microcode.o microcode/nova.o
 PARSER_OBJS := parser/parser.o parser/lexer.o
 SIMULATOR_OBJS := simulator/simulator.o simulator/disk.o \
@@ -82,6 +82,9 @@ gui/gui.o: gui/gui.c gui/gui.h simulator/simulator.h microcode/microcode.h \
  common/string_buffer.h microcode/nova.h simulator/disk.h common/serdes.h \
  simulator/display.h simulator/ethernet.h simulator/keyboard.h \
  simulator/mouse.h common/utils.h
+gui/udp_transport.o: gui/udp_transport.c gui/udp_transport.h \
+ simulator/ethernet.h microcode/microcode.h common/string_buffer.h \
+ common/serdes.h common/utils.h
 debugger/debugger.o: debugger/debugger.c debugger/debugger.h \
  simulator/simulator.h microcode/microcode.h common/string_buffer.h \
  microcode/nova.h simulator/disk.h common/serdes.h simulator/display.h \
@@ -96,5 +99,5 @@ debugger/cmd.o: debugger/cmd.c debugger/debugger.h simulator/simulator.h \
 palos.o: palos.c simulator/simulator.h microcode/microcode.h \
  common/string_buffer.h microcode/nova.h simulator/disk.h common/serdes.h \
  simulator/display.h simulator/ethernet.h simulator/keyboard.h \
- simulator/mouse.h gui/gui.h debugger/debugger.h assembler/objfile.h \
- common/allocator.h common/table.h common/utils.h
+ simulator/mouse.h gui/gui.h gui/udp_transport.o debugger/debugger.h \
+ assembler/objfile.h common/allocator.h common/table.h common/utils.h

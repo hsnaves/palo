@@ -1,6 +1,14 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "simulator/ethernet.h"
 #include "simulator/intr.h"
@@ -36,7 +44,8 @@ int ethernet_create(struct ethernet *ether)
 {
     ethernet_initvar(ether);
 
-    ether->fifo = (uint16_t *) malloc(FIFO_SIZE * sizeof(uint16_t));
+    ether->fifo =
+        (uint16_t *) malloc(FIFO_SIZE * sizeof(uint16_t));
 
     if (unlikely(!ether->fifo)) {
         report_error("ethernet_create: memory exhausted");
@@ -44,8 +53,18 @@ int ethernet_create(struct ethernet *ether)
         return FALSE;
     }
 
-    ethernet_reset(ether);
+    ether->trp = NULL;
+    ether->address = 100;
     return TRUE;
+}
+
+void ethernet_set_transport(struct ethernet *ether,
+                            struct transport *trp)
+{
+    ether->trp = trp;
+    if (trp) {
+        (*trp->reset)(trp->arg);
+    }
 }
 
 /* Resets the ethernet interface. */
@@ -69,6 +88,11 @@ void reset_interface(struct ethernet *ether)
     ether->incomplete = FALSE; /* Not simulated. */
 
     ether->input_state = IST_OFF;
+
+    if (ether->trp) {
+        /* Clear the RX buffer. */
+        (*ether->trp->drop)(ether->trp->arg);
+    }
 
     ether->fifo_start = ether->fifo_end = 0;
     ether->pending &= ~(1 << TASK_ETHERNET);
@@ -120,7 +144,7 @@ int transmit_fifo(struct ethernet *ether, int32_t cycle, int end_tx)
     ether->tx_intr_cycle = INTR_CYCLE(cycle + TX_DURATION);
     ether->end_tx = end_tx;
     if (unlikely(!update_intr_cycle(ether, cycle, FALSE))) {
-        report_error("ether: transmit_fifo: "
+        report_error("ethernet: transmit_fifo: "
                      "could not update the interrupt cycle");
         return FALSE;
     }
@@ -176,7 +200,7 @@ int write_output_fifo(struct ethernet *ether, uint16_t bus,
         ether->fifo[pos] = bus;
     } else {
         /* FIFO is full. */
-        report_error("ether: write_output_fifo: "
+        report_error("ethernet: write_output_fifo: "
                      "FIFO is full");
         return FALSE;
     }
@@ -184,7 +208,7 @@ int write_output_fifo(struct ethernet *ether, uint16_t bus,
     if (ether->fifo_end >= ether->fifo_start + FIFO_SIZE - 1) {
         if (ether->out_busy) {
             if (unlikely(!transmit_fifo(ether, cycle, FALSE))) {
-                report_error("ether: write_output_fifo: "
+                report_error("ethernet: write_output_fifo: "
                              "could not update the interrupt cycle");
                 return FALSE;
             }
@@ -195,12 +219,21 @@ int write_output_fifo(struct ethernet *ether, uint16_t bus,
     return TRUE;
 }
 
+void ethernet_set_address(struct ethernet *ether, uint16_t address)
+{
+    ether->address = address;
+}
+
 void ethernet_reset(struct ethernet *ether)
 {
     ether->pending = 0;
-    ether->address = 64;
     ether->countdown_wakeup = FALSE;
     ether->end_tx = FALSE;
+
+    if (ether->trp) {
+        /* Reset the transport. */
+        (*ether->trp->reset)(ether->trp->arg);
+    }
 
     ether->intr_cycle = -1;
     ether->tx_intr_cycle = -1;
@@ -303,6 +336,12 @@ uint16_t ethernet_ecbfct(struct ethernet *ether)
 
 int ethernet_eisfct(struct ethernet *ether, int32_t cycle)
 {
+    if (ether->in_busy) {
+        if (ether->trp) {
+            /* Drop the current packet. */
+            (*ether->trp->drop)(ether->trp->arg);
+        }
+    }
     ether->input_state = IST_WAITING;
     ether->in_busy = TRUE;
 
@@ -310,7 +349,7 @@ int ethernet_eisfct(struct ethernet *ether, int32_t cycle)
     if (ether->rx_intr_cycle < 0) {
         ether->rx_intr_cycle = INTR_CYCLE(cycle + RX_DURATION);
         if (unlikely(!update_intr_cycle(ether, cycle, FALSE))) {
-            report_error("ether: eisfct: "
+            report_error("ethernet: eisfct: "
                          "could not update the interrupt cycle");
             return FALSE;
         }
@@ -325,39 +364,124 @@ void ethernet_block_task(struct ethernet *ether, uint8_t task)
 
 /* Transmission interrupt. */
 static
-void tx_interrupt(struct ethernet *ether)
+int tx_interrupt(struct ethernet *ether)
 {
-    ether->tx_intr_cycle = -1;
-    if (!ether->out_busy) return;
+    uint16_t data;
+    int ret;
 
-    /* TODO: the data is going to limbo, use it for something? */
+    ether->tx_intr_cycle = -1;
+    if (!ether->out_busy) return TRUE;
+
+    while (ether->fifo_start != ether->fifo_end) {
+        data = ether->fifo[ether->fifo_start];
+        ether->fifo_start++;
+        if (ether->fifo_start >= FIFO_SIZE) {
+            ether->fifo_start = 0;
+            ether->fifo_end -= FIFO_SIZE;
+        }
+        if (ether->trp) {
+            ret = (*ether->trp->append)(ether->trp->arg, data);
+            if (unlikely(!ret)) {
+                report_error("ethernet_tx_interrupt: "
+                             "could not append to TX buffer");
+                return FALSE;
+            }
+        }
+    }
     ether->fifo_start = ether->fifo_end = 0;
 
     ether->pending |= (1 << TASK_ETHERNET);
 
     if (ether->end_tx) {
+        int ret;
         ether->out_busy = FALSE;
+        if (ether->trp) {
+            ret = (*ether->trp->send)(ether->trp->arg);
+            if (unlikely(!ret)) {
+                report_error("ethernet_tx_interrupt: "
+                             "could not send packet");
+                return FALSE;
+            }
+        }
     }
+
+    return TRUE;
 }
 
 /* Receiving data interrupt. */
 static
-void rx_interrupt(struct ethernet *ether)
+int rx_interrupt(struct ethernet *ether)
 {
+    size_t len, rem;
     int is_active;
+    int ret;
+
+    if (ether->trp) {
+        ret = (*ether->trp->receive)(ether->trp->arg, &len);
+        if (unlikely(!ret)) {
+            report_error("ethernet_rx_interrupt: "
+                         "could not receive packet");
+            return FALSE;
+        }
+    } else {
+        len = 0;
+    }
 
     switch (ether->input_state) {
     case IST_WAITING:
-        /* TODO: Implement this. */
+        if (len > 0) {
+            ether->input_state = IST_RECEIVING;
+        }
+
         is_active = TRUE;
         break;
 
     case IST_RECEIVING:
-        /* TODO: Implement this. */
         is_active = TRUE;
+
+        if (ether->fifo_end >= ether->fifo_start + FIFO_SIZE) {
+            /* FIFO is full, wait for next iteration. */
+            break;
+        }
+
+        if (ether->trp) {
+            rem = (*ether->trp->has_data)(ether->trp->arg);
+
+            if (rem > 0) {
+                uint16_t data;
+                uint8_t pos;
+
+                data = (*ether->trp->get_data)(ether->trp->arg);
+                pos = ether->fifo_end++;
+                if (pos >= FIFO_SIZE) pos -= FIFO_SIZE;
+                ether->fifo[pos] = data;
+            }
+
+            rem = (*ether->trp->has_data)(ether->trp->arg);
+            if (rem == 0) {
+                ether->in_gone = TRUE;
+                (*ether->trp->drop)(ether->trp->arg);
+                ether->input_state = IST_DONE;
+                ether->pending |= (1 << TASK_ETHERNET);
+                is_active = FALSE;
+            }
+        }
+
+        if (ether->fifo_end >= ether->fifo_start + 2) {
+            ether->pending |= (1 << TASK_ETHERNET);
+        }
+
         break;
 
     case IST_OFF:
+        if (ether->trp) {
+            /* Drop the packet, if it exists. */
+            (*ether->trp->drop)(ether->trp->arg);
+        }
+
+        is_active = FALSE;
+        break;
+
     case IST_DONE:
         is_active = FALSE;
         break;
@@ -373,6 +497,8 @@ void rx_interrupt(struct ethernet *ether)
     } else {
         ether->rx_intr_cycle = -1;
     }
+
+    return TRUE;
 }
 
 int ethernet_interrupt(struct ethernet *ether)
@@ -382,11 +508,17 @@ int ethernet_interrupt(struct ethernet *ether)
     has_tx = (ether->intr_cycle == ether->tx_intr_cycle);
     has_rx = (ether->intr_cycle == ether->rx_intr_cycle);
 
-    if (has_tx) tx_interrupt(ether);
-    if (has_rx) rx_interrupt(ether);
+    if (has_tx) {
+        if (unlikely(!tx_interrupt(ether)))
+            return FALSE;
+    }
+    if (has_rx) {
+        if (unlikely(!rx_interrupt(ether)))
+            return FALSE;
+    }
 
     if (unlikely(!update_intr_cycle(ether, ether->intr_cycle, TRUE))) {
-        report_error("ether: interrupt: "
+        report_error("ethernet: interrupt: "
                      "could not update the interrupt cycle");
         return FALSE;
     }

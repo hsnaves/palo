@@ -6,7 +6,9 @@
 
 #include "simulator/simulator.h"
 #include "simulator/disk.h"
+#include "simulator/ethernet.h"
 #include "gui/gui.h"
+#include "gui/udp_transport.h"
 #include "debugger/debugger.h"
 #include "common/utils.h"
 
@@ -21,6 +23,7 @@ struct palos {
     const char *disk2_filename;   /* Disk 2 image file. */
 
     struct gui ui;                /* The user input. */
+    struct udp_transport utrp;    /* The UDP transport. */
     struct simulator sim;         /* The simulator. */
     struct debugger dbg;          /* The debugger. */
 };
@@ -34,8 +37,9 @@ struct palos {
 static
 void palos_initvar(struct palos *ps)
 {
-    simulator_initvar(&ps->sim);
     gui_initvar(&ps->ui);
+    udp_transport_initvar(&ps->utrp);
+    simulator_initvar(&ps->sim);
     debugger_initvar(&ps->dbg);
 }
 
@@ -47,6 +51,7 @@ static
 void palos_destroy(struct palos *ps)
 {
     gui_destroy(&ps->ui);
+    udp_transport_destroy(&ps->utrp);
     simulator_destroy(&ps->sim);
     debugger_destroy(&ps->dbg);
 }
@@ -69,7 +74,8 @@ int palos_create(struct palos *ps,
                  const char *mcode_filename,
                  const char *binary_filename,
                  const char *disk1_filename,
-                 const char *disk2_filename)
+                 const char *disk2_filename,
+                 uint16_t address)
 {
     palos_initvar(ps);
 
@@ -86,12 +92,21 @@ int palos_create(struct palos *ps,
         return FALSE;
     }
 
+    if (unlikely(!udp_transport_create(&ps->utrp))) {
+        report_error("palos: create: could not create UDP transport");
+        palos_destroy(ps);
+        return FALSE;
+    }
+
     if (unlikely(!debugger_create(&ps->dbg, use_debugger,
                                   &ps->sim, &ps->ui))) {
         report_error("palos: create: could not create debugger");
         palos_destroy(ps);
         return FALSE;
     }
+
+    ethernet_set_transport(&ps->sim.ether, &ps->utrp.trp);
+    ethernet_set_address(&ps->sim.ether, address);
 
     ps->const_filename = const_filename;
     ps->mcode_filename = mcode_filename;
@@ -176,6 +191,7 @@ void usage(const char *prog_name)
     printf("  -ii_1krom     Set system type to Alto II (1K rom)\n");
     printf("  -ii_2krom     Set system type to Alto II (2K rom)\n");
     printf("  -ii_3kram     Set system type to Alto II (3K ram)\n");
+    printf("  -e addr       Set the ethernet address\n");
     printf("  -debug        To use the debugger\n");
     printf("  --help        Print this help\n");
 }
@@ -190,6 +206,7 @@ int main(int argc, char **argv)
     enum system_type sys_type;
     struct palos ps;
     int i, is_last;
+    uint16_t address;
     int use_debugger;
 
     palos_initvar(&ps);
@@ -199,6 +216,7 @@ int main(int argc, char **argv)
     disk1_filename = NULL;
     disk2_filename = NULL;
     sys_type = ALTO_II_3KRAM;
+    address = 100;
     use_debugger = FALSE;
 
     for (i = 1; i < argc; i++) {
@@ -241,6 +259,17 @@ int main(int argc, char **argv)
             sys_type = ALTO_II_2KROM;
         } else if (strcmp("-ii_3kram", argv[i]) == 0) {
             sys_type = ALTO_II_3KRAM;
+        } else if (strcmp("-e", argv[i]) == 0) {
+            char *endptr;
+            if (is_last) {
+                report_error("main: please specify the ethernet address");
+                return 1;
+            }
+            address = strtoul(argv[++i], &endptr, 10);
+            if (endptr[0] != '\0') {
+                report_error("main: invalid address `%s`", argv[i]);
+                return 1;
+            }
         } else if (strcmp("-debug", argv[i]) == 0) {
             use_debugger = TRUE;
         } else if (strcmp("--help", argv[i]) == 0
@@ -259,7 +288,7 @@ int main(int argc, char **argv)
     if (unlikely(!palos_create(&ps, sys_type, use_debugger,
                                const_filename, mcode_filename,
                                binary_filename, disk1_filename,
-                               disk2_filename))) {
+                               disk2_filename, address))) {
         report_error("main: could not create palos object");
         return 1;
     }
