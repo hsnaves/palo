@@ -99,5 +99,5 @@ debugger/cmd.o: debugger/cmd.c debugger/debugger.h simulator/simulator.h \
 palos.o: palos.c simulator/simulator.h microcode/microcode.h \
  common/string_buffer.h microcode/nova.h simulator/disk.h common/serdes.h \
  simulator/display.h simulator/ethernet.h simulator/keyboard.h \
- simulator/mouse.h gui/gui.h gui/udp_transport.o debugger/debugger.h \
+ simulator/mouse.h gui/gui.h gui/udp_transport.h debugger/debugger.h \
  assembler/objfile.h common/allocator.h common/table.h common/utils.h

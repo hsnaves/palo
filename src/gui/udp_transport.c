@@ -414,7 +414,7 @@ uint16_t trp_get_data(void *arg)
 
     if (utrp->rx_pos == 0) {
         /* Skip the size prefix. */
-        utrp->rx_pos = 0;
+        utrp->rx_pos = 2;
     }
 
 
