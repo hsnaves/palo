@@ -19,12 +19,14 @@
 
 /* Constants. */
 #define UDP_PORT                       42424
-#define UDP_BUFFER_SIZE                 8192
 #define UDP_PACKET_SIZE                 1024
+#define UDP_RING_BUFFER_SIZE            8192
 
 /* Data structures and types. */
 
-/* Internal structure for the UDP transport. */
+/* Internal structure for the UDP transport.
+ * To hide the dependency with SDL.
+ */
 struct udp_transport_internal {
     int running;                  /* Transport running. */
     SDL_Thread *thread;           /* Receiving thread. */
@@ -38,7 +40,7 @@ static void trp_reset(void *arg);
 static void trp_drop(void *arg);
 static int trp_append(void *arg, uint16_t data);
 static int trp_send(void *arg);
-static int trp_receive(void *arg, size_t *len);
+static int trp_receive(void *arg, size_t *plen);
 static uint16_t trp_get_data(void *arg);
 static size_t trp_has_data(void *arg);
 static int receive_thread(void *arg);
@@ -50,6 +52,8 @@ void udp_transport_initvar(struct udp_transport *utrp)
     utrp->sockfd = -1;
     utrp->tx_buf = NULL;
     utrp->rx_buf = NULL;
+    utrp->ring_buf = NULL;
+    utrp->pkt_buf = NULL;
     utrp->internal = NULL;
 }
 
@@ -68,8 +72,11 @@ void udp_transport_destroy(struct udp_transport *utrp)
     if (utrp->rx_buf) free((void *) utrp->rx_buf);
     utrp->rx_buf = NULL;
 
-    if (utrp->rx_pbuf) free((void *) utrp->rx_pbuf);
-    utrp->rx_pbuf = NULL;
+    if (utrp->ring_buf) free((void *) utrp->ring_buf);
+    utrp->ring_buf = NULL;
+
+    if (utrp->pkt_buf) free((void *) utrp->pkt_buf);
+    utrp->pkt_buf = NULL;
 
     iutrp = (struct udp_transport_internal *) utrp->internal;
     if (!iutrp) return;
@@ -106,13 +113,16 @@ int udp_transport_create(struct udp_transport *utrp)
     udp_transport_initvar(utrp);
 
     utrp->tx_buf =
-        (uint8_t *) malloc(UDP_BUFFER_SIZE * sizeof(uint8_t));
+        (uint8_t *) malloc(UDP_PACKET_SIZE * sizeof(uint8_t));
     utrp->rx_buf =
-        (uint8_t *) malloc(UDP_BUFFER_SIZE * sizeof(uint8_t));
-    utrp->rx_pbuf =
+        (uint8_t *) malloc(UDP_PACKET_SIZE * sizeof(uint8_t));
+    utrp->ring_buf =
+        (uint8_t *) malloc(UDP_RING_BUFFER_SIZE * sizeof(uint8_t));
+    utrp->pkt_buf =
         (uint8_t *) malloc(UDP_PACKET_SIZE * sizeof(uint8_t));
 
-    if (unlikely(!utrp->tx_buf || !utrp->rx_buf || !utrp->rx_pbuf)) {
+    if (unlikely(!utrp->tx_buf || !utrp->rx_buf
+                 || !utrp->ring_buf || !utrp->pkt_buf)) {
         report_error("udp_transport: create: memory exhausted");
         udp_transport_destroy(utrp);
         return FALSE;
@@ -196,10 +206,11 @@ int udp_transport_create(struct udp_transport *utrp)
         return FALSE;
     }
 
+    utrp->ring_start = 0;
+    utrp->ring_end = 0;
     utrp->tx_pos = 0;
     utrp->rx_pos = 0;
     utrp->rx_len = 0;
-    utrp->rx_len_copy = FALSE;
 
     iutrp->running = TRUE;
     iutrp->thread = SDL_CreateThread(&receive_thread,
@@ -247,9 +258,11 @@ int trp_append(void *arg, uint16_t data)
     if (utrp->tx_pos == 0) {
         /* Reserve 2 bytes for the message length. */
         utrp->tx_pos = 2;
+        utrp->tx_buf[0] = 0;
+        utrp->tx_buf[1] = 0;
     }
 
-    if (utrp->tx_pos >= UDP_BUFFER_SIZE) {
+    if (utrp->tx_pos >= UDP_PACKET_SIZE) {
         report_error("udp_transport: append: "
                      "buffer overflow");
         return FALSE;
@@ -274,7 +287,7 @@ int trp_send(void *arg)
     utrp = (struct udp_transport *) arg;
 
     /* Write the length. */
-    data = (uint16_t) (utrp->tx_pos >> 1);
+    data = (uint16_t) ((utrp->tx_pos >> 1) - 1);
     utrp->tx_buf[0] = (uint8_t) (data >> 8);
     utrp->tx_buf[1] = (uint8_t) data;
 
@@ -296,6 +309,7 @@ int trp_send(void *arg)
                      strerror(errno));
         return FALSE;
     }
+
     utrp->tx_pos = 0;
     return TRUE;
 }
@@ -305,29 +319,71 @@ int trp_send(void *arg)
  * Returns TRUE on success.
  */
 static
-int trp_receive(void *arg, size_t *len)
+int trp_receive(void *arg, size_t *plen)
 {
     struct udp_transport *utrp;
     struct udp_transport_internal *iutrp;
+    size_t pos, len;
     int ret;
 
     utrp = (struct udp_transport *) arg;
     iutrp = (struct udp_transport_internal *) utrp->internal;
 
-    if (utrp->rx_len_copy == 0) {
+    if (utrp->rx_len == 0) {
         ret = SDL_LockMutex(iutrp->mutex);
         if (unlikely(ret != 0)) {
             report_error("udp_transport: receive: "
                          "could no acquire lock (SDLError(%d): %s)",
                          ret, SDL_GetError());
-            return 1;
+            return FALSE;
         }
-        utrp->rx_len_copy = utrp->rx_len;
+
+        /* Checks if there exists some message in the ring buffer. */
+        if (utrp->ring_end > utrp->ring_start) {
+            len = utrp->ring_buf[utrp->ring_start];
+            len <<= 8;
+            len |= utrp->ring_buf[utrp->ring_start + 1];
+            len = 2 * (len + 1);
+
+            if (len + utrp->ring_start > utrp->ring_end) {
+                /* Cap the length to the length of the ring buffer.
+                 * This should never happen.
+                 */
+                report_error("udp_transport: receive: "
+                             "invalid packet length");
+                SDL_UnlockMutex(iutrp->mutex);
+                return FALSE;
+            }
+
+            pos = 0;
+            if (utrp->ring_start + len >= UDP_RING_BUFFER_SIZE) {
+                pos = UDP_RING_BUFFER_SIZE - utrp->ring_start;
+                memcpy(utrp->rx_buf,
+                       &utrp->ring_buf[utrp->ring_start],
+                       pos);
+
+                utrp->ring_start = 0;
+                utrp->ring_end -= UDP_RING_BUFFER_SIZE;
+            }
+
+            if (pos < len) {
+                memcpy(&utrp->rx_buf[pos],
+                       &utrp->ring_buf[utrp->ring_start],
+                       len - pos);
+                utrp->ring_start += len - pos;
+            }
+        } else {
+            len = 0;
+        }
+
         SDL_UnlockMutex(iutrp->mutex);
+
+        utrp->rx_pos = 0;
+        utrp->rx_len = len;
     }
 
-    if (len) {
-        *len = utrp->rx_len_copy;
+    if (plen) {
+        *plen = utrp->rx_len;
     }
 
     return TRUE;
@@ -338,24 +394,10 @@ static
 void trp_drop(void *arg)
 {
     struct udp_transport *utrp;
-    struct udp_transport_internal *iutrp;
-    int ret;
 
     utrp = (struct udp_transport *) arg;
-    iutrp = (struct udp_transport_internal *) utrp->internal;
-
     utrp->rx_pos = 0;
-    utrp->rx_len_copy = 0;
-
-    ret = SDL_LockMutex(iutrp->mutex);
-    if (unlikely(ret != 0)) {
-        report_error("udp_transport: drop: "
-                     "could no acquire lock (SDLError(%d): %s)",
-                     ret, SDL_GetError());
-        return;
-    }
     utrp->rx_len = 0;
-    SDL_UnlockMutex(iutrp->mutex);
 }
 
 /* Gets the data of the current packet.
@@ -368,7 +410,13 @@ uint16_t trp_get_data(void *arg)
     uint16_t data;
 
     utrp = (struct udp_transport *) arg;
-    if (utrp->rx_pos >= utrp->rx_len_copy) return 0;
+    if (utrp->rx_pos >= utrp->rx_len) return 0;
+
+    if (utrp->rx_pos == 0) {
+        /* Skip the size prefix. */
+        utrp->rx_pos = 0;
+    }
+
 
     data = (uint16_t) utrp->rx_buf[utrp->rx_pos++];
     data <<= 8;
@@ -385,8 +433,8 @@ size_t trp_has_data(void *arg)
     struct udp_transport *utrp;
 
     utrp = (struct udp_transport *) arg;
-    if (utrp->rx_pos >= utrp->rx_len_copy) return 0;
-    return (utrp->rx_len_copy - utrp->rx_pos);
+    if (utrp->rx_pos >= utrp->rx_len) return 0;
+    return (utrp->rx_len - utrp->rx_pos);
 }
 
 /* Thread to receive packets. */
@@ -395,7 +443,9 @@ int receive_thread(void *arg)
 {
     struct udp_transport *utrp;
     struct udp_transport_internal *iutrp;
-    size_t rx_len, len, packet_len;
+    size_t free_size;
+    size_t len, packet_len;
+    size_t pos, ring_pos;
     int ret, running;
     ssize_t s;
 
@@ -411,18 +461,19 @@ int receive_thread(void *arg)
             return 1;
         }
         running = iutrp->running;
-        rx_len = utrp->rx_len;
+        free_size = UDP_RING_BUFFER_SIZE
+            - (utrp->ring_end - utrp->ring_start);
         SDL_UnlockMutex(iutrp->mutex);
 
         if (!running) break;
 
-        if (rx_len != 0) {
+        if (free_size < UDP_PACKET_SIZE) {
             SDL_Delay(1);
             continue;
         }
 
         s = recvfrom(utrp->sockfd,
-                     utrp->rx_pbuf,
+                     utrp->pkt_buf,
                      /* Two extra bytes for the fake checksum,
                       * which is not sent.
                       */
@@ -444,11 +495,12 @@ int receive_thread(void *arg)
 
         len = (size_t) s;
 
-        packet_len = (size_t) utrp->rx_pbuf[0];
+        packet_len = (size_t) utrp->pkt_buf[0];
         packet_len <<= 8;
-        packet_len |= (size_t) utrp->rx_pbuf[1];
+        packet_len |= (size_t) utrp->pkt_buf[1];
 
         packet_len *= 2; /* Convert to bytes. */
+        packet_len += 2; /* For the size prefix. */
         if ((packet_len > len) || ((packet_len % 2) != 0)) {
             report_error("udp_transport: receive: "
                          "invalid packet length: %zu (%zu)",
@@ -468,8 +520,41 @@ int receive_thread(void *arg)
                          ret, SDL_GetError());
             return 1;
         }
-        utrp->rx_len = len + 2; /* For the fake checksum. */
-        memcpy(utrp->rx_buf, utrp->rx_pbuf, len);
+
+        free_size = UDP_RING_BUFFER_SIZE
+            - (utrp->ring_end - utrp->ring_start);
+        if (free_size < len) {
+            /* This should never happen. */
+            SDL_UnlockMutex(iutrp->mutex);
+            report_error("udp_transport: receive_thread: "
+                         "not enough space");
+            return 1;
+        }
+
+        pos = 0;
+        ring_pos = utrp->ring_end;
+        if (ring_pos >= UDP_RING_BUFFER_SIZE) {
+            ring_pos -= UDP_RING_BUFFER_SIZE;
+        }
+
+        if (ring_pos + len >= UDP_RING_BUFFER_SIZE) {
+            pos = UDP_RING_BUFFER_SIZE - ring_pos;
+            memcpy(&utrp->ring_buf[ring_pos],
+                   utrp->pkt_buf,
+                   pos);
+
+            utrp->ring_end += pos;
+            ring_pos = 0;
+        }
+
+        if (pos < len) {
+            memcpy(&utrp->ring_buf[ring_pos],
+                   &utrp->pkt_buf[pos],
+                   len - pos);
+
+            utrp->ring_end += len - pos;
+        }
+
         SDL_UnlockMutex(iutrp->mutex);
     }
 

@@ -12,7 +12,7 @@
 
 /* Transport object used by the ethernet device. */
 struct transport {
-    /* To reset the tranport. */
+    /* To reset the transport. */
     void (*reset)(void *arg);
 
     /* To append a word to the current packet to be sent.
@@ -30,7 +30,7 @@ struct transport {
      * The `len` parameter receives the length of the message.
      * Returns TRUE on success.
      */
-    int (*receive)(void *arg, size_t *len);
+    int (*receive)(void *arg, size_t *plen);
 
     /* When it is done receiving a packet. */
     void (*drop)(void *arg);
