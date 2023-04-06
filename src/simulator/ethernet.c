@@ -63,14 +63,18 @@ void ethernet_set_transport(struct ethernet *ether,
 {
     ether->trp = trp;
     if (trp) {
-        (*trp->reset)(trp->arg);
+        (*trp->clear_tx)(trp->arg);
     }
 }
 
-/* Resets the ethernet interface. */
+/* Resets the ethernet interface.
+ * Returns TRUE on success.
+ */
 static
-void reset_interface(struct ethernet *ether)
+int reset_interface(struct ethernet *ether)
 {
+    int ret;
+
     ether->status = 0xFFC0;
     ether->status |= (ether->data_late) ? 0x00 : 0x20;
     ether->status |= (ether->collision) ? 0x00 : 0x10;
@@ -90,12 +94,20 @@ void reset_interface(struct ethernet *ether)
     ether->input_state = IST_OFF;
 
     if (ether->trp) {
+        ret = (*ether->trp->enable_rx)(ether->trp->arg, FALSE);
+        if (unlikely(!ret)) {
+            report_error("ethernet: reset_interface: "
+                         "could not disable RX");
+            return FALSE;
+        }
+
         /* Clear the RX buffer. */
-        (*ether->trp->drop)(ether->trp->arg);
+        (*ether->trp->clear_rx)(ether->trp->arg);
     }
 
     ether->fifo_start = ether->fifo_end = 0;
     ether->pending &= ~(1 << TASK_ETHERNET);
+    return TRUE;
 }
 
 /* Updates the intr_cycle. The parameter `cycle` specifies the current
@@ -224,22 +236,28 @@ void ethernet_set_address(struct ethernet *ether, uint16_t address)
     ether->address = address;
 }
 
-void ethernet_reset(struct ethernet *ether)
+int ethernet_reset(struct ethernet *ether)
 {
     ether->pending = 0;
     ether->countdown_wakeup = FALSE;
     ether->end_tx = FALSE;
 
     if (ether->trp) {
-        /* Reset the transport. */
-        (*ether->trp->reset)(ether->trp->arg);
+        /* Reset the TX buffer. */
+        (*ether->trp->clear_tx)(ether->trp->arg);
     }
 
     ether->intr_cycle = -1;
     ether->tx_intr_cycle = -1;
     ether->rx_intr_cycle = -1;
 
-    reset_interface(ether);
+    if (unlikely(!reset_interface(ether))) {
+        report_error("ethernet: reset: "
+                     "could not reset interface");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 uint16_t ethernet_rsnf(struct ethernet *ether)
@@ -258,14 +276,20 @@ uint16_t ethernet_eilfct(struct ethernet *ether)
     return read_input_fifo(ether, TRUE);
 }
 
-uint16_t ethernet_epfct(struct ethernet *ether)
+uint16_t ethernet_epfct(struct ethernet *ether, uint16_t *output)
 {
-    uint16_t output;
+    uint16_t out;
 
-    output = ether->status;
-    reset_interface(ether);
+    out = ether->status;
+    if (unlikely(!reset_interface(ether))) {
+        return FALSE;
+    }
 
-    return output;
+    if (output) {
+        *output = out;
+    }
+
+    return TRUE;
 }
 
 uint16_t ethernet_eidfct(struct ethernet *ether)
@@ -336,10 +360,18 @@ uint16_t ethernet_ecbfct(struct ethernet *ether)
 
 int ethernet_eisfct(struct ethernet *ether, int32_t cycle)
 {
-    if (ether->in_busy) {
-        if (ether->trp) {
-            /* Drop the current packet. */
-            (*ether->trp->drop)(ether->trp->arg);
+    int ret;
+
+    if (ether->trp) {
+        if (ether->in_busy) {
+            /* Clear the current RX packet. */
+            (*ether->trp->clear_rx)(ether->trp->arg);
+        }
+        ret = (*ether->trp->enable_rx)(ether->trp->arg, TRUE);
+        if (unlikely(!ret)) {
+            report_error("ethernet: eisfct: "
+                         "could not enable RX");
+            return FALSE;
         }
     }
     ether->input_state = IST_WAITING;
@@ -348,7 +380,8 @@ int ethernet_eisfct(struct ethernet *ether, int32_t cycle)
     ether->pending &= ~(1 << TASK_ETHERNET);
     if (ether->rx_intr_cycle < 0) {
         ether->rx_intr_cycle = INTR_CYCLE(cycle + RX_DURATION);
-        if (unlikely(!update_intr_cycle(ether, cycle, FALSE))) {
+        ret = update_intr_cycle(ether, cycle, FALSE);
+        if (unlikely(!ret)) {
             report_error("ethernet: eisfct: "
                          "could not update the interrupt cycle");
             return FALSE;
@@ -380,7 +413,7 @@ int tx_interrupt(struct ethernet *ether)
             ether->fifo_end -= FIFO_SIZE;
         }
         if (ether->trp) {
-            ret = (*ether->trp->append)(ether->trp->arg, data);
+            ret = (*ether->trp->append_tx)(ether->trp->arg, data);
             if (unlikely(!ret)) {
                 report_error("ethernet_tx_interrupt: "
                              "could not append to TX buffer");
@@ -445,22 +478,22 @@ int rx_interrupt(struct ethernet *ether)
         }
 
         if (ether->trp) {
-            rem = (*ether->trp->has_data)(ether->trp->arg);
+            rem = (*ether->trp->has_rx_data)(ether->trp->arg);
 
             if (rem > 0) {
                 uint16_t data;
                 uint8_t pos;
 
-                data = (*ether->trp->get_data)(ether->trp->arg);
+                data = (*ether->trp->get_rx_data)(ether->trp->arg);
                 pos = ether->fifo_end++;
                 if (pos >= FIFO_SIZE) pos -= FIFO_SIZE;
                 ether->fifo[pos] = data;
             }
 
-            rem = (*ether->trp->has_data)(ether->trp->arg);
+            rem = (*ether->trp->has_rx_data)(ether->trp->arg);
             if (rem == 0) {
                 ether->in_gone = TRUE;
-                (*ether->trp->drop)(ether->trp->arg);
+                (*ether->trp->clear_rx)(ether->trp->arg);
                 ether->input_state = IST_DONE;
                 ether->pending |= (1 << TASK_ETHERNET);
                 is_active = FALSE;
@@ -475,8 +508,8 @@ int rx_interrupt(struct ethernet *ether)
 
     case IST_OFF:
         if (ether->trp) {
-            /* Drop the packet, if it exists. */
-            (*ether->trp->drop)(ether->trp->arg);
+            /* Clear the RX buffer. */
+            (*ether->trp->clear_rx)(ether->trp->arg);
         }
 
         is_active = FALSE;

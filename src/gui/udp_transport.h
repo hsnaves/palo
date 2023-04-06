@@ -19,6 +19,7 @@ struct udp_transport {
     size_t tx_pos;                /* Position in the UDP tx buffer. */
     size_t rx_pos;                /* Position in the UDP rx buffer. */
     size_t rx_len;                /* Length of the UDP rx buffer. */
+    int rx_enable;                /* If receiving packet is enabled. */
 
     struct transport trp;         /* The populated transport structure. */
     void *internal;               /* Opaque internal structure. */

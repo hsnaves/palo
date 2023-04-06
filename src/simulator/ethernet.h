@@ -12,38 +12,45 @@
 
 /* Transport object used by the ethernet device. */
 struct transport {
-    /* To reset the transport. */
-    void (*reset)(void *arg);
+    /* To clear the TX buffer. */
+    void (*clear_tx)(void *arg);
 
-    /* To append a word to the current packet to be sent.
+    /* To append a word to the current TX packet to be sent.
      * The parameter `data` contains the word to be appended.
      * Returns TRUE on success.
      */
-    int (*append)(void *arg, uint16_t data);
+    int (*append_tx)(void *arg, uint16_t data);
 
     /* To send the current packet.
      * Returns TRUE on success.
      */
     int (*send)(void *arg);
 
+    /* To enable (or disable) receiving packets.
+     * The parameter `enable` specifies wheter to enable or disable
+     * receiving packets.
+     * Returns TRUE on success.
+     */
+    int (*enable_rx)(void *arg, int enable);
+
+    /* To clear the RX buffer. */
+    void (*clear_rx)(void *arg);
+
+    /* Gets the data of the current packet.
+     * Returns the current data (or zero if no data).
+     */
+    uint16_t (*get_rx_data)(void *arg);
+
+    /* Checks if there is still remaining data on the current received
+     * packet. Returns the number of remaining bytes.
+     */
+    size_t (*has_rx_data)(void *arg);
+
     /* Receives a packet.
      * The `len` parameter receives the length of the message.
      * Returns TRUE on success.
      */
     int (*receive)(void *arg, size_t *plen);
-
-    /* When it is done receiving a packet. */
-    void (*drop)(void *arg);
-
-    /* Gets the data of the current packet.
-     * Returns the current data (or zero if no data).
-     */
-    uint16_t (*get_data)(void *arg);
-
-    /* Checks if there is still remaining data on the current received
-     * packet. Returns the number of remaining bytes.
-     */
-    size_t (*has_data)(void *arg);
 
     void *arg;                    /* The argument to the callbacks */
 };
@@ -112,8 +119,10 @@ void ethernet_set_transport(struct ethernet *ether,
  */
 void ethernet_set_address(struct ethernet *ether, uint16_t address);
 
-/* Resets the ethernet controller. */
-void ethernet_reset(struct ethernet *ether);
+/* Resets the ethernet controller.
+ * Returns TRUE on success.
+ */
+int ethernet_reset(struct ethernet *ether);
 
 /* Processes the F1_EMU_RSNF function.
  * Returns the serial number (address) of the ethernet card.
@@ -129,9 +138,10 @@ void ethernet_startf(struct ethernet *ether, uint16_t bus);
 uint16_t ethernet_eilfct(struct ethernet *ether);
 
 /* Performs the F1_ETH_EPFCT (Ethernet Post Function).
- * Returns the bus data.
+ * The status is returned via the `output` parameter.
+ * Returns TRUE on success.
  */
-uint16_t ethernet_epfct(struct ethernet *ether);
+uint16_t ethernet_epfct(struct ethernet *ether, uint16_t *output);
 
 /* Performs the BS_ETH_EIDFCT (Ethernet Input Data Function).
  * Returns the bus data.

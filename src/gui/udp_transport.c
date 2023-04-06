@@ -36,13 +36,14 @@ struct udp_transport_internal {
 };
 
 /* Static function declarations. */
-static void trp_reset(void *arg);
-static void trp_drop(void *arg);
-static int trp_append(void *arg, uint16_t data);
+static void trp_clear_tx(void *arg);
+static int trp_append_tx(void *arg, uint16_t data);
 static int trp_send(void *arg);
+static int trp_enable_rx(void *arg, int enable);
+static void trp_clear_rx(void *arg);
+static uint16_t trp_get_rx_data(void *arg);
+static size_t trp_has_rx_data(void *arg);
 static int trp_receive(void *arg, size_t *plen);
-static uint16_t trp_get_data(void *arg);
-static size_t trp_has_data(void *arg);
 static int receive_thread(void *arg);
 
 /* Functions. */
@@ -211,6 +212,7 @@ int udp_transport_create(struct udp_transport *utrp)
     utrp->tx_pos = 0;
     utrp->rx_pos = 0;
     utrp->rx_len = 0;
+    utrp->rx_enable = TRUE;
 
     iutrp->running = TRUE;
     iutrp->thread = SDL_CreateThread(&receive_thread,
@@ -224,21 +226,22 @@ int udp_transport_create(struct udp_transport *utrp)
     }
 
     /* Set-up the inner transport object. */
-    utrp->trp.reset = &trp_reset;
-    utrp->trp.append = &trp_append;
+    utrp->trp.clear_tx = &trp_clear_tx;
+    utrp->trp.append_tx = &trp_append_tx;
     utrp->trp.send = &trp_send;
+    utrp->trp.enable_rx = &trp_enable_rx;
+    utrp->trp.clear_rx = &trp_clear_rx;
+    utrp->trp.get_rx_data = &trp_get_rx_data;
+    utrp->trp.has_rx_data = &trp_has_rx_data;
     utrp->trp.receive = &trp_receive;
-    utrp->trp.drop = &trp_drop;
-    utrp->trp.get_data = &trp_get_data;
-    utrp->trp.has_data = &trp_has_data;
     utrp->trp.arg = utrp;
 
     return TRUE;
 }
 
-/* Resets the tranport. */
+/* To clear the TX buffer. */
 static
-void trp_reset(void *arg)
+void trp_clear_tx(void *arg)
 {
     struct udp_transport *utrp;
     utrp = (struct udp_transport *) arg;
@@ -250,7 +253,7 @@ void trp_reset(void *arg)
  * Returns TRUE on success.
  */
 static
-int trp_append(void *arg, uint16_t data)
+int trp_append_tx(void *arg, uint16_t data)
 {
     struct udp_transport *utrp;
     utrp = (struct udp_transport *) arg;
@@ -263,7 +266,7 @@ int trp_append(void *arg, uint16_t data)
     }
 
     if (utrp->tx_pos >= UDP_PACKET_SIZE) {
-        report_error("udp_transport: append: "
+        report_error("udp_transport: append_tx: "
                      "buffer overflow");
         return FALSE;
     }
@@ -312,6 +315,87 @@ int trp_send(void *arg)
 
     utrp->tx_pos = 0;
     return TRUE;
+}
+
+/* To enable (or disable) receiving packets.
+ * The parameter `enable` specifies wheter to enable or disable
+ * receiving packets.
+ * Returns TRUE on success.
+ */
+static
+int trp_enable_rx(void *arg, int enable)
+{
+    struct udp_transport *utrp;
+    struct udp_transport_internal *iutrp;
+    int ret;
+
+    utrp = (struct udp_transport *) arg;
+    iutrp = (struct udp_transport_internal *) utrp->internal;
+
+    ret = SDL_LockMutex(iutrp->mutex);
+    if (unlikely(ret != 0)) {
+        report_error("udp_transport: enable_rx: "
+                     "could no acquire lock (SDLError(%d): %s)",
+                     ret, SDL_GetError());
+        return FALSE;
+    }
+
+    if (!enable) {
+        utrp->ring_start = 0;
+        utrp->ring_end = 0;
+    }
+    utrp->rx_enable = enable;
+
+    SDL_UnlockMutex(iutrp->mutex);
+    return TRUE;
+}
+
+/* To clear the RX buffer. */
+static
+void trp_clear_rx(void *arg)
+{
+    struct udp_transport *utrp;
+
+    utrp = (struct udp_transport *) arg;
+    utrp->rx_pos = 0;
+    utrp->rx_len = 0;
+}
+
+/* Gets the data of the current packet.
+ * Returns the current data (or zero if no data).
+ */
+static
+uint16_t trp_get_rx_data(void *arg)
+{
+    struct udp_transport *utrp;
+    uint16_t data;
+
+    utrp = (struct udp_transport *) arg;
+    if (utrp->rx_pos >= utrp->rx_len) return 0;
+
+    if (utrp->rx_pos == 0) {
+        /* Skip the size prefix. */
+        utrp->rx_pos = 2;
+    }
+
+
+    data = (uint16_t) utrp->rx_buf[utrp->rx_pos++];
+    data <<= 8;
+    data |= (uint16_t) utrp->rx_buf[utrp->rx_pos++];
+    return data;
+}
+
+/* Checks if there is still remaining data on the current received
+ * packet. Returns the number of remaining bytes.
+ */
+static
+size_t trp_has_rx_data(void *arg)
+{
+    struct udp_transport *utrp;
+
+    utrp = (struct udp_transport *) arg;
+    if (utrp->rx_pos >= utrp->rx_len) return 0;
+    return (utrp->rx_len - utrp->rx_pos);
 }
 
 /* Receives a packet.
@@ -389,54 +473,6 @@ int trp_receive(void *arg, size_t *plen)
     return TRUE;
 }
 
-/* When done receiving a packet. */
-static
-void trp_drop(void *arg)
-{
-    struct udp_transport *utrp;
-
-    utrp = (struct udp_transport *) arg;
-    utrp->rx_pos = 0;
-    utrp->rx_len = 0;
-}
-
-/* Gets the data of the current packet.
- * Returns the current data (or zero if no data).
- */
-static
-uint16_t trp_get_data(void *arg)
-{
-    struct udp_transport *utrp;
-    uint16_t data;
-
-    utrp = (struct udp_transport *) arg;
-    if (utrp->rx_pos >= utrp->rx_len) return 0;
-
-    if (utrp->rx_pos == 0) {
-        /* Skip the size prefix. */
-        utrp->rx_pos = 2;
-    }
-
-
-    data = (uint16_t) utrp->rx_buf[utrp->rx_pos++];
-    data <<= 8;
-    data |= (uint16_t) utrp->rx_buf[utrp->rx_pos++];
-    return data;
-}
-
-/* Checks if there is still remaining data on the current received
- * packet. Returns the number of remaining bytes.
- */
-static
-size_t trp_has_data(void *arg)
-{
-    struct udp_transport *utrp;
-
-    utrp = (struct udp_transport *) arg;
-    if (utrp->rx_pos >= utrp->rx_len) return 0;
-    return (utrp->rx_len - utrp->rx_pos);
-}
-
 /* Thread to receive packets. */
 static
 int receive_thread(void *arg)
@@ -502,7 +538,7 @@ int receive_thread(void *arg)
         packet_len *= 2; /* Convert to bytes. */
         packet_len += 2; /* For the size prefix. */
         if ((packet_len > len) || ((packet_len % 2) != 0)) {
-            report_error("udp_transport: receive: "
+            report_error("udp_transport: receive_thread: "
                          "invalid packet length: %zu (%zu)",
                          packet_len, len);
             return 1;
@@ -519,6 +555,12 @@ int receive_thread(void *arg)
                          "could no acquire lock (SDLError(%d): %s)",
                          ret, SDL_GetError());
             return 1;
+        }
+
+        if (!utrp->rx_enable) {
+            /* Drop the packet if RX is not enabled. */
+            SDL_UnlockMutex(iutrp->mutex);
+            continue;
         }
 
         free_size = UDP_RING_BUFFER_SIZE

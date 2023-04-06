@@ -305,7 +305,12 @@ void simulator_reset(struct simulator *sim)
 
     disk_reset(&sim->dsk);
     display_reset(&sim->displ);
-    ethernet_reset(&sim->ether);
+    if (unlikely(!ethernet_reset(&sim->ether))) {
+        report_error("simulator: reset: "
+                     "could not reset ethernet");
+        sim->error = TRUE;
+        return;
+    }
     keyboard_reset(&sim->keyb);
     mouse_reset(&sim->mous);
 
@@ -587,7 +592,13 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         if (mc->f1 == F1_ETH_EILFCT) {
             output &= ethernet_eilfct(&sim->ether);
         } else if (mc->f1 == F1_ETH_EPFCT) {
-            output &= ethernet_epfct(&sim->ether);
+            if (unlikely(!ethernet_epfct(&sim->ether, &t))) {
+                report_error("simulator: step: "
+                             "error at EPFCT");
+                sim->error = TRUE;
+                return 0;
+            }
+            output &= t;
         }
     }
 
