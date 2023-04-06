@@ -427,7 +427,7 @@ int trp_receive(void *arg, size_t *plen)
             len = utrp->ring_buf[utrp->ring_start];
             len <<= 8;
             len |= utrp->ring_buf[utrp->ring_start + 1];
-            len = 2 * (len + 1);
+            len = 2 * (len + 2); /* Extra prefix and suffix. */
 
             if (len + utrp->ring_start > utrp->ring_end) {
                 /* Cap the length to the length of the ring buffer.
@@ -513,7 +513,7 @@ int receive_thread(void *arg)
                      /* Two extra bytes for the fake checksum,
                       * which is not sent.
                       */
-                     UDP_PACKET_SIZE,
+                     (UDP_PACKET_SIZE - 2),
                      0, NULL, NULL);
 
         if (s < 0) {
@@ -548,6 +548,8 @@ int receive_thread(void *arg)
             /* Discard the extra remaining of the packet. */
             len = packet_len;
         }
+
+        len += 2; /* To extra bytes for the fake chksum suffix. */
 
         ret = SDL_LockMutex(iutrp->mutex);
         if (unlikely(ret != 0)) {

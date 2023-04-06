@@ -576,12 +576,6 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
 
     output = do_rdram(sim);
 
-    if (mc->use_constant) {
-        /* Not used the modified RSEL here. */
-        output &= sim->consts[mc->const_addr];
-        return output;
-    }
-
     if (mc->bs_use_crom) {
         output &= sim->consts[mc->const_addr];
     }
@@ -600,6 +594,12 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
             }
             output &= t;
         }
+    }
+
+    if (mc->use_constant) {
+        /* Not used the modified RSEL here. */
+        output &= sim->consts[mc->const_addr];
+        return output;
     }
 
     switch (mc->bs) {

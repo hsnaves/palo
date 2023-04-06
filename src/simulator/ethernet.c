@@ -173,8 +173,9 @@ uint16_t read_input_fifo(struct ethernet *ether, int peek)
     uint16_t output;
 
     /* If empty, returns 0 as output. */
-    if (ether->fifo_start == ether->fifo_end)
+    if (ether->fifo_start == ether->fifo_end) {
         return 0;
+    }
 
     output = ether->fifo[ether->fifo_start];
     if (peek) return output;
@@ -493,6 +494,7 @@ int rx_interrupt(struct ethernet *ether)
             rem = (*ether->trp->has_rx_data)(ether->trp->arg);
             if (rem == 0) {
                 ether->in_gone = TRUE;
+                /* Clear the current RX packet. */
                 (*ether->trp->clear_rx)(ether->trp->arg);
                 ether->input_state = IST_DONE;
                 ether->pending |= (1 << TASK_ETHERNET);
