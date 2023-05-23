@@ -1,0 +1,3 @@
+- More flexible breakpoints (linked list of conditions);
+- Support for Trident disk type;
+- Support for bfs / diskcopy file;
