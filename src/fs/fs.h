@@ -13,8 +13,8 @@
 #include <time.h>
 
 /* Constants. */
+#define MAX_PAGE_SIZE                  1024U
 #define NAME_LENGTH                      40U
-#define PAGE_DATA_SIZE                  512U
 
 /* To interpret the bits of serial_number.word1. */
 #define SN_DIRECTORY                 0x8000U
@@ -126,7 +126,7 @@ struct page {
                                    */
         struct serial_number sn;  /* The file serial number. */
     } label;
-    uint8_t data[PAGE_DATA_SIZE]; /* Page data. */
+    uint8_t *data;                /* Page data. */
 };
 
 /* Structure to represent an entry within a directory.
@@ -146,6 +146,7 @@ struct geometry {
     uint16_t num_cylinders;       /* Number of cylinders. */
     uint16_t num_heads;           /* Number of heads per cylinder. */
     uint16_t num_sectors;         /* Number of sectors per head. */
+    uint16_t sector_words;        /* Number of words per sector. */
 };
 
 /* The file information (from the leader page).
@@ -182,12 +183,14 @@ struct fs {
                                    * in pages.
                                    */
     uint16_t disk_length;         /* The length of a single disk. */
+    uint16_t sector_bytes;        /* Number of bytes per sector. */
 
     uint16_t *ref_count;          /* A reference count on how
                                    * many directories point to the
                                    * corresponding pages.
                                    */
     uint16_t *bitmap;             /* Disk usage bitmap. */
+    uint8_t  *data;               /* The disk raw data. */
     uint16_t bitmap_size;         /* The size of the bitmap. */
     uint16_t free_pages;          /* Number of free pages. */
     struct serial_number last_sn; /* Last used serial number. */

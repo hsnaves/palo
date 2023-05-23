@@ -83,7 +83,7 @@ static
 int check_prop_structure(const struct fs *fs,
                          const struct file_entry *fe)
 {
-    uint8_t buffer[PAGE_DATA_SIZE];
+    uint8_t buffer[MAX_PAGE_SIZE];
     const uint8_t *data;
     uint8_t type, length;
     size_t i, nbytes;
@@ -349,7 +349,7 @@ int check_basic_filesystem_data(const struct fs *fs)
             continue;
         }
 
-        if (pg->label.nbytes > PAGE_DATA_SIZE) {
+        if (pg->label.nbytes > fs->sector_bytes) {
             report_error("fs: check_basic_filesystem_data: "
                          "invalid label nbytes = %u at VDA = %u",
                          pg->label.nbytes, vda);
@@ -360,7 +360,7 @@ int check_basic_filesystem_data(const struct fs *fs)
         if (vda == 0) continue;
 
         if (pg->label.prev_rda == 0) {
-            if (pg->label.nbytes < PAGE_DATA_SIZE) {
+            if (pg->label.nbytes < fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "short leader page at VDA = %u: "
                              "nbytes = %u", vda, pg->label.nbytes);
@@ -370,7 +370,7 @@ int check_basic_filesystem_data(const struct fs *fs)
         }
 
         if (pg->label.next_rda != 0) {
-            if (pg->label.nbytes < PAGE_DATA_SIZE) {
+            if (pg->label.nbytes < fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "short last page at VDA = %u: "
                              "nbytes = %u",
@@ -379,7 +379,7 @@ int check_basic_filesystem_data(const struct fs *fs)
                 continue;
             }
         } else {
-            if (pg->label.nbytes >= PAGE_DATA_SIZE) {
+            if (pg->label.nbytes >= fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "full last page at VDA = %u", vda);
                 success = FALSE;
@@ -827,7 +827,7 @@ int scavenge_cb(const struct fs *fs,
 {
     struct open_file of;
     struct file_info finfo;
-    uint8_t buffer[PAGE_DATA_SIZE];
+    uint8_t buffer[MAX_PAGE_SIZE];
     size_t ret, nbytes;
     FILE *fp, *out;
 

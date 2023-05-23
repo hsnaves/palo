@@ -23,7 +23,7 @@ void scan_properties(const struct fs *fs,
                      const struct file_entry *fe,
                      scan_property_cb cb, void *arg)
 {
-    uint8_t buffer[PAGE_DATA_SIZE];
+    uint8_t buffer[MAX_PAGE_SIZE];
     const uint8_t *data;
     uint8_t type, length;
     size_t i, nbytes;

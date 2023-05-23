@@ -11,19 +11,19 @@
 
 void read_leader_page(const struct fs *fs,
                       const struct file_entry *fe,
-                      uint8_t data[PAGE_DATA_SIZE])
+                      uint8_t *data)
 {
     struct open_file of;
 
     fs_get_of(fs, fe, FALSE, TRUE, &of);
-    fs_read(fs, &of, data, PAGE_DATA_SIZE);
+    fs_read(fs, &of, data, fs->sector_bytes);
     fs_close_ro(fs, &of);
     if (of.error < 0) {
         /* This should not happen. */
         report_error("fs: read_leader_page: "
                      "error while reading: %s",
                      fs_error(of.error));
-        memset(data, 0, PAGE_DATA_SIZE);
+        memset(data, 0, fs->sector_bytes);
     }
 }
 
@@ -44,7 +44,7 @@ size_t file_length(const struct fs *fs, const struct file_entry *fe,
     if (of.error < 0) goto error_length;
 
     while (!of.eof) {
-        nbytes = fs_read(fs, &of, NULL, PAGE_DATA_SIZE);
+        nbytes = fs_read(fs, &of, NULL, fs->sector_bytes);
         l += nbytes;
     }
 
@@ -101,7 +101,7 @@ int fs_get_file_info(const struct fs *fs,
                      int *error)
 {
     struct open_file of;
-    uint8_t data[PAGE_DATA_SIZE];
+    uint8_t data[MAX_PAGE_SIZE];
 
     /* Test for errors. */
     fs_get_of(fs, fe, FALSE, TRUE, &of);
@@ -147,12 +147,12 @@ int fs_get_file_info(const struct fs *fs,
 static
 int write_raw_leader_page(struct fs *fs,
                           const struct file_entry *fe,
-                          uint8_t data[PAGE_DATA_SIZE])
+                          uint8_t *data)
 {
     struct open_file of;
 
     fs_get_of(fs, fe, FALSE, FALSE, &of);
-    fs_write(fs, &of, data, PAGE_DATA_SIZE, FALSE);
+    fs_write(fs, &of, data, fs->sector_bytes, FALSE);
     /* Close using fs_close_ro() to avoid updating the leader page. */
     of.read_only = TRUE; /* To avoid the error message. */
     fs_close_ro(fs, &of);
@@ -164,7 +164,7 @@ int fs_set_file_info(struct fs *fs,
                      const struct file_info *finfo,
                      int *error)
 {
-    uint8_t data[PAGE_DATA_SIZE];
+    uint8_t data[MAX_PAGE_SIZE];
     int _error;
 
     write_alto_time(data, LD_OFF_CREATED, finfo->created);
@@ -195,7 +195,7 @@ int fs_set_file_info(struct fs *fs,
 void update_leader_page(struct fs *fs, const struct file_entry *fe)
 {
     struct open_file end_of;
-    uint8_t data[PAGE_DATA_SIZE];
+    uint8_t data[MAX_PAGE_SIZE];
     int error;
 
     read_leader_page(fs, fe, data);

@@ -15,6 +15,7 @@ void fs_initvar(struct fs *fs)
     fs->pages = NULL;
     fs->ref_count = NULL;
     fs->bitmap = NULL;
+    fs->data = NULL;
 }
 
 void fs_destroy(struct fs *fs)
@@ -27,17 +28,22 @@ void fs_destroy(struct fs *fs)
 
     if (fs->bitmap) free((void *) fs->bitmap);
     fs->bitmap = NULL;
+
+    if (fs->data) free((void *) fs->data);
+    fs->data = NULL;
 }
 
 int fs_create(struct fs *fs, struct geometry dg)
 {
-    size_t size;
-    fs_initvar(fs);
+    size_t offset, size;
+    uint16_t i;
 
+    fs_initvar(fs);
     if (unlikely(dg.num_disks > 2
                  || dg.num_heads > 2
                  || dg.num_sectors > 15
-                 || dg.num_cylinders >= 512)) {
+                 || dg.num_cylinders >= 512
+                 || dg.sector_words > 1024)) {
         report_error("fs: create: invalid disk geometry");
         return FALSE;
     }
@@ -46,6 +52,7 @@ int fs_create(struct fs *fs, struct geometry dg)
 
     fs->disk_length = dg.num_cylinders * dg.num_heads * dg.num_sectors;
     fs->length = dg.num_disks * fs->disk_length;
+    fs->sector_bytes = dg.sector_words * sizeof(uint16_t);
     fs->bitmap_size = (fs->length >> 4);
     if (fs->length & 0xF) fs->bitmap_size++;
 
@@ -58,10 +65,22 @@ int fs_create(struct fs *fs, struct geometry dg)
     size = ((size_t) fs->bitmap_size) * sizeof(uint16_t);
     fs->bitmap = (uint16_t *) malloc(size);
 
-    if (unlikely(!fs->pages || !fs->ref_count || !fs->bitmap)) {
+    size = ((size_t) fs->length) * fs->sector_bytes;
+    fs->data = (uint8_t *) malloc(size);
+
+    if (unlikely(!fs->pages || !fs->ref_count
+                 || !fs->bitmap || !fs->data)) {
         report_error("fs: create: memory exhausted");
         fs_destroy(fs);
         return FALSE;
+    }
+
+    for (i = 0; i < fs->length; i++) {
+        struct page *pg;
+        pg = &fs->pages[i];
+
+        offset = ((size_t) i) * fs->sector_bytes;
+        pg->data = &fs->data[offset];
     }
 
     fs->free_pages = 0xFFFF;
@@ -114,7 +133,8 @@ int fs_load_image(struct fs *fs,
     }
 
     fs->checked = FALSE;
-    meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
+    meta_len = (sizeof(pg->page_vda) + sizeof(pg->header) + sizeof(pg->label))
+        / sizeof(uint16_t);
     base_vda = disk_num * fs->disk_length;
     for (i = 0; i < fs->disk_length; i++) {
         vda = base_vda + i;
@@ -143,7 +163,7 @@ int fs_load_image(struct fs *fs,
             meta_ptr[j] = w;
         }
 
-        for (j = 0; j < PAGE_DATA_SIZE; j++) {
+        for (j = 0; j < fs->sector_bytes; j++) {
             c = fgetc(fp);
             if (c == EOF) goto error_eof;
 
@@ -186,7 +206,8 @@ int fs_save_image(const struct fs *fs,
         return FALSE;
     }
 
-    meta_len = offsetof(struct page, data) /  sizeof(uint16_t);
+    meta_len = (sizeof(pg->page_vda) + sizeof(pg->header) + sizeof(pg->label))
+        / sizeof(uint16_t);
     base_vda = disk_num * fs->disk_length;
     for (i = 0; i < fs->disk_length; i++) {
         vda = base_vda + i;
@@ -211,7 +232,7 @@ int fs_save_image(const struct fs *fs,
             if (c == EOF) goto error;
         }
 
-        for (j = 0; j < PAGE_DATA_SIZE; j++) {
+        for (j = 0; j < fs->sector_bytes; j++) {
             /* Byte swap the data here. */
             c = fputc((int) pg->data[j ^ 1], fp);
             if (c == EOF) goto error;
@@ -231,7 +252,7 @@ error:
 int fs_extract_file(const struct fs *fs, const char *name,
                     const char *output_filename)
 {
-    uint8_t buffer[PAGE_DATA_SIZE];
+    uint8_t buffer[MAX_PAGE_SIZE];
     struct open_file of;
     FILE *fp;
     size_t nbytes;
@@ -286,7 +307,7 @@ error_read:
 int fs_insert_file(struct fs *fs, const char *input_filename,
                    const char *name)
 {
-    uint8_t buffer[PAGE_DATA_SIZE];
+    uint8_t buffer[MAX_PAGE_SIZE];
     struct open_file of;
     FILE *fp;
     size_t nbytes;

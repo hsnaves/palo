@@ -286,7 +286,7 @@ void fs_wipe_free_pages(struct fs *fs)
             continue;
 
         memset(&pg->label, 0, sizeof(pg->label));
-        memset(pg->data, 0, sizeof(pg->data));
+        memset(pg->data, 0, fs->sector_bytes);
         pg->label.version = VERSION_FREE;
         pg->label.sn.word1 = VERSION_FREE;
         pg->label.sn.word2 = VERSION_FREE;
@@ -353,7 +353,7 @@ int fs_install_boot(struct fs *fs,
     src_pg = &fs->pages[of.pos.vda];
 
     pg->label = src_pg->label;
-    memcpy(pg->data, src_pg->data, PAGE_DATA_SIZE);
+    memcpy(pg->data, src_pg->data, fs->sector_bytes);
 
 exit_install:
     if (error) {

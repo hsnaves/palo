@@ -83,6 +83,7 @@ int main(int argc, char **argv)
     dg.num_cylinders = 203;
     dg.num_heads = 2;
     dg.num_sectors = 12;
+    dg.sector_words = 256;
 
     for (i = 1; i < argc; i++) {
         is_last = (i + 1 == argc);

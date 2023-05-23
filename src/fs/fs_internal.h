@@ -341,7 +341,7 @@ int make_directory(struct fs *fs,
  */
 void read_leader_page(const struct fs *fs,
                       const struct file_entry *fe,
-                      uint8_t data[PAGE_DATA_SIZE]);
+                      uint8_t *data);
 
 /* Writes the leader page.
  * The file whose leader page is to be written is specified by `fe`.

@@ -52,7 +52,7 @@ int new_file_entry(struct fs *fs,
     pg->label.next_rda = 0;
     pg->label.unused = 0;
     /* Leader page is full. */
-    pg->label.nbytes = PAGE_DATA_SIZE;
+    pg->label.nbytes = fs->sector_bytes;
     pg->label.file_pgnum = 0;
     pg->label.version = 1;
     pg->label.sn = fs->last_sn;
@@ -456,7 +456,7 @@ size_t fs_write(struct fs *fs, struct open_file *of,
             len -= nbytes;
         }
 
-        if (len == 0 && of->pos.pos < PAGE_DATA_SIZE)
+        if (len == 0 && of->pos.pos < fs->sector_bytes)
             break;
 
         /* First check if there is a next page. */
@@ -469,8 +469,8 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         of->eof = FALSE;
 
         /* Check if the last page can be extended. */
-        if (pg->label.nbytes < PAGE_DATA_SIZE) {
-            nbytes = PAGE_DATA_SIZE - pg->label.nbytes;
+        if (pg->label.nbytes < fs->sector_bytes) {
+            nbytes = fs->sector_bytes - pg->label.nbytes;
             if (nbytes > len) nbytes = len;
             pg->label.nbytes += nbytes;
             continue;
@@ -487,8 +487,8 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         virtual_to_real(&fs->dg, npg->page_vda, &pg->label.next_rda);
 
         nbytes = len;
-        if (nbytes > PAGE_DATA_SIZE)
-            nbytes = PAGE_DATA_SIZE;
+        if (nbytes > fs->sector_bytes)
+            nbytes = fs->sector_bytes;
 
         npg->label.next_rda = 0;
         npg->label.unused = pg->label.unused;
@@ -520,7 +520,7 @@ int fs_truncate(struct fs *fs, struct open_file *of)
     if (of->eof) return TRUE;
     of->modified = TRUE;
 
-    if (of->pos.pos >= PAGE_DATA_SIZE) {
+    if (of->pos.pos >= fs->sector_bytes) {
         advance_page(fs, of);
         of->eof = FALSE;
     }
