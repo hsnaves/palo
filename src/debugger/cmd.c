@@ -380,7 +380,12 @@ int cmd_dump_memory(struct debugger *dbg)
         }
         if (!running || stop_sim) break;
         val = simulator_read(sim, addr, sim->ctask, FALSE);
-        printf("%06o: %06o\n", addr++, val);
+        if (dbg->use_octal) {
+            printf("%06o: %06o\n", addr, val);
+        } else {
+            printf("0x%04X: 0x%04X\n", addr, val);
+        }
+        addr++;
     }
 
     return TRUE;
