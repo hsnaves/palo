@@ -455,15 +455,17 @@ uint16_t get_modified_rsel(struct simulator *sim,
     rsel = mc->rsel;
     if (mc->task == TASK_EMULATOR) {
         ir = sim->ir;
-        /* Modify the last 3 bits according to the
+        /* Modify the last 2 bits of RSEL based on the
          * corresponding field in the IR register.
+         * According to the schematics, the last 2 bits
+         * are not replaced, but ORed with the new value
+         * from the IR.
          */
-        if (mc->f2 == F2_EMU_ACSOURCE) {
-            rsel &= ~0x3;
+        if (mc->f2 == F2_EMU_ACSOURCE
+            || mc->f2 == F2_EMU_UNK1) {
             rsel |= (~(ir >> 13)) & 0x3;
         } else if (mc->f2 == F2_EMU_ACDEST
                    || mc->f2 == F2_EMU_LOAD_DNS) {
-            rsel &= ~0x3;
             rsel |= (~(ir >> 11)) & 0x3;
         }
     }
@@ -803,28 +805,14 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
             carry = !(sim->carry);
             break;
         }
-
-        switch ((sim->ir >> 8) & 7) {
-        case 0:
-        case 2:
-        case 7:
-            /* COM, MOV, AND - carry unaffected. */
-            break;
-        case 1:
-        case 3:
-        case 4:
-        case 5:
-        case 6:
-            if (sim->aluC0) {
-                carry = !carry;
-            }
-            break;
-        }
-        *nova_carry = carry;
+        /* According to the schematics, aluC0 is always
+         * XORed into the carry bit when DNS is set.
+         */
+        if (sim->aluC0) carry = !carry;
     } else {
         carry = 0;
-        *nova_carry = 0;
     }
+    *nova_carry = carry;
 
     switch (mc->f1) {
     case F1_LLSH1:

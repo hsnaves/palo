@@ -118,6 +118,7 @@
 #define F2_EMU_LOAD_IR                    12
 #define F2_EMU_IDISP                      13
 #define F2_EMU_ACSOURCE                   14
+#define F2_EMU_UNK1                       15
 /* KSEC (disk sector), KWD (disk word) F2 functions. */
 #define F2_DSK_INIT                        8
 #define F2_DSK_RWC                         9
