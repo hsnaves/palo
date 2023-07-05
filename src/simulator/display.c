@@ -246,8 +246,6 @@ void dhl_interrupt(struct display *displ)
             displ->pending |= (1 << TASK_CURSOR);
         }
 
-        /* Clear the buffers. */
-        displ->fifo_start = displ->fifo_end = 0;
         displ->dw_blocked = FALSE;
 
         displ->hblank = TRUE;
@@ -363,6 +361,9 @@ void dw_interrupt(struct display *displ)
             d <<= 1;
         }
     }
+
+    /* Clear the buffers here. */
+    displ->fifo_start = displ->fifo_end = 0;
 }
 
 /* Updates the intr_cycle.
