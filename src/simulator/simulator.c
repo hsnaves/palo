@@ -650,7 +650,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
         break;
     case BS_READ_DISP:
         t = sim->ir & 0x00FFU;
-        if ((sim->ir & 0x300) != 0 && (sim->ir & 0x80) != 0) {
+        if (((sim->ir & 0x300) != 0) && ((sim->ir & 0x80) != 0)) {
             t |= 0xFF00U;
         }
         output &= t;
@@ -789,7 +789,8 @@ uint16_t do_shift(struct simulator *sim, const struct microcode *mc,
     }
 
     if (dns) {
-        *load_r = ((sim->ir & 0x0008) == 0);
+        if ((sim->ir & 0x0008) != 0)
+            *load_r = FALSE;
 
         switch ((sim->ir >> 4) & 3) {
         case 0: /* not affected. */
