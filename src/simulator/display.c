@@ -413,16 +413,21 @@ void display_print_registers(const struct display *displ,
                              struct decoder *dec)
 {
     struct string_buffer *output;
+    uint8_t idx, pos;
 
     output = dec->output;
-    decode_tagged_value(dec->vdec, "SCANLINE",
-                        DECODE_VALUE, displ->scanline);
-    decode_tagged_value(dec->vdec, "WORD", DECODE_MEMORY, displ->word);
     decode_tagged_value(dec->vdec, "EVENFIELD",
                         DECODE_BOOL, displ->even_field);
+    decode_tagged_value(dec->vdec, "HBLANK",
+                        DECODE_BOOL, displ->hblank);
+    decode_tagged_value(dec->vdec, "SCANLINE",
+                        DECODE_VALUE, displ->scanline);
+    decode_tagged_value(dec->vdec, "WORD",
+                        DECODE_VALUE, displ->word);
     string_buffer_print(output, "\n");
 
-    decode_tagged_value(dec->vdec, "CUR_X", DECODE_VALUE, displ->cursor_x);
+    decode_tagged_value(dec->vdec, "CUR_X",
+                        DECODE_VALUE, displ->cursor_x);
     decode_tagged_value(dec->vdec, "CUR_DAT",
                         DECODE_VALUE, displ->cursor_data);
     decode_tagged_value(dec->vdec, "CUR_X_L",
@@ -431,17 +436,22 @@ void display_print_registers(const struct display *displ,
                         DECODE_VALUE, displ->cursor_data_latched);
     string_buffer_print(output, "\n");
 
-
-    decode_tagged_value(dec->vdec, "LOWRES", DECODE_BOOL, displ->low_res);
+    decode_tagged_value(dec->vdec, "LOWRES",
+                        DECODE_BOOL, displ->low_res);
     decode_tagged_value(dec->vdec, "LOWRES_L",
                         DECODE_BOOL, displ->low_res_latched);
-    decode_tagged_value(dec->vdec, "WOB", DECODE_BOOL, displ->wob);
-    string_buffer_print(output, "\n");
-
+    decode_tagged_value(dec->vdec, "WOB",
+                        DECODE_BOOL, displ->wob);
     decode_tagged_value(dec->vdec, "WOB_L",
                         DECODE_BOOL, displ->wob_latched);
+    string_buffer_print(output, "\n");
+
     decode_tagged_value(dec->vdec, "DH_BLOCK",
                         DECODE_BOOL, displ->dh_blocked);
+    decode_tagged_value(dec->vdec, "DW_BLOCK",
+                        DECODE_BOOL, displ->dw_blocked);
+    decode_tagged_value(dec->vdec, "CUR_BLOCK",
+                        DECODE_BOOL, displ->cur_blocked);
     decode_tagged_value(dec->vdec, "PEND",
                         DECODE_VALUE, displ->pending);
     string_buffer_print(output, "\n");
@@ -453,6 +463,21 @@ void display_print_registers(const struct display *displ,
     decode_tagged_value(dec->vdec, "DW_ICYC",
                         DECODE_SVALUE32, displ->dw_intr_cycle);
     string_buffer_print(output, "\n");
+
+    decode_tagged_value(dec->vdec, "FIFO_ST",
+                        DECODE_VALUE, displ->fifo_start);
+    decode_tagged_value(dec->vdec, "FIFO_END",
+                        DECODE_VALUE, displ->fifo_end);
+    string_buffer_print(output, "\n");
+
+    for (idx = displ->fifo_start; idx < displ->fifo_end; idx++) {
+        pos = idx;
+        if (pos >= FIFO_SIZE)
+            pos -= FIFO_SIZE;
+        string_buffer_print(output, "  ");
+        decode_value(dec->vdec, DECODE_VALUE, displ->fifo[pos]);
+        string_buffer_print(output, "\n");
+    }
 }
 
 void display_serialize(const struct display *displ, struct serdes *sd)
