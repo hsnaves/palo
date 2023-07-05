@@ -29,29 +29,32 @@ struct display {
     uint8_t fifo_start, fifo_end; /* To control the FIFO. */
 
     int even_field;               /* If this is an even or odd field. */
+    int hblank;                   /* If it is in a H-blanking period. */
     uint16_t scanline;            /* The current scanline. */
-    uint16_t vblank_scanline;     /* Scanline in vertical blank period. */
     uint16_t word;                /* The current word in the scanline. */
 
     uint16_t cursor_x;            /* Cursor X position. */
-    uint16_t cursor_x_latched;    /* Latched position for scanline. */
-    int has_cursor_x;             /* X data latched. */
     uint16_t cursor_data;         /* The cursor data. */
-    uint16_t cursor_data_latched; /* Latched data for scanline. */
-    int has_cursor_data;          /* Cursor data latched. */
 
-    int switch_mode;              /* Pending switch mode requested. */
+    /* The cursor does not have extra latches in the schematics, but
+     * we add them here for simplicity. In theory, one can change the
+     * values of cursor_x and cursor_data while the bean is moving
+     * in the current scaline, but we do not simulate this here..
+     */
+    uint16_t cursor_x_latched;    /* Latched position for scanline. */
+    uint16_t cursor_data_latched; /* Latched data for scanline. */
+
     int low_res;                  /* Low resolution mode. */
     int low_res_latched;          /* The latched mode for scanline. */
     int wob;                      /* White on black. */
     int wob_latched;              /* Latched wob for scanline. */
 
-    int dw_blocked;               /* Display word blocked itself. */
-    int dh_blocked;               /* Display horizontal blocked itself. */
+    int dh_blocked;               /* Display horizontal task blocked itself. */
+    int dw_blocked;               /* Display word task blocked itself. */
+    int cur_blocked;              /* Cursor task blocked itself. */
 
     int32_t intr_cycle;           /* Cycle of the next interrupt. */
-    int32_t dv_intr_cycle;        /* Display vertical interrupt cycle. */
-    int32_t dh_intr_cycle;        /* Display horizontal interrupt cycle. */
+    int32_t dhl_intr_cycle;       /* Display half-line interrupt cycle. */
     int32_t dw_intr_cycle;        /* Display word interrupt cycle. */
     uint16_t pending;             /* The task pending mask. */
 };
