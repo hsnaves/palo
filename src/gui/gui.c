@@ -395,6 +395,7 @@ int gui_run(struct gui *ui)
     struct gui_internal *iui;
     SDL_Thread *thread;
     int ret, running;
+    uint32_t time0_3x, time_3x, delta_3x;
 
     iui = (struct gui_internal *) ui->internal;
     thread = NULL;
@@ -464,6 +465,7 @@ int gui_run(struct gui *ui)
     }
 
     running = TRUE;
+    time0_3x = 3 * SDL_GetTicks();
     while (TRUE) {
         if (unlikely(!gui_running(ui, &running, NULL))) {
             report_error("gui: internal: run: "
@@ -488,7 +490,15 @@ int gui_run(struct gui *ui)
             break;
         }
 
-        SDL_Delay(16); /* For 60 FPS. */
+        time_3x = 3 * SDL_GetTicks();
+        delta_3x = time_3x - time0_3x;
+        time0_3x = time_3x;
+
+        /* For 60 FPS, 50 / 3 = 16.666ms */
+        if (delta_3x < 50) {
+            SDL_Delay((50 - delta_3x + 2) / 3);
+            time0_3x += (50 - delta_3x);
+        }
     }
 
 do_exit:
