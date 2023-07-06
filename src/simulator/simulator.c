@@ -479,8 +479,7 @@ uint16_t get_modified_rsel(struct simulator *sim,
  * Returns the RAM address.
  */
 static
-uint16_t decode_ram_address(struct simulator *sim,
-                            int *low_half)
+uint16_t decode_ram_address(struct simulator *sim, int *low_half)
 {
     uint16_t addr;
     uint8_t bank;
@@ -1471,7 +1470,8 @@ void update_program_counters(struct simulator *sim,
                              int swmode)
 {
     uint32_t mcode;
-    uint16_t mpc, next_addr, bank;
+    uint16_t mpc, bank;
+    uint16_t next_addr;
     uint8_t task;
 
     /* Updates the current task. */
@@ -1483,13 +1483,13 @@ void update_program_counters(struct simulator *sim,
     mpc = sim->task_mpc[task];
     mcode = sim->microcode[mpc];
 
-    next_addr = MICROCODE_NEXT(mcode) | next_extra;
+    next_addr = MICROCODE_NEXT(mcode);
     bank = (mpc >> MPC_BANK_SHIFT) & MPC_BANK_MASK;
     if (swmode) {
         switch (sim->sys_type) {
         case ALTO_I:
         case ALTO_II_1KROM:
-            bank ^= 1; /* ROM0 <-> ROM1 */
+            bank ^= 1; /* ROM0 <-> RAM0 */
             break;
 
         case ALTO_II_2KROM:
@@ -1541,7 +1541,8 @@ void update_program_counters(struct simulator *sim,
             break;
         }
     }
-    sim->task_mpc[task] = (bank << MPC_BANK_SHIFT) | next_addr;
+    sim->task_mpc[task] = (bank << MPC_BANK_SHIFT)
+        | (next_addr | next_extra);
 
     sim->mir = mcode;
     sim->mpc = mpc;
