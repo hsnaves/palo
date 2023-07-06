@@ -1483,7 +1483,7 @@ void update_program_counters(struct simulator *sim,
     mpc = sim->task_mpc[task];
     mcode = sim->microcode[mpc];
 
-    next_addr = MICROCODE_NEXT(mcode);
+    next_addr = MICROCODE_NEXT(mcode) | next_extra;
     bank = (mpc >> MPC_BANK_SHIFT) & MPC_BANK_MASK;
     if (swmode) {
         switch (sim->sys_type) {
@@ -1538,11 +1538,11 @@ void update_program_counters(struct simulator *sim,
                     break;
                 }
             }
+
             break;
         }
     }
-    sim->task_mpc[task] = (bank << MPC_BANK_SHIFT)
-        | (next_addr | next_extra);
+    sim->task_mpc[task] = (bank << MPC_BANK_SHIFT) | next_addr;
 
     sim->mir = mcode;
     sim->mpc = mpc;
