@@ -76,19 +76,19 @@ void update_disk_metadata(struct fs *fs)
         bit = BIT(vda);
 
         pg = &fs->pages[vda];
-        if (pg->label.version == VERSION_FREE) {
+        if (pg->label.s.version == VERSION_FREE) {
             fs->bitmap[idx] &= ~(1 << bit);
             fs->free_pages++;
             continue;
         }
 
-        if (pg->label.version == 0
-            || pg->label.version == VERSION_BAD)
+        if (pg->label.s.version == 0
+            || pg->label.s.version == VERSION_BAD)
             continue;
 
-        if (pg->label.file_pgnum == 0) {
-            word1 = pg->label.sn.word1 & SN_PART1_MASK;
-            word2 = pg->label.sn.word2;
+        if (pg->label.s.file_pgnum == 0) {
+            word1 = pg->label.s.sn.word1 & SN_PART1_MASK;
+            word2 = pg->label.s.sn.word2;
             if (word1 > fs->last_sn.word1
                 || ((word1 == fs->last_sn.word1)
                     && (word2 > fs->last_sn.word2))) {
@@ -185,7 +185,7 @@ int allocate_page(struct fs *fs, uint16_t *free_vda,
     fs->bitmap[idx] |= (1 << bit);
     fs->free_pages--;
     pg = &fs->pages[vda];
-    if (pg->label.version != VERSION_FREE) {
+    if (pg->label.s.version != VERSION_FREE) {
         report_error("fs: allocate_page: inconsistent metadata");
         update_disk_metadata(fs);
         return allocate_page(fs, free_vda, last_vda);
@@ -209,15 +209,15 @@ void free_pages(struct fs *fs, uint16_t vda, int follow)
        bit = BIT(vda);
        pg = &fs->pages[vda];
 
-       pg->label.version = VERSION_FREE;
-       pg->label.sn.word1 = VERSION_FREE;
-       pg->label.sn.word2 = VERSION_FREE;
+       pg->label.s.version = VERSION_FREE;
+       pg->label.s.sn.word1 = VERSION_FREE;
+       pg->label.s.sn.word2 = VERSION_FREE;
        fs->bitmap[idx] &= ~(1 << bit);
        fs->free_pages++;
 
        if (!follow) break;
 
-       rda = pg->label.next_rda;
+       rda = pg->label.s.next_rda;
        real_to_virtual(&fs->dg, rda, &vda);
        if (vda == 0) break;
    }
@@ -282,21 +282,20 @@ void fs_wipe_free_pages(struct fs *fs)
 
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
-        if (pg->label.version != VERSION_FREE)
+        if (pg->label.s.version != VERSION_FREE)
             continue;
 
         memset(&pg->label, 0, sizeof(pg->label));
         memset(pg->data, 0, fs->sector_bytes);
-        pg->label.version = VERSION_FREE;
-        pg->label.sn.word1 = VERSION_FREE;
-        pg->label.sn.word2 = VERSION_FREE;
+        pg->label.s.version = VERSION_FREE;
+        pg->label.s.sn.word1 = VERSION_FREE;
+        pg->label.s.sn.word2 = VERSION_FREE;
     }
 }
 
-int fs_format(struct fs *fs, int *error)
+void fs_wipe_disk(struct fs *fs)
 {
     struct page *pg;
-    struct file_entry sysdir_fe;
     uint16_t vda, rda;
 
     for (vda = 0; vda < fs->length; vda++) {
@@ -308,15 +307,23 @@ int fs_format(struct fs *fs, int *error)
         pg->header[1] = rda;
         pg->header[0] = 0;
 
-        pg->label.version = VERSION_FREE;
+        pg->label.s.version = VERSION_FREE;
     }
 
     fs_wipe_free_pages(fs);
+}
+
+int fs_format(struct fs *fs, int *error)
+{
+    struct page *pg;
+    struct file_entry sysdir_fe;
+
+    fs_wipe_disk(fs);
 
     if (fs->length > 0) {
         pg = &fs->pages[0];
-        pg->label.version = 1;
-        pg->label.file_pgnum = 1;
+        pg->label.s.version = 1;
+        pg->label.s.file_pgnum = 1;
     }
 
     /* Pretend it is checked. */

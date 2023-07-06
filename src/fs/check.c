@@ -190,97 +190,97 @@ int check_page_links(const struct fs *fs)
             return FALSE;
         }
 
-        if (pg->label.version == VERSION_FREE
-            || pg->label.version == VERSION_BAD
-            || pg->label.version == 0
+        if (pg->label.s.version == VERSION_FREE
+            || pg->label.s.version == VERSION_BAD
+            || pg->label.s.version == 0
             || vda == 0)
             continue;
 
-        if (pg->label.prev_rda != 0) {
-            if (!real_to_virtual(&fs->dg, pg->label.prev_rda, &ovda)) {
+        if (pg->label.s.prev_rda != 0) {
+            if (!real_to_virtual(&fs->dg, pg->label.s.prev_rda, &ovda)) {
                 report_error("fs: check_page_links: "
                              "invalid prev_rda = %u at VDA = %u",
-                             pg->label.prev_rda, vda);
+                             pg->label.s.prev_rda, vda);
                 success = FALSE;
                 continue;
             }
 
             opg = &fs->pages[ovda];
-            if (opg->label.file_pgnum != (pg->label.file_pgnum - 1)) {
+            if (opg->label.s.file_pgnum != (pg->label.s.file_pgnum - 1)) {
                 report_error("fs: check_page_links: "
                              "discontiguous file_pgnum (prev) "
                              "at VDA = %u: expecting %u but got %u",
-                             vda, pg->label.file_pgnum - 1,
-                             opg->label.file_pgnum);
+                             vda, pg->label.s.file_pgnum - 1,
+                             opg->label.s.file_pgnum);
                 success = FALSE;
                 continue;
             }
 
-            if (opg->label.sn.word1 != pg->label.sn.word1
-                || opg->label.sn.word2 != pg->label.sn.word2) {
+            if (opg->label.s.sn.word1 != pg->label.s.sn.word1
+                || opg->label.s.sn.word2 != pg->label.s.sn.word2) {
                 report_error("fs: check_page_links: "
                              "differing file serial numbers (prev) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
-                             vda, pg->label.sn.word1, pg->label.sn.word2,
-                             opg->label.sn.word1, opg->label.sn.word2);
+                             vda, pg->label.s.sn.word1, pg->label.s.sn.word2,
+                             opg->label.s.sn.word1, opg->label.s.sn.word2);
                 success = FALSE;
                 continue;
             }
 
-            if (opg->label.next_rda != rda) {
+            if (opg->label.s.next_rda != rda) {
                 report_error("fs: check_page_links: "
                              "broken link (prev) at VDA = %u: "
                              "points to RDA %u instead of %u",
-                             vda, opg->label.next_rda, rda);
+                             vda, opg->label.s.next_rda, rda);
                 success = FALSE;
                 continue;
             }
         } else {
-            if (pg->label.file_pgnum != 0) {
+            if (pg->label.s.file_pgnum != 0) {
                 report_error("fs: check_page_links: "
                              "file_pgnum = %u is not zero at VDA = %u",
-                             pg->label.file_pgnum, vda);
+                             pg->label.s.file_pgnum, vda);
                 success = FALSE;
                 continue;
             }
         }
 
-        if (pg->label.next_rda != 0) {
-            if (!real_to_virtual(&fs->dg, pg->label.next_rda, &ovda)) {
+        if (pg->label.s.next_rda != 0) {
+            if (!real_to_virtual(&fs->dg, pg->label.s.next_rda, &ovda)) {
                 report_error("fs: check_page_links: "
                              "invalid next_rda = %u at VDA = %u",
-                             pg->label.next_rda, vda);
+                             pg->label.s.next_rda, vda);
                 success = FALSE;
                 continue;
             }
 
             opg = &fs->pages[ovda];
-            if (opg->label.file_pgnum != (pg->label.file_pgnum + 1)) {
+            if (opg->label.s.file_pgnum != (pg->label.s.file_pgnum + 1)) {
                 report_error("fs: check_page_links: "
                              "discontiguous file_pgnum (next) "
                              "at VDA = %u: expecting %u but got %u",
-                             vda, pg->label.file_pgnum + 1,
-                             opg->label.file_pgnum);
+                             vda, pg->label.s.file_pgnum + 1,
+                             opg->label.s.file_pgnum);
                 success = FALSE;
                 continue;
             }
 
-            if (opg->label.sn.word1 != pg->label.sn.word1
-                || opg->label.sn.word2 != pg->label.sn.word2) {
+            if (opg->label.s.sn.word1 != pg->label.s.sn.word1
+                || opg->label.s.sn.word2 != pg->label.s.sn.word2) {
                 report_error("fs: check_page_links: "
                              "differing file serial numbers (next) at "
                              "VDA = %u: expecting %u, %u but got %u, %u",
-                             vda, pg->label.sn.word1, pg->label.sn.word2,
-                             opg->label.sn.word1, opg->label.sn.word2);
+                             vda, pg->label.s.sn.word1, pg->label.s.sn.word2,
+                             opg->label.s.sn.word1, opg->label.s.sn.word2);
                 success = FALSE;
                 continue;
             }
 
-            if (opg->label.prev_rda != rda) {
+            if (opg->label.s.prev_rda != rda) {
                 report_error("fs: check_page_links: "
                              "broken link (next) at VDA = %u: "
                              "points to RDA %u instead of %u",
-                             vda, opg->label.prev_rda, rda);
+                             vda, opg->label.s.prev_rda, rda);
                 success = FALSE;
                 continue;
             }
@@ -319,67 +319,67 @@ int check_basic_filesystem_data(const struct fs *fs)
             continue;
         }
 
-        if (pg->label.unused != 0) {
+        if (pg->label.s.unused != 0) {
             report_error("fs: check_basic_filesystem_data: "
                          "invalid unused at VDA = %u: %u",
-                         vda, pg->label.unused);
+                         vda, pg->label.s.unused);
             success = FALSE;
             continue;
         }
 
-        if (pg->label.version == VERSION_BAD) continue;
-        if (pg->label.version == VERSION_FREE) {
-            if (pg->label.sn.word1 != VERSION_FREE
-                || pg->label.sn.word2 != VERSION_FREE) {
+        if (pg->label.s.version == VERSION_BAD) continue;
+        if (pg->label.s.version == VERSION_FREE) {
+            if (pg->label.s.sn.word1 != VERSION_FREE
+                || pg->label.s.sn.word2 != VERSION_FREE) {
 
                 report_error("fs: check_basic_filesystem_data: "
                              "invalid free page at VDA = %u: "
                              "expecting SN %u, %u, but got %u, %u",
                              vda, VERSION_FREE, VERSION_FREE,
-                             pg->label.sn.word1, pg->label.sn.word2);
+                             pg->label.s.sn.word1, pg->label.s.sn.word2);
                 success = FALSE;
             }
             continue;
         }
 
-        if (pg->label.version == 0) {
+        if (pg->label.s.version == 0) {
             report_error("fs: check_basic_filesystem_data: "
                          "invalid label version = 0 at VDA = %u", vda);
             success = FALSE;
             continue;
         }
 
-        if (pg->label.nbytes > fs->sector_bytes) {
+        if (pg->label.s.nbytes > fs->sector_bytes) {
             report_error("fs: check_basic_filesystem_data: "
                          "invalid label nbytes = %u at VDA = %u",
-                         pg->label.nbytes, vda);
+                         pg->label.s.nbytes, vda);
             success = FALSE;
             continue;
         }
 
         if (vda == 0) continue;
 
-        if (pg->label.prev_rda == 0) {
-            if (pg->label.nbytes < fs->sector_bytes) {
+        if (pg->label.s.prev_rda == 0) {
+            if (pg->label.s.nbytes < fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "short leader page at VDA = %u: "
-                             "nbytes = %u", vda, pg->label.nbytes);
+                             "nbytes = %u", vda, pg->label.s.nbytes);
                 success = FALSE;
                 continue;
             }
         }
 
-        if (pg->label.next_rda != 0) {
-            if (pg->label.nbytes < fs->sector_bytes) {
+        if (pg->label.s.next_rda != 0) {
+            if (pg->label.s.nbytes < fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "short last page at VDA = %u: "
                              "nbytes = %u",
-                             vda, pg->label.nbytes);
+                             vda, pg->label.s.nbytes);
                 success = FALSE;
                 continue;
             }
         } else {
-            if (pg->label.nbytes >= fs->sector_bytes) {
+            if (pg->label.s.nbytes >= fs->sector_bytes) {
                 report_error("fs: check_basic_filesystem_data: "
                              "full last page at VDA = %u", vda);
                 success = FALSE;
@@ -931,33 +931,33 @@ int check_file_entry(const struct fs *fs,
     }
 
     pg = &fs->pages[fe->leader_vda];
-    if (pg->label.file_pgnum != 0) {
+    if (pg->label.s.file_pgnum != 0) {
         if (verbose) {
             report_error("fs: check_file_entry: "
                          "file_pgnum = %u != 0 at VDA %u",
-                         pg->label.file_pgnum, fe->leader_vda);
+                         pg->label.s.file_pgnum, fe->leader_vda);
         }
         return FALSE;
     }
 
-    if (fe->sn.word1 != pg->label.sn.word1
-        || fe->sn.word2 != pg->label.sn.word2) {
+    if (fe->sn.word1 != pg->label.s.sn.word1
+        || fe->sn.word2 != pg->label.s.sn.word2) {
         if (verbose) {
             report_error("fs: check_file_entry: "
                          "serial number %u, %u does not match %u, %u "
                          "at VDA %u",
                          fe->sn.word1, fe->sn.word2,
-                         pg->label.sn.word1, pg->label.sn.word2,
+                         pg->label.s.sn.word1, pg->label.s.sn.word2,
                          fe->leader_vda);
         }
         return FALSE;
     }
 
-    if (fe->version != pg->label.version) {
+    if (fe->version != pg->label.s.version) {
         if (verbose) {
             report_error("fs: check_file_entry: "
                          "version %u does not match %u at VDA %u",
-                         fe->version, pg->label.version,
+                         fe->version, pg->label.s.version,
                          fe->leader_vda);
         }
         return FALSE;
@@ -988,7 +988,7 @@ int check_of(const struct fs *fs, struct open_file *of)
     }
 
     pg = &fs->pages[vda];
-    if (of->pos.pos > pg->label.nbytes) {
+    if (of->pos.pos > pg->label.s.nbytes) {
         of->error = ERROR_INVALID_OF;
         return FALSE;
     }

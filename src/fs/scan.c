@@ -68,13 +68,13 @@ void scan_files(const struct fs *fs, scan_files_cb cb, void *arg)
 
     for (vda = 0; vda < fs->length; vda++) {
         pg = &fs->pages[vda];
-        if (pg->label.file_pgnum != 0) continue;
-        if (pg->label.version == VERSION_FREE) continue;
-        if (pg->label.version == VERSION_BAD) continue;
-        if (pg->label.version == 0) continue;
+        if (pg->label.s.file_pgnum != 0) continue;
+        if (pg->label.s.version == VERSION_FREE) continue;
+        if (pg->label.s.version == VERSION_BAD) continue;
+        if (pg->label.s.version == 0) continue;
 
-        fe.sn = pg->label.sn;
-        fe.version = pg->label.version;
+        fe.sn = pg->label.s.sn;
+        fe.version = pg->label.s.version;
         fe.blank = 0;
         fe.leader_vda = vda;
 

@@ -31,6 +31,8 @@ void usage(const char *prog_name)
     printf("  -nud              To not update disk descriptor\n");
     printf("  -rw               Operate in read-write mode "
            "(default is read-only)\n");
+    printf("  -ibfs             To use the BFS format for input\n");
+    printf("  -obfs             To use the BFS format for output\n");
     printf("  -v                Increase verbosity\n");
     printf("  --help            Print this help\n");
 }
@@ -56,6 +58,7 @@ int main(int argc, char **argv)
     int modified, not_read_only;
     int not_remove_underlying;
     int not_update_descriptor;
+    int ibfs, obfs;
     int verbose, error;
 
     disk1_filename = NULL;
@@ -77,6 +80,7 @@ int main(int argc, char **argv)
     not_read_only = FALSE;
     not_remove_underlying = FALSE;
     not_update_descriptor = FALSE;
+    ibfs = obfs = FALSE;
     verbose = 0;
 
     dg.num_disks = 1;
@@ -160,6 +164,10 @@ int main(int argc, char **argv)
             not_update_descriptor = TRUE;
         } else if (strcmp("-rw", argv[i]) == 0) {
             not_read_only = TRUE;
+        } else if (strcmp("-ibfs", argv[i]) == 0) {
+            ibfs = TRUE;
+        } else if (strcmp("-obfs", argv[i]) == 0) {
+            obfs = TRUE;
         } else if (strcmp("-v", argv[i]) == 0) {
             verbose++;
         } else if (strcmp("--help", argv[i]) == 0
@@ -186,6 +194,8 @@ int main(int argc, char **argv)
         goto error;
     }
 
+    fs_wipe_disk(&fs);
+
     if (should_format) {
         modified = TRUE;
         printf("formatting disk image\n");
@@ -196,13 +206,13 @@ int main(int argc, char **argv)
         }
     } else {
         printf("loading disk image `%s`\n", disk1_filename);
-        if (!fs_load_image(&fs, disk1_filename, 0)) {
+        if (!fs_load_image(&fs, disk1_filename, 0, ibfs)) {
             report_error("main: could not load disk image");
             goto error;
         }
         if (disk2_filename) {
             printf("loading disk image `%s`\n", disk2_filename);
-            if (!fs_load_image(&fs, disk2_filename, 1)) {
+            if (!fs_load_image(&fs, disk2_filename, 1, ibfs)) {
                 report_error("main: could not load disk image");
                 goto error;
             }
@@ -313,13 +323,13 @@ int main(int argc, char **argv)
             }
         }
         printf("saving disk image `%s`\n", disk1_filename);
-        if (!fs_save_image(&fs, disk1_filename, 0)) {
+        if (!fs_save_image(&fs, disk1_filename, 0, obfs)) {
             report_error("main: could not save disk image");
             goto error;
         }
         if (disk2_filename) {
             printf("saving disk image `%s`\n", disk2_filename);
-            if (!fs_save_image(&fs, disk2_filename, 1)) {
+            if (!fs_save_image(&fs, disk2_filename, 1, obfs)) {
                 report_error("main: could not save disk image");
                 goto error;
             }

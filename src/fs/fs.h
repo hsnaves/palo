@@ -114,17 +114,21 @@ struct open_file {
 struct page {
     uint16_t page_vda;            /* The virtual disk address of the page. */
     uint16_t header[2];           /* Page header. */
-    struct {
-        uint16_t next_rda;        /* The (real) DA of next page. */
-        uint16_t prev_rda;        /* The (real) DA of previous page. */
-        uint16_t unused;
-        uint16_t nbytes;          /* Number of used bytes in the page. */
-        uint16_t file_pgnum;      /* Page number of a file. */
-        uint16_t version;         /* Notable values:
+    union {
+        uint16_t r[8];            /* For easy access */
+        struct {
+            uint16_t next_rda;    /* The (real) DA of next page. */
+            uint16_t prev_rda;    /* The (real) DA of previous page. */
+            uint16_t unused;
+            uint16_t nbytes;      /* Number of used bytes in the page. */
+            uint16_t file_pgnum;  /* Page number of a file. */
+            uint16_t version;     /* Notable values:
                                    * 0xFFFF for free pages.
                                    * 0xFFFE for bad pages.
                                    */
-        struct serial_number sn;  /* The file serial number. */
+            struct serial_number sn;
+                                  /* The file serial number. */
+        } s;
     } label;
     uint8_t *data;                /* Page data. */
 };
@@ -232,21 +236,28 @@ int fs_create(struct fs *fs, struct geometry dg);
 const char *fs_error(int error);
 
 /* Reads the contents of the disk from a file named `filename`.
- * This will populate the disk number `disk_num`.
+ * This will populate the disk number `disk_num`. The parameter
+ * `use_aar_format`, when TRUE, tells the function to use the
+ * BFS format (otherwise it will use the AAR format).
  * Returns TRUE on success.
  */
-int fs_load_image(struct fs *fs,
-                  const char *filename, uint16_t disk_num);
+int fs_load_image(struct fs *fs, const char *filename,
+                  uint16_t disk_num, int use_bfs_format);
 
 /* Writes the contents of the disk to a file named `filename`.
- * This will dump the disk number `disk_num`.
+ * This will dump the disk number `disk_num`. The parameter
+ * `use_aar_format`, when TRUE, tells the function to use the
+ * BFS format (otherwise it will use the AAR format).
  * Returns TRUE on success.
  */
-int fs_save_image(const struct fs *fs,
-                  const char *filename, uint16_t disk_num);
+int fs_save_image(const struct fs *fs, const char *filename,
+                  uint16_t disk_num, int use_bfs_format);
 
 /* Wipes the contents of the free pages in the disk. */
 void fs_wipe_free_pages(struct fs *fs);
+
+/* Wipes the entire contents of the disk. */
+void fs_wipe_disk(struct fs *fs);
 
 /* Formats the filesystem.
  * The `error` parameter, if provided, returns the details about the

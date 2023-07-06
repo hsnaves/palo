@@ -52,7 +52,7 @@ fs/dir.o: fs/dir.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/disk.o: fs/disk.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/file.o: fs/file.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/meta.o: fs/meta.c fs/fs.h fs/fs_internal.h common/utils.h
-fs/fs.o: fs/fs.c fs/fs.h common/utils.h
+fs/fs.o: fs/fs.c fs/fs.h fs/fs_internal.h common/utils.h
 fs/print.o: fs/print.c fs/fs.h common/utils.h
 fs/scan.o: fs/scan.c fs/fs.h fs/fs_internal.h common/utils.h
 par.o: par.c fs/fs.h common/utils.h

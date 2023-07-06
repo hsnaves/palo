@@ -599,7 +599,7 @@ uint16_t read_bus(struct simulator *sim, const struct microcode *mc,
     }
 
     if (mc->use_constant) {
-        /* Not used the modified RSEL here. */
+        /* Not use the modified RSEL here. */
         output &= sim->consts[mc->const_addr];
         return output;
     }

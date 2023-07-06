@@ -18,8 +18,8 @@ void get_file_entry(const struct fs *fs, uint16_t leader_vda,
 {
     const struct page *pg;
     pg = &fs->pages[leader_vda];
-    fe->sn = pg->label.sn;
-    fe->version = pg->label.version;
+    fe->sn = pg->label.s.sn;
+    fe->version = pg->label.s.version;
     fe->blank = 0;
     fe->leader_vda = leader_vda;
 }
@@ -48,16 +48,16 @@ int new_file_entry(struct fs *fs,
         return FALSE;
 
     pg = &fs->pages[leader_vda];
-    pg->label.prev_rda = 0;
-    pg->label.next_rda = 0;
-    pg->label.unused = 0;
+    pg->label.s.prev_rda = 0;
+    pg->label.s.next_rda = 0;
+    pg->label.s.unused = 0;
     /* Leader page is full. */
-    pg->label.nbytes = fs->sector_bytes;
-    pg->label.file_pgnum = 0;
-    pg->label.version = 1;
-    pg->label.sn = fs->last_sn;
+    pg->label.s.nbytes = fs->sector_bytes;
+    pg->label.s.file_pgnum = 0;
+    pg->label.s.version = 1;
+    pg->label.s.sn = fs->last_sn;
     if (directory) {
-        pg->label.sn.word1 |= SN_DIRECTORY;
+        pg->label.s.sn.word1 |= SN_DIRECTORY;
     }
     get_file_entry(fs, leader_vda, fe);
 
@@ -138,7 +138,7 @@ void advance_page(const struct fs *fs, struct open_file *of)
     pg = &fs->pages[vda];
 
     /* Go to the next page. */
-    rda = pg->label.next_rda;
+    rda = pg->label.s.next_rda;
     real_to_virtual(&fs->dg, rda, &vda);
 
     if (vda != 0) {
@@ -148,7 +148,7 @@ void advance_page(const struct fs *fs, struct open_file *of)
         of->pos.pgnum += 1;
     } else {
         /* Reached the end of file. */
-        of->pos.pos = pg->label.nbytes;
+        of->pos.pos = pg->label.s.nbytes;
         of->eof = TRUE;
     }
 }
@@ -395,8 +395,8 @@ size_t fs_read(const struct fs *fs, struct open_file *of,
         pg = &fs->pages[vda];
 
         /* If has not reached the end of the page. */
-        if (of->pos.pos < pg->label.nbytes) {
-            nbytes = pg->label.nbytes - of->pos.pos;
+        if (of->pos.pos < pg->label.s.nbytes) {
+            nbytes = pg->label.s.nbytes - of->pos.pos;
             if (nbytes > len) nbytes = len;
 
             if (dst) {
@@ -441,8 +441,8 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         pg = &fs->pages[vda];
 
         /* If has not reached the end of the page. */
-        if (of->pos.pos < pg->label.nbytes) {
-            nbytes = pg->label.nbytes - of->pos.pos;
+        if (of->pos.pos < pg->label.s.nbytes) {
+            nbytes = pg->label.s.nbytes - of->pos.pos;
             if (nbytes > len) nbytes = len;
 
             if (src) {
@@ -469,10 +469,10 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         of->eof = FALSE;
 
         /* Check if the last page can be extended. */
-        if (pg->label.nbytes < fs->sector_bytes) {
-            nbytes = fs->sector_bytes - pg->label.nbytes;
+        if (pg->label.s.nbytes < fs->sector_bytes) {
+            nbytes = fs->sector_bytes - pg->label.s.nbytes;
             if (nbytes > len) nbytes = len;
-            pg->label.nbytes += nbytes;
+            pg->label.s.nbytes += nbytes;
             continue;
         }
 
@@ -483,19 +483,19 @@ size_t fs_write(struct fs *fs, struct open_file *of,
         }
 
         npg = &fs->pages[vda];
-        virtual_to_real(&fs->dg, pg->page_vda, &npg->label.prev_rda);
-        virtual_to_real(&fs->dg, npg->page_vda, &pg->label.next_rda);
+        virtual_to_real(&fs->dg, pg->page_vda, &npg->label.s.prev_rda);
+        virtual_to_real(&fs->dg, npg->page_vda, &pg->label.s.next_rda);
 
         nbytes = len;
         if (nbytes > fs->sector_bytes)
             nbytes = fs->sector_bytes;
 
-        npg->label.next_rda = 0;
-        npg->label.unused = pg->label.unused;
-        npg->label.nbytes = nbytes;
-        npg->label.file_pgnum = pg->label.file_pgnum + 1;
-        npg->label.version = pg->label.version;
-        npg->label.sn = pg->label.sn;
+        npg->label.s.next_rda = 0;
+        npg->label.s.unused = pg->label.s.unused;
+        npg->label.s.nbytes = nbytes;
+        npg->label.s.file_pgnum = pg->label.s.file_pgnum + 1;
+        npg->label.s.version = pg->label.s.version;
+        npg->label.s.sn = pg->label.s.sn;
         of->pos.vda = vda;
         of->pos.pos = 0;
         of->pos.pgnum += 1;
@@ -525,10 +525,10 @@ int fs_truncate(struct fs *fs, struct open_file *of)
         of->eof = FALSE;
     }
     pg = &fs->pages[of->pos.vda];
-    pg->label.nbytes = of->pos.pos;
+    pg->label.s.nbytes = of->pos.pos;
 
-    real_to_virtual(&fs->dg, pg->label.next_rda, &vda);
-    pg->label.next_rda = 0;
+    real_to_virtual(&fs->dg, pg->label.s.next_rda, &vda);
+    pg->label.s.next_rda = 0;
     if (vda != 0) {
         free_pages(fs, vda, TRUE);
     }

@@ -6,7 +6,14 @@
 #include <time.h>
 
 #include "fs/fs.h"
+#include "fs/fs_internal.h"
 #include "common/utils.h"
+
+/* Constants. */
+#define DISK_PARAMS_REPLY                  3
+#define DISK_PAGE_REPLY                    6
+#define END_OF_TRANSFER                    7
+#define DIABLO_DISK_TYPE                  10
 
 /* Functions. */
 
@@ -116,26 +123,34 @@ const char *fs_error(int error)
     return errors[-error];
 }
 
-int fs_load_image(struct fs *fs,
-                  const char *filename, uint16_t disk_num)
+/* Loads an AAR disk image.
+ * The file to be read is given in the parameter `filename`.
+ * This will populate the disk number `disk_num`.
+ * Returns TRUE on success.
+ */
+static
+int fs_load_image_aar(struct fs *fs, const char *filename,
+                      uint16_t disk_num)
 {
     FILE *fp;
     struct page *pg;
-    uint16_t i, j, vda, base_vda, meta_len;
-    uint16_t w, *meta_ptr;
+    uint16_t i, j, vda, base_vda;
+    uint16_t header_len, label_len;
+    uint16_t w;
     int c;
 
     fp = fopen(filename, "rb");
     if (!fp) {
-        report_error("fs: load_image: could not open `%s`",
+        report_error("fs: load_image_aar: could not open `%s`",
                      filename);
         return FALSE;
     }
 
     fs->checked = FALSE;
-    meta_len = (sizeof(pg->page_vda) + sizeof(pg->header) + sizeof(pg->label))
-        / sizeof(uint16_t);
     base_vda = disk_num * fs->disk_length;
+    header_len = sizeof(pg->header) / sizeof(uint16_t);
+    label_len = sizeof(pg->label) / sizeof(uint16_t);
+
     for (i = 0; i < fs->disk_length; i++) {
         vda = base_vda + i;
         pg = &fs->pages[vda];
@@ -149,8 +164,7 @@ int fs_load_image(struct fs *fs,
         /* Discard the first word and use the loop index instead. */
         pg->page_vda = vda;
 
-        meta_ptr = (uint16_t *) pg;
-        for (j = 1; j < meta_len; j++) {
+        for (j = 0; j < header_len; j++) {
             /* Process data in little-endian format. */
             c = fgetc(fp);
             if (c == EOF) goto error_eof;
@@ -160,7 +174,19 @@ int fs_load_image(struct fs *fs,
             if (c == EOF) goto error_eof;
             w |= (uint16_t) ((c & 0xFF) << 8);
 
-            meta_ptr[j] = w;
+            pg->header[j] = w;
+        }
+
+        for (j = 0; j < label_len; j++) {
+            c = fgetc(fp);
+            if (c == EOF) goto error_eof;
+            w = (uint16_t) (c & 0xFF);
+
+            c = fgetc(fp);
+            if (c == EOF) goto error_eof;
+            w |= (uint16_t) ((c & 0xFF) << 8);
+
+            pg->label.r[j] = w;
         }
 
         for (j = 0; j < fs->sector_bytes; j++) {
@@ -174,7 +200,7 @@ int fs_load_image(struct fs *fs,
 
     c = fgetc(fp);
     if (c != EOF) {
-        report_error("fs: load_image: "
+        report_error("fs: load_image_aar: "
                      "file `%s` longer than expected", filename);
         fclose(fp);
         return FALSE;
@@ -184,31 +210,185 @@ int fs_load_image(struct fs *fs,
     return TRUE;
 
 error_eof:
-    report_error("fs: load_image: "
+    report_error("fs: load_image_aar: "
                  "premature end of file in `%s`", filename);
     fclose(fp);
     return FALSE;
 }
 
-int fs_save_image(const struct fs *fs,
-                  const char *filename, uint16_t disk_num)
+/* Loads an AAR disk image.
+ * The file to be read is given in the parameter `filename`.
+ * This will populate the disk number `disk_num`.
+ * Returns TRUE on success.
+ */
+static
+int fs_load_image_bfs(struct fs *fs, const char *filename,
+                      uint16_t disk_num)
+{
+    FILE *fp;
+    struct page *pg;
+    uint16_t base_vda, end_vda, vda;
+    uint16_t header_len, label_len;
+    uint16_t cmd, len;
+    uint16_t params_reply[7], buffer[2];
+    uint16_t v, pos, i;
+    int c;
+
+    fp = fopen(filename, "rb");
+    if (!fp) {
+        report_error("fs: load_image_bfs: could not open `%s`",
+                     filename);
+        return FALSE;
+    }
+
+    fs->checked = FALSE;
+    base_vda = disk_num * fs->disk_length;
+    end_vda = base_vda + fs->disk_length;
+    header_len = sizeof(pg->header) / sizeof(uint16_t);
+    label_len = sizeof(pg->label) / sizeof(uint16_t);
+
+    params_reply[0] = 7; /* length of the command. */
+    params_reply[1] = DISK_PARAMS_REPLY;
+    params_reply[2] = DIABLO_DISK_TYPE;
+    params_reply[3] = fs->dg.num_cylinders;
+    params_reply[4] = fs->dg.num_heads;
+    params_reply[5] = fs->dg.num_sectors;
+    params_reply[6] = 1; /* number of disks. */
+
+    cmd = 0;
+    pos = len = 0;
+    pg = NULL;
+    while (TRUE) {
+        c = fgetc(fp);
+        if (c == EOF) goto incomplete_file;
+        v = (uint16_t) c;
+
+        c = fgetc(fp);
+        if (c == EOF) goto incomplete_file;
+
+        v <<= 8;
+        v += (uint16_t) c;
+        if (pos >= len) {
+            pos = 0;
+            len = v;
+        } else if (pos == 1) {
+            cmd = v;
+            if (cmd == END_OF_TRANSFER) {
+                c = fgetc(fp);
+                if (c != EOF) {
+                    report_error("fs: load_image_bfs: extra data at end "
+                                 "of `%s`", filename);
+                    fclose(fp);
+                    return FALSE;
+                }
+                break;
+            }
+        } else {
+            if (cmd == DISK_PARAMS_REPLY) {
+                if (len != params_reply[0]) {
+                    report_error("fs: load_image_bfs: invalid command length "
+                                 " %u for DiskParamsReply in file `%s`",
+                                 len, filename);
+                    fclose(fp);
+                    return FALSE;
+                }
+
+                if (params_reply[pos] != v) {
+                    report_error("fs: load_image_bfs: discrepancy in disk "
+                                 "parameters at position %u in file `%s`",
+                                 pos, filename);
+                    fclose(fp);
+                    return FALSE;
+                }
+            } else if (cmd == DISK_PAGE_REPLY) {
+                if (pos < 1 + header_len) {
+                    buffer[pos - 2] = v;
+                } else if (pos == 1 + header_len) {
+                    buffer[pos - 2] = v;
+                    if (!real_to_virtual(&fs->dg, buffer[1], &vda)) {
+                        report_error("fs: load_image_bfs: could not convert "
+                                     "real %u to virtual in file `%s`",
+                                     buffer[1], filename);
+                        fclose(fp);
+                        return FALSE;
+                    }
+                    if (!(vda >= base_vda) || !(vda < end_vda)) {
+                        report_error("fs: load_image_bfs: invalid vda %u "
+                                     "for disk %u in file `%s`",
+                                     vda, disk_num, filename);
+                        fclose(fp);
+                        return FALSE;
+                    }
+
+                    pg = &fs->pages[vda];
+                    pg->page_vda = vda;
+
+                    pg->header[0] = buffer[0];
+                    pg->header[1] = buffer[1];
+                } else if (pos < 2 + header_len + label_len) {
+                    i = pos - 2 - header_len;
+                    pg->label.r[i] = v;
+                } else {
+                    i = pos - 2 - header_len - label_len;
+                    pg->data[2 * i] = (v >> 8);
+                    pg->data[2 * i + 1] = (v);
+                }
+            } else {
+                report_error("fs: load_image_bfs: invalid command %u "
+                             "in file `%s`", cmd, filename);
+                fclose(fp);
+                return FALSE;
+            }
+        }
+        pos++;
+    }
+
+    fclose(fp);
+    return TRUE;
+
+incomplete_file:
+    report_error("fs: load_image_bfs: incomplete file `%s`",
+                 filename);
+    fclose(fp);
+    return FALSE;
+}
+
+int fs_load_image(struct fs *fs, const char *filename,
+                  uint16_t disk_num, int use_bfs_format)
+{
+    if (use_bfs_format) {
+        return fs_load_image_bfs(fs, filename, disk_num);
+    } else {
+        return fs_load_image_aar(fs, filename, disk_num);
+    }
+}
+
+/* Saves an AAR disk image.
+ * The file to be written is given in the parameter `filename`.
+ * This will write the disk number `disk_num`.
+ * Returns TRUE on success.
+ */
+static
+int fs_save_image_aar(const struct fs *fs,
+                      const char *filename, uint16_t disk_num)
 {
     FILE *fp;
     const struct page *pg;
-    uint16_t i, j, vda, base_vda, meta_len, w;
-    const uint16_t *meta_ptr;
+    uint16_t i, j, vda, base_vda, w;
+    uint16_t header_len, label_len;
     int c;
 
     fp = fopen(filename, "wb");
     if (!fp) {
-        report_error("fs: save_image: could not open file `%s` "
+        report_error("fs: save_image_aar: could not open file `%s` "
                      "for writing", filename);
         return FALSE;
     }
 
-    meta_len = (sizeof(pg->page_vda) + sizeof(pg->header) + sizeof(pg->label))
-        / sizeof(uint16_t);
     base_vda = disk_num * fs->disk_length;
+    header_len = sizeof(pg->header) / sizeof(uint16_t);
+    label_len = sizeof(pg->label) / sizeof(uint16_t);
+
     for (i = 0; i < fs->disk_length; i++) {
         vda = base_vda + i;
         pg = &fs->pages[vda];
@@ -220,11 +400,20 @@ int fs_save_image(const struct fs *fs,
         c = fputc((int) ((vda >> 8) & 0xFF), fp);
         if (c == EOF) goto error;
 
-        meta_ptr = (const uint16_t *) pg;
-        for (j = 1; j < meta_len; j++) {
-            w = meta_ptr[j];
+        for (j = 0; j < header_len; j++) {
+            w = pg->header[j];
 
             /* Process data in little-endian format. */
+            c = fputc((int) (w & 0xFF), fp);
+            if (c == EOF) goto error;
+
+            c = fputc((int) ((w >> 8) & 0xFF), fp);
+            if (c == EOF) goto error;
+        }
+
+        for (j = 0; j < label_len; j++) {
+            w = pg->label.r[j];
+
             c = fputc((int) (w & 0xFF), fp);
             if (c == EOF) goto error;
 
@@ -243,10 +432,120 @@ int fs_save_image(const struct fs *fs,
     return TRUE;
 
 error:
-    report_error("fs: save_image: error while writing `%s`",
+    report_error("fs: save_image_aar: error while writing `%s`",
                  filename);
     fclose(fp);
     return FALSE;
+}
+
+/* Saves an BFS disk image.
+ * The file to be written is given in the parameter `filename`.
+ * This will write the disk number `disk_num`.
+ * Returns TRUE on success.
+ */
+static
+int fs_save_image_bfs(const struct fs *fs,
+                      const char *filename, uint16_t disk_num)
+{
+    FILE *fp;
+    const struct page *pg;
+    uint16_t i, j, vda, base_vda, w;
+    uint16_t header_len, label_len;
+    uint16_t buffer[32];
+    int c;
+
+    fp = fopen(filename, "wb");
+    if (!fp) {
+        report_error("fs: save_image_bfs: could not open file `%s` "
+                     "for writing", filename);
+        return FALSE;
+    }
+
+    base_vda = disk_num * fs->disk_length;
+    header_len = sizeof(pg->header) / sizeof(uint16_t);
+    label_len = sizeof(pg->label) / sizeof(uint16_t);
+
+    buffer[0] = 7; /* length of the command. */
+    buffer[1] = DISK_PARAMS_REPLY;
+    buffer[2] = DIABLO_DISK_TYPE;
+    buffer[3] = fs->dg.num_cylinders;
+    buffer[4] = fs->dg.num_heads;
+    buffer[5] = fs->dg.num_sectors;
+    buffer[6] = 1; /* number of disks. */
+
+    for (j = 0; j < buffer[0]; j++) {
+        w = buffer[j];
+
+        /* Discard the first word. */
+        c = fputc((int) (w & 0xFF), fp);
+        if (c == EOF) goto error;
+
+        c = fputc((int) ((w >> 8) & 0xFF), fp);
+        if (c == EOF) goto error;
+    }
+
+    for (i = 0; i < fs->disk_length; i++) {
+        vda = base_vda + i;
+        pg = &fs->pages[vda];
+
+        if (pg->label.s.version == VERSION_FREE
+            || pg->label.s.version == VERSION_BAD)
+            continue;
+
+        buffer[0] = 2 + header_len + label_len + fs->dg.sector_words;
+        buffer[1] = DISK_PAGE_REPLY;
+        memcpy(&buffer[2], pg->header, sizeof(pg->header));
+        memcpy(&buffer[2 + header_len], pg->label.r, sizeof(pg->label.r));
+
+        for (j = 0; j < buffer[0] - fs->dg.sector_words; j++) {
+            w = buffer[j];
+
+            /* Discard the first word. */
+            c = fputc((int) (w & 0xFF), fp);
+            if (c == EOF) goto error;
+
+            c = fputc((int) ((w >> 8) & 0xFF), fp);
+            if (c == EOF) goto error;
+        }
+
+        for (j = 0; j < fs->sector_bytes; j++) {
+            /* Byte swap the data here. */
+            c = fputc((int) pg->data[j ^ 1], fp);
+            if (c == EOF) goto error;
+        }
+    }
+
+    buffer[0] = 2;
+    buffer[1] = END_OF_TRANSFER;
+    for (j = 0; j < buffer[0]; j++) {
+        w = buffer[j];
+
+        /* Discard the first word. */
+        c = fputc((int) (w & 0xFF), fp);
+        if (c == EOF) goto error;
+
+        c = fputc((int) ((w >> 8) & 0xFF), fp);
+        if (c == EOF) goto error;
+    }
+
+    fclose(fp);
+    return TRUE;
+
+error:
+    report_error("fs: save_image_bfs: error while writing `%s`",
+                 filename);
+    fclose(fp);
+    return FALSE;
+}
+
+int fs_save_image(const struct fs *fs, const char *filename,
+                  uint16_t disk_num, int use_bfs_format)
+{
+    if (use_bfs_format) {
+        return fs_save_image_bfs(fs, filename, disk_num);
+    } else {
+        return fs_save_image_aar(fs, filename, disk_num);
+    }
 }
 
 int fs_extract_file(const struct fs *fs, const char *name,
