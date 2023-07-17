@@ -264,6 +264,9 @@ void decode_sgroup(struct decoder *dec,
         string_buffer_print(output, "CYCLE ");
         decode_value(dec->vdec, DECODE_VALUE, disp & 0x0F);
         break;
+    case 1:
+        string_buffer_print(output, "<unknown> (U5)");
+        break;
     case 2:
         switch (disp) {
         case 0: string_buffer_print(output, "DIR"); break;
@@ -294,6 +297,12 @@ void decode_sgroup(struct decoder *dec,
             break;
         }
         break;
+    case 3:
+        string_buffer_print(output, "<unknown> (U6)");
+        break;
+    case 4:
+        string_buffer_print(output, "<unknown> (U7)");
+        break;
     case 9:
         string_buffer_print(output, "JSRII ");
         decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
@@ -306,8 +315,11 @@ void decode_sgroup(struct decoder *dec,
         string_buffer_print(output, "CONVERT ");
         decode_value(dec->vdec, DECODE_VALUE, disp & 0xFF);
         break;
+    case 31:
+        string_buffer_print(output, "<unknown> (TRAP)");
+        break;
     default:
-        string_buffer_print(output, "<unknown>");
+        string_buffer_print(output, "<unknown> (RAMTRAP)");
         break;
     }
 }

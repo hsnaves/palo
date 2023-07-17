@@ -27,7 +27,7 @@
 #define MA_WORD_BIT                        2
 
 /* The state size when serializing. */
-#define STATE_SIZE                    542426
+#define STATE_SIZE                    542419
 
 /* Functions. */
 
@@ -1898,9 +1898,8 @@ void simulator_print_nova_registers(const struct simulator *sim,
 
     output = dec->output;
     for (i = 0; i < 4; i++) {
-        decode_value_padded(dec->vdec, DECODE_REG, i, 9);
-        string_buffer_print(output, ": ");
-        decode_value_padded(dec->vdec, DECODE_VALUE, sim->r[i], 11);
+        string_buffer_print(output, "AC%d      : ", i);
+        decode_value_padded(dec->vdec, DECODE_VALUE, sim->r[3 - i], 11);
     }
     string_buffer_print(output, "\n");
 
