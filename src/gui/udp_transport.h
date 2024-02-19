@@ -5,6 +5,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "simulator/ethernet.h"
+#include "microcode/microcode.h"
+#include "common/serdes.h"
+#include "common/string_buffer.h"
+
 /* Data structures and types. */
 
 /* The ethernet controller for the simulator. */

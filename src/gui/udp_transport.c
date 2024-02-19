@@ -10,8 +10,8 @@
 #include <arpa/inet.h>
 #include <SDL.h>
 
-#include "simulator/ethernet.h"
 #include "gui/udp_transport.h"
+#include "simulator/ethernet.h"
 #include "microcode/microcode.h"
 #include "common/serdes.h"
 #include "common/string_buffer.h"

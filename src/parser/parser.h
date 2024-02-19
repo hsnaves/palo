@@ -206,4 +206,4 @@ int parser_parse(struct parser *p, const char *filename);
 /* Reports the errors found in the parsed file to the `stderr`. */
 void parser_report_errors(struct parser *p);
 
-#endif /* __PARSER_H */
+#endif /* __PARSER_PARSER_H */
