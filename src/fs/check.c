@@ -72,6 +72,21 @@ int check_directory_entry(const struct fs *fs,
         return FALSE;
     }
 
+    if (de->name_length > (NAME_LENGTH - 1)) {
+        report_error("fs: check_directory_entry: "
+                     "name length is too large: "
+                     "name_length = %u",
+                     de->name_length);
+        return FALSE;
+    }
+
+    if (de->name[de->name_length - 1] != '.') {
+        report_error("fs: check_directory_entry: "
+                     "file name does not end in dot '.': `%s`",
+                     de->name);
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -412,15 +427,23 @@ int check_files_cb(const struct fs *fs,
                      fs_error(error));
         cb_arg->has_error = TRUE;
     }
-    if (finfo.name_length >= NAME_LENGTH) {
-        report_error("fs: check_files: name too large");
-        cb_arg->has_error = TRUE;
+    /* the information in file_info are just hints, so these
+     * validations do not cause an error, so has_error is
+     * not set to TRUE.
+     */
+    if (finfo.name_length > (NAME_LENGTH - 1)) {
+        report_error("fs: check_files: (hint): name too large");
+    }
+    if (finfo.name[finfo.name_length - 1] != '.') {
+        report_error("fs: check_files: (hint): "
+                     "file name does not end in dot '.': `%s`",
+                     finfo.name);
     }
     if (fe->leader_vda == 1 && !finfo.has_dg) {
         report_error("fs: check_files: "
-                     "missing disk geometry in SysDir properties");
+                     "missing disk geometry in SysDir. properties");
         cb_arg->has_error = TRUE;
-    } else if (fe->leader_vda == 1 && fe->leader_vda == 1) {
+    } else if (fe->leader_vda == 1 && finfo.has_dg) {
         if (finfo.dg.num_disks != fs->dg.num_disks
             || finfo.dg.num_cylinders != fs->dg.num_cylinders
             || finfo.dg.num_heads != fs->dg.num_heads
@@ -464,7 +487,8 @@ int check_dirs_cb(const struct fs *fs,
 {
     struct check_dirs_cb_arg *cb_arg;
     struct check_dirs_cb_arg child_arg;
-    int not_seen;
+    struct file_info finfo;
+    int not_seen, error;
 
     cb_arg = (struct check_dirs_cb_arg *) arg;
     cb_arg->count++;
@@ -477,6 +501,24 @@ int check_dirs_cb(const struct fs *fs,
                      "directory entry %u at VDA %u",
                      cb_arg->count, cb_arg->dir_fe.leader_vda);
         cb_arg->has_error = TRUE;
+    }
+
+    fs_get_file_info(fs, &de->fe, &finfo, &error);
+    if (error < 0) {
+        report_error("fs: check_dirs: "
+                     "could not get file information: %s",
+                     fs_error(error));
+        cb_arg->has_error = TRUE;
+    }
+
+    if (directory_entry_compare(de, finfo.name, finfo.name_length) != 0) {
+        report_error("fs: check_dirs: (hint): "
+                     "directory_name entry does "
+                     "not match: `%s` vs `%s`",
+                     de->name, finfo.name);
+        /* do not set has_error to TRUE here, because the filename
+         * in the leader page is just a hint
+         */
     }
 
     not_seen = (cb_arg->fs->ref_count[de->fe.leader_vda]++ == 0);
@@ -737,7 +779,36 @@ int check_unique(struct fs *fs)
     return !cb_arg.has_error;
 }
 
-/* Checks the DiskDescriptor file.
+/* Checks the SysDir. file.
+ * Returns TRUE on success.
+ */
+static
+int check_sysdir(const struct fs *fs)
+{
+    struct open_file of;
+
+    if (!fs_open_ro(fs, "SysDir.", &of)) {
+        report_error("fs: check_sysdir: "
+                     "SysDir. not found");
+        goto error_check;
+    }
+
+    if (of.fe.leader_vda != 1) {
+        report_error("fs: check_sysdir: "
+                     "SysDir. leader_vda is not 1: %u",
+                     of.fe.leader_vda);
+        goto error_check;
+    }
+
+    fs_close_ro(fs, &of);
+    return TRUE;
+
+error_check:
+    fs_close_ro(fs, &of);
+    return FALSE;
+}
+
+/* Checks the DiskDescriptor. file.
  * Returns TRUE on success.
  */
 static
@@ -751,14 +822,14 @@ int check_disk_descriptor(const struct fs *fs)
 
     if (!fs_open_ro(fs, "DiskDescriptor.", &of)) {
         report_error("fs: check_disk_descriptor: "
-                     "DiskDescriptor not found");
+                     "DiskDescriptor. not found");
         goto error_check;
     }
 
     nbytes = fs_read(fs, &of, buffer, sizeof(buffer));
     if (nbytes != sizeof(buffer)) {
         report_error("fs: check_disk_descriptor: "
-                     "could not read DiskDescriptor");
+                     "could not read DiskDescriptor.");
         goto error_check;
     }
 
@@ -782,6 +853,9 @@ int check_disk_descriptor(const struct fs *fs)
     }
 
 error_check:
+    /* These are not errors, since the DiskDescriptor.
+     * file only contains hints.
+     */
     fs_close_ro(fs, &of);
     return TRUE;
 }
@@ -803,6 +877,9 @@ int fs_check_integrity(struct fs *fs)
         goto check_error;
 
     if (!check_unique(fs))
+        goto check_error;
+
+    if (!check_sysdir(fs))
         goto check_error;
 
     if (!check_disk_descriptor(fs))

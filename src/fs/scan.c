@@ -147,7 +147,7 @@ int directory_entry_compare(const struct directory_entry *de,
     /* Compare the sizes to decide the string comparison. */
     if (de->name_length < len) return -1;
     if (de->name_length > len) return +1;
-    return 0   ;
+    return 0;
 }
 
 /* Auxiliary callback used by resolve_name().

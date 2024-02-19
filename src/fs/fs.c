@@ -216,7 +216,7 @@ error_eof:
     return FALSE;
 }
 
-/* Loads an AAR disk image.
+/* Loads an BFS disk image.
  * The file to be read is given in the parameter `filename`.
  * This will populate the disk number `disk_num`.
  * Returns TRUE on success.
